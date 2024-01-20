@@ -1,0 +1,56 @@
+; Assembler source library
+; Copyright (c) 2002 Arkady Belousov <ark@mos.ru>
+;
+; This library is free software; you can redistribute it and/or modify it
+; under the terms of the GNU Lesser General Public License as published by
+; the Free Software Foundation; either version 2.1 of the License, or (at
+; your option) any later version.
+;
+; This library is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU Lesser General Public License for more details.
+;
+; You should have received a copy of the GNU Lesser General Public
+; License along with this library; if not, write to the Free Software
+; Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+;
+
+; Import: MOVREG_ (macro.mac), MOVOFF_ (macro.mac), MOVSEG_ (macro.mac)
+; Export: DOSWriteC, DOSWriteS
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;			Write character to stdout
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<char>			(character to write; default DL)
+; Out:	none
+; Use:	MOVREG_
+; Modf:	AH
+; Call:	INT 21/02
+;
+DOSWriteC	macro	char ; :vararg
+		MOVREG_	dl,<char>
+		mov	ah,2
+		int	21h		; write character to stdout
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;		Write '$'-terminated string to stdout
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<strseg>:<stroff>	('$'-terminated string; default DS:DX)
+;	<strsegname>		(segment name for ASSUME DS:)
+; Out:	none
+; Use:	MOVOFF_, MOVSEG_
+; Modf:	AH
+; Call:	INT 21/09
+;
+DOSWriteS	macro	strseg,strsegname,stroff ; :vararg
+		MOVOFF_	dx,<stroff>
+		MOVSEG_	ds,<strseg>,,<strsegname>
+		mov	ah,9
+		int	21h		; write string to stdout
+endm

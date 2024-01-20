@@ -1,0 +1,205 @@
+; Assembler source library
+; Copyright (c) 2002 Arkady Belousov <ark@mos.ru>
+;
+; This library is free software; you can redistribute it and/or modify it
+; under the terms of the GNU Lesser General Public License as published by
+; the Free Software Foundation; either version 2.1 of the License, or (at
+; your option) any later version.
+;
+; This library is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU Lesser General Public License for more details.
+;
+; You should have received a copy of the GNU Lesser General Public
+; License along with this library; if not, write to the Free Software
+; Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+;
+
+HWLIST	record	HW_LPT_cnt :2,	\; number of parallel ports
+		HWLIST_13  :1,	\
+		HW_gameport:1,	\; game port present
+		HW_COM_cnt :3,	\; number of serial ports
+		HWLIST_8   :1,	\
+		HW_FDD_cnt :2,	\; number of floppy disk drives-1
+		HW_vidmode :2,	\; initial video mode
+				\; =00 EGA/VGA,   =01 40x25 CGA
+				\; =10 80x25 CGA, =11 80x25 mono
+		HWLIST_3   :1,	\
+		HW_PS2	   :1,	\; PS/2 pointing device present
+		HW_FPU	   :1,	\; math coprocessor present
+		HW_FDD	   :1	; floppy disk drives present
+
+;------------------------------------------------------------------------
+
+KBDFLAGS record	KBD_INS_press	 :1,	\
+		KBD_Caps_press	 :1,	\; Caps Lock pressed
+		KBD_Num_press	 :1,	\; Num Lock pressed
+		KBD_Scroll_press :1,	\; Scroll Lock pressed
+		KBD_Pause	 :1,	\; Pause state active
+		KBD_SysReq_press :1,	\
+		KBD_LAlt_pressed :1,	\; Left Alt pressed
+		KBD_LCtrl_pressed:1,	\; Left Ctrl pressed
+		KBD_INSERT	 :1,	\
+		KBD_CapsLock	 :1,	\
+		KBD_NumLock	 :1,	\
+		KBD_ScrollLock	 :1,	\
+		KBD_Alt_press	 :1,	\; either Alt pressed
+		KBD_Ctrl_press	 :1,	\; either Ctrl pressed
+		KBD_LShift_press :1,	\; Left Shift pressed
+		KBD_RShift_press :1	; Right Shift pressed
+
+KBDSTATUS record			\
+		KBD_Caps_LED	 :1,	\; Caps Lock LED
+		KBD_Num_LED	 :1,	\; Num Lock LED
+		KBD_Scroll_LED	 :1,	\; Scroll Lock LED
+		KBDSTATUS_5	 :3,	\
+		KBD_AT		 :1,	\; 101-key enhanced keyboard present
+		KBD_RAlt_pressed :1,	\; Right Alt pressed
+		KBD_RCtrl_pressed:1,	\; Right Ctrl pressed
+		KBDSTATUS_0	 :2
+
+;------------------------------------------------------------------------
+
+VIDEOCONTROL record			\
+		VCTRL_clear	:1,	\; high bit of video mode
+					\; =1 screen is not cleared
+		VCTRL_RAM_64K	:2,	\; RAM on adapter-1 in 64K
+		VCTRL_4		:1,	\
+		VCTRL_inactive	:1,	\; EGA/VGA video system inactive
+		VCTRL_wait	:1,	\; wait for display enable
+		VCTRL_mono	:1,	\; display is mono
+		VCTRL_notemulate:1	; =0 cursor shape treated as CGA ones
+
+VIDEOSWITCHES record			\; EGA/VGA video switches
+		VIDSW_feature	:3,	\; power-on state of feature
+					\; connector bits 3-1
+		VIDSW_feature0	:1,	\; =0 enhanced color display (ECD)
+		VIDSW_display	:4	; adapters+attached display
+		;	primary			secondary
+		; =00h	MDA			EGA+40x25 color display
+		; =01h	MDA			EGA+80x25 color display
+		; =02h	MDA			EGA+ECD (CGA emulation)
+		; =03h	MDA			EGA+ECD
+		; =04h	CGA+40x25 color display	EGA+mono display
+		; =05h	CGA+80x25 color display	EGA+mono display
+		; =06h	EGA+40x25 color display	MDA
+		; =07h	EGA+80x25 color display	MDA
+		; =08h	EGA+ECD (CGA emulation)	MDA
+		; =09h	EGA+ECD			MDA
+		; =0Ah	EGA+mono display	CGA+40x25 color display
+		; =0Ah	EGA+mono display	CGA+80x25 color display
+
+VGAOPTIONS record			\; MCGA/VGA mode set option control
+		VGA_scan2	:1,	\; =0 350-line mode when VGA_scan=0
+					\; =1 200-line mode when VGA_scan=0
+		VGA_DCC_enabled	:1,	\; DCC display switching enabled
+		VGAOPTIONS_1	:1,	\
+		VGA_scan	:1,	\; =1 400-line mode at next mode set
+					\; =0 350/200-line mode
+		VGA_nopalette	:1,	\; default palette loading disabled
+		VGA_grayscale	:1,	\; gray scale summing enabled
+		VGA_active	:1	; =1 VGA active (MCGA always 0)
+
+;------------------------------------------------------------------------
+
+VIDEOSAVETBL	struc		; Video Save Pointer Table [EGA/VGA/MCGA]
+VIDEO_paramtbl@		dd ?	; ptr to Video Parameter Table
+VIDEO_dynsavearea	dd ?	; ptr to Parameter Dynamic Save Area
+VIDEO_text_charset@	dd ?	; ptr to Text Character Set Override
+VIDEO_graph_charset@	dd ?	; ptr to Graphics Character Set Override
+VIDEO_savetbl2@		dd ?	; [VGA] ptr to Secondary Save Pointer Table
+VIDEOSAVETBL ends
+
+; Video Parameter Table:
+;	VIDEOPARAM 4 dup(?)	; modes 0-3 in 200-line CGA emulation mode
+;	VIDEOPARAM 11 dup(?)	; modes 4-0Eh
+;	VIDEOPARAM 2 dup(?)	; modes 0Fh-10h when only 64K RAM on adapter
+;	VIDEOPARAM 2 dup(?)	; modes 0Fh-10h when >64K RAM on adapter
+;	VIDEOPARAM 4 dup(?)	; modes 0-3 in 350-line mode
+;	VIDEOPARAM ?		; [VGA] modes 0 or 1 in 400-line mode
+;	VIDEOPARAM ?		; [VGA] modes 2 or 3 in 400-line mode
+;	VIDEOPARAM ?		; [VGA] modes 7 in 400-line mode
+;	VIDEOPARAM 3 dup(?)	; [VGA] modes 11h-13h
+
+VIDEOPARAM	struc
+VPARAM_width	db ?		; screen width in text columns
+VPARAM_height	db ?		; screen height in text rows-1
+VPARAM_hchar	db ?		; character height in scan lines/bytes
+VPARAM_pagesize	dw ?		; video page (regen buffer) size in bytes
+VPARAM_SEQC	db ?,?,?,?	; values for Sequencer Registers 1-4 (3C4h)
+VPARAM_MISC	db ?		; value for Miscellaneous Output Reg (3C2h)
+VPARAM_CRTC	db 25 dup(?)	; values for CRTC Registers (3x4h)
+VPARAM_ATC	db 20 dup(?)	; values for Attribute Controller Regs (3C0h)
+VPARAM_GRC	db 9 dup(?)	; values for Graphics Controller Regs (3CEh)
+VIDEOPARAM ends		; sizeof(VIDEOPARAM) == 64
+
+
+;========================================================================
+
+BIOS		segment use16 page at 0
+IVT		dd 256 dup(?)	; Interrupt Vectors Table
+
+COM_base	dw ?,?,?,?	; 400: base IO address of serial ports
+LPT_base	dw ?,?,?	; 408: base IO address of parallel ports
+XBDA_seg	dw ?		; 40E: segment of eXtended BIOS data area
+HW_list		HWLIST <>	; 410: detected hardware/equipment list
+		db ?
+basemem_K	dw ?		; 413: base memory size in Kb
+		dw ?
+
+KBD_flags	KBDFLAGS <>	; 417: keyboard status flags
+		db ?		; 419: Alt-nnn keypad workspace
+KBD_bufhead@	dw ?		; 41A: pointer to next character in buffer
+KBD_buftail@	dw ?		; 41C: pointer to free space in buffer
+KBD_buffer	dw 16 dup(?)	; 41E: keyboard circular buffer
+		db 11 dup(?)
+
+VIDEO_mode	db ?		; 449: current video mode
+VIDEO_width	dw ?		; 44A: screen width in text columns
+VIDEO_pagesize	dw ?		; 44C: video page (regen buffer) size in bytes
+VIDEO_pageoff	dw ?		; 44E: active page offset in video segment
+; CURSOR_pos	db 8 dup(?,?)	; 450: cursor column/row on each video page
+CURSOR_pos	db (8+8) dup (?)	; JWASM does not understand dup(?,?)
+CURSOR_shape	db ?,?		; 460: cursor end/start scan lines
+VIDEO_pageno	db ?		; 462: active page number
+CRTC_base	dw ?		; 463: base IO address of CRT controller (3x4h)
+CRT_MODE	db ?		; 465: value of CRT mode select register (3x8h)
+CRT_PALETTE	db ?		; 466: value of CRT palette register (3x9h)
+		db 5 dup(?)
+
+BIOS_timer	dd ?		; 46C: timer ticks since midnight
+BIOS_overflow	db ?		; 470: timer overflow flag (timer has counted
+				;	past midnight)
+
+BIOS_ctrlbreak	db ?		; 471: bit 7 set when Ctrl-Break has been pressed
+BIOS_POSTreset	dw ?		; 472: specifies the action at POST when reboot
+		db ?
+BIOS_HD_cnt	db ?		; 475: number of fixed disk drives
+		db ?,?
+LPT_timeout	db ?,?,?	; 478: parallel device timeout counters
+BIOS_4B_flags	db ?		; 47B: INT 4B flags
+COM_timeout	db ?,?,?,?	; 47C: serial device timeout counters
+
+KBD_buffer@	dw ?,?		; 480: keyboard buffer start/end+1 offsets in 40:0
+
+VIDEO_lastrow	db ?		; 484: last text row on screen (count from 0)
+VIDEO_hchar	dw ?		; 485: character height in scan lines/bytes
+VIDEO_control	VIDEOCONTROL <>	; 487: EGA/VGA control
+VIDEO_switches	VIDEOSWITCHES <>	; 488: EGA/VGA switches
+VGA_options	VGAOPTIONS <>	; 489: MCGA/VGA mode set option control
+VGA_DCC_index	db ?		; 48A: index into display combination code table
+		db 11 dup(?)
+
+KBD_status	KBDSTATUS <>	; 496: keyboard status flags
+
+TIMER_waitflag@	dd ?		; 498: pointer to user wait flag
+TIMER_waitmks	dd ?		; 49C: wait counter in mks
+TIMER_active	db ?		; 4A0: =0 acknowledged, =1 busy, =80h elapsed
+		db 7 dup(?)
+
+VIDEO_ptrtable@	dd ?		; 4A8: pointer to video save pointer table
+
+	org 04F0h
+IAC		db 16 dup(?)	; Inter-Application Communication Area
+BIOS		ends		; sizeof(BIOS) == 1024+256

@@ -1,0 +1,104 @@
+; Assembler source library
+; Copyright (c) 2002 Arkady Belousov <ark@mos.ru>
+;
+; This library is free software; you can redistribute it and/or modify it
+; under the terms of the GNU Lesser General Public License as published by
+; the Free Software Foundation; either version 2.1 of the License, or (at
+; your option) any later version.
+;
+; This library is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU Lesser General Public License for more details.
+;
+; You should have received a copy of the GNU Lesser General Public
+; License along with this library; if not, write to the Free Software
+; Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+;
+
+; Export: _ch2digit, _digit2ch
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;	Convert ASCII character digit at any radix into binary value
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	AL			(character digit)
+; Out:	AL			(value)
+; Use:	none
+; Modf:	none
+; Call:	none
+; Hint:	if on input AL will contain too big digit or no valid digit/letter
+;	then on output AL will be greater than radix 
+;
+_ch2digit	macro
+	local done
+		cmp	al,'9'
+		jbe	done
+		dec	ax		; OPTIMIZE: instead DEC AL
+		and	al,not 20h	; upper case
+		sub	al,'A'-'0'-11
+done:		sub	al,'0'
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;	Convert binary digit at any radix into ASCII character digit
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	AL			(value)
+; Arg:	<maxradix>		(maximum/precise radix value; by default
+;				 greatest possible radix)
+;	<case>			(0-uppercase/20h-lowercase; default 0)
+; Out:	AL			(character digit)
+; Use:	none
+; Modf:	none
+; Call:	none
+; Note:	for <case> may be used register or memory pointer, but their value
+;	will not be checked for validness
+; Note:	for <maxradix> in ranges [2..10] and [11..16] and for other values
+;	(including missing or nonconstant value) generated different code 
+;
+_digit2ch	macro	maxradix,case:=<0>
+	local done
+
+	if (.type case) eq 00100100b
+	;; symbol is defined and expression is a constant value
+	if case ne 0 and case ne 20h
+		err "Bad case argument!"
+		exitm
+	endif
+	endif
+
+	ifnb <maxradix>
+	if (.type maxradix) eq 00100100b
+	;; symbol is defined and expression is a constant value
+	if (maxradix ge 2) and (maxradix le 16)
+	  if maxradix le 10
+		add	al,'0'
+	  else
+		cmp	al,10
+		sbb	al,69h
+		das
+	    if (.type case) ne 00100100b
+	      ;; symbol isn't defined or expression isn't a constant value
+		or	al,case		; 0-uppercase/20h-lowercase
+	    elseif case
+		or	al,case		; 20h-lowercase
+	    endif
+	  endif
+	  exitm
+	endif
+	endif
+	endif
+
+		add	al,'0'
+		cmp	al,'9'
+		jbe	done
+	if (.type case) eq 00100100b
+	  ;; symbol is defined and expression is a constant value
+		add	al,('A' or case)-'9'-1
+	else
+		add	al,'A'-'9'-1
+		or	al,case		; 0-uppercase/20h-lowercase
+	endif
+done:
+endm

@@ -1,0 +1,114 @@
+; Assembler source library
+; Copyright (c) 2002 Arkady Belousov <ark@mos.ru>
+;
+; This library is free software; you can redistribute it and/or modify it
+; under the terms of the GNU Lesser General Public License as published by
+; the Free Software Foundation; either version 2.1 of the License, or (at
+; your option) any later version.
+;
+; This library is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU Lesser General Public License for more details.
+;
+; You should have received a copy of the GNU Lesser General Public
+; License along with this library; if not, write to the Free Software
+; Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+;
+
+; Import: MOVREG_ (macro.mac), _digit2ch (digit.mac)
+; Export: _byte_hex_AX, _word_hex
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;		Convert byte to 2 hexadecimal ASCII digits
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<val>			(value; default AL)
+;	<case>			(0-uppercase/20h-lowercase; default 0)
+;	<shift>			(shift counter: 4 or CL=4; default 4)
+; Out:	AX			(ASCII digits: AL=hi digit, AH=lo digit)
+; Use:	MOVREG_, _digit2ch
+; Modf:	none
+; Call:	none
+; Hint: AX may be immediately stored into memory to get 2-digit ASCII
+;	string (with leading zero, if input value less than 10h).
+;
+_byte_hex_AX	macro	val:=<al>,case,shift ; :vararg
+	ifnb <shift>
+	ifdifi <shift>,<4>
+	ifdifi <shift>,<cl>
+		err "<shift> should be 4 or CL"
+		exitm
+	endif
+	endif
+	endif
+	ifidni <shift>,<cl>
+		MOVREG_	ah,<val>
+		shr	ax,cl
+		shr	al,cl
+	else
+		MOVREG_	al,<val>
+	  ifdifi <val>,<ah>
+		mov	ah,al
+	  endif
+		and	al,0Fh
+		shr	ah,4
+	endif
+		_digit2ch 16,<case>
+;		xchg	ah,al
+	xchg al,ah	; TASM and JWASM use opposite encodings
+		_digit2ch 16,<case>
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;		Get hexadecimal binary digits from word value
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<val>			(value; default AX)
+;	<code>			(instructions to handle each binary digit;
+;				 default <<_digit2ch 16>,stosb>)
+; Out:	none
+; Use:	MOVREG_, _digit2ch
+; Modf:	AX, CL
+; Call:	none
+; Note:	if <val>=AX/CX then AX pushed/poped in the loop, else <val>
+;	assigned to AX at each iteration.
+; Note:	<code> shouldn't rely on values of AH/CL and should preserve CX
+;	and <val> (if <val> not AX/CX).
+; Note:	all four digits generated from higher to lower (including all
+;	leading zero).
+;
+_word_hex	macro	val:=<ax>,code ; :rest
+	local loop
+	ifidni <val>,<cx>
+		MOVREG_	ax,<val>
+	endif
+		mov	cl,12
+loop:
+	ifidni <val>,<ax>
+		push	ax
+	elseifidni <val>,<cx>
+		push	ax
+	else
+		MOVREG_	ax,<val>
+	endif
+		shr	ax,cl
+		and	al,0Fh
+	ifb <code>
+		_digit2ch 16
+		stosb
+	else
+	  irp c,<code>
+		c
+	  endm
+	endif
+	ifidni <val>,<ax>
+		pop	ax
+	elseifidni <val>,<cx>
+		pop	ax
+	endif
+		sub	cl,4
+		 jae	loop
+endm

@@ -1,0 +1,229 @@
+; Assembler source library
+; Copyright (c) 2002 Arkady Belousov <ark@mos.ru>
+;
+; This library is free software; you can redistribute it and/or modify it
+; under the terms of the GNU Lesser General Public License as published by
+; the Free Software Foundation; either version 2.1 of the License, or (at
+; your option) any later version.
+;
+; This library is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU Lesser General Public License for more details.
+;
+; You should have received a copy of the GNU Lesser General Public
+; License along with this library; if not, write to the Free Software
+; Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+;
+
+; Import: MOVREG_ (macro.mac), MOVOFF_ (macro.mac), MOVSEG_ (macro.mac),
+;	  MOVREG2 (macro.mac), MOVOFFax_ (macro.mac)
+;
+; Export: LOW_FIRSTFIT, LOW_BESTFIT, LOW_LASTFIT, HI_FIRSTFIT, HI_BESTFIT
+;	  HI_LASTFIT, HILOW_FIRSTFIT, HILOW_BESTFIT, HILOW_LASTFIT,
+;	  UMB_UNLINK, UMB_LINK
+;
+; Export: DOSGetIntr, DOSSetIntr, DOSAlloc, DOSRealloc, DOSFreeMem,
+;	  DOSGetUMBlink, DOSSetUMBlink
+
+;------------------------------------------------------------------------
+
+LOW_FIRSTFIT	equ 0		; memory allocation strategy
+LOW_BESTFIT	equ 1
+LOW_LASTFIT	equ 2
+HI_FIRSTFIT	equ 40h
+HI_BESTFIT	equ 41h
+HI_LASTFIT	equ 42h
+HILOW_FIRSTFIT	equ 80h
+HILOW_BESTFIT	equ 81h
+HILOW_LASTFIT	equ 82h
+
+UMB_UNLINK	equ 0		; UMB link state
+UMB_LINK	equ 1
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;			Get interrupt vector
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<intrno>		(interrupt #; default AL)
+; Out:	ES:BX			(interrupt vector)
+; Use:	MOVREG2
+; Modf:	AH
+; Call:	INT 21/35
+;
+DOSGetIntr	macro	intrno ; :vararg
+		MOVREG2	ax,ah,al,35h,<intrno>
+		int	21h		; get INT in ES:BX
+		assume	es:nothing
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;			Set interrupt vector
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<intrno>		(interrupt #; default AL)
+;	<hseg>:<hoff>		(new interrupt handler; default DS:DX)
+;	<hsegname>		(segment name for ASSUME DS:)
+; Out:	none
+; Use:	MOVOFFax_, MOVSEG_
+; Modf:	AH
+; Call:	INT 21/25
+;
+DOSSetIntr	macro	intrno,hseg,hsegname,hoff ; :vararg
+		MOVOFFax_ dx,dh,dl,<hoff>,25h,<intrno>
+		MOVSEG_	ds,<hseg>,,<hsegname>
+		int	21h		; set INT in DS:DX
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;			Allocate memory
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<size>			(numbers of paragraphs to allocate; default BX)
+;	<message>		(error string to load into DX)
+;	<errlabel>		(where to go if error)
+; Out:	Carry flag		(set if error)
+;	AX			(segment of allocated block;
+;				 errcode {7,8} if Carry set)
+;	BX			(size of largest available block if Carry set)
+; Use:	MOVREG_
+; Modf:	none
+; Call:	INT 21/48
+;
+DOSAlloc	macro	size,message,errlabel ; :vararg
+		MOVREG_	bx,<size>
+		mov	ah,48h
+		int	21h		; allocate memory
+		MOVOFF_	dx,<message>
+	ifnb <errlabel>
+		jc	errlabel
+	endif
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;			Resize memory block
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<memseg>		(segment of memory block; default ES)
+;	<memsegname>		(segment name for ASSUME ES:)
+;	<size>			(new size in paragraphs; default BX)
+;	<message>		(error string to load into DX)
+;	<errlabel>		(where to go if error)
+; Out:	Carry flag		(set if error)
+;	AX			(errcode {7,8} if Carry set)
+;	BX			(max paragraphs available for specified
+;				 block if Carry set)
+; Use:	MOVREG_, MOVSEG_
+; Modf:	none
+; Call:	INT 21/4A
+;
+DOSRealloc	macro	memseg,memsegname,size,message,errlabel ; :vararg
+		MOVREG_	bx,<size>
+		MOVSEG_	es,<memseg>,,<memsegname>
+		mov	ah,4Ah
+		int	21h		; resize memory block
+		MOVOFF_	dx,<message>
+	ifnb <errlabel>
+		jc	errlabel
+	endif
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;			Free memory block
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<memseg>		(segment of memory block; default ES)
+;	<memsegname>		(segment name for ASSUME ES:)
+;	<message>		(error string to load into DX)
+;	<errlabel>		(where to go if error)
+; Out:	Carry flag		(set if error)
+;	AX			(errcode {7,9} if Carry set)
+; Use:	MOVSEG_
+; Modf:	none
+; Call:	INT 21/49
+;
+DOSFreeMem	macro	memseg,memsegname,message,errlabel ; :vararg
+		MOVSEG_	es,<memseg>,,<memsegname>
+		mov	ah,49h
+		int	21h		; free memory
+		MOVOFF_	dx,<message>
+	ifnb <errlabel>
+		jc	errlabel
+	endif
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;			Get memory allocation strategy
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	none
+; Out:	Carry flag		(set if error)
+;	AX			(strategy; errcode {1} if Carry set)
+; Use:	none
+; Modf:	AX
+; Call:	INT 21/5800
+;
+DOSGetAlloc	macro
+		mov	ax,5800h
+		int	21h		; get DOS memory allocation strategy
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;			Set memory allocation strategy
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<strategy>		(new allocation strategy; default BX)
+; Out:	Carry flag		(set if error)
+;	AX			(errcode {1} if Carry set)
+; Use:	MOVREG_
+; Modf:	AX
+; Call:	INT 21/5801
+;
+DOSSetAlloc	macro	strategy ; :vararg
+		MOVREG_	bx,<strategy>
+		mov	ax,5801h
+		int	21h		; set DOS memory allocation strategy
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;			Get UMB link state
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	none
+; Out:	Carry flag		(set if error)
+;	AX			(errcode {1} if Carry set)
+;	AL			(UMB link state)
+; Use:	none
+; Modf:	AX
+; Call:	INT 21/5802
+;
+DOSGetUMBlink	macro
+		mov	ax,5802h
+		int	21h		; get UMB link state
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;			Set UMB link state
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<state>			(new link state; default BX)
+; Out:	Carry flag		(set if error)
+;	AX			(errcode {1} if Carry set)
+; Use:	MOVREG_
+; Modf:	AX
+; Call:	INT 21/5803
+;
+DOSSetUMBlink	macro	state ; :vararg
+		MOVREG_	bx,<state>
+		mov	ax,5803h
+		int	21h		; set UMB link state
+endm

@@ -1,0 +1,316 @@
+; Assembler source library
+; Copyright (c) 2002 Arkady Belousov <ark@mos.ru>
+;
+; This library is free software; you can redistribute it and/or modify it
+; under the terms of the GNU Lesser General Public License as published by
+; the Free Software Foundation; either version 2.1 of the License, or (at
+; your option) any later version.
+;
+; This library is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU Lesser General Public License for more details.
+;
+; You should have received a copy of the GNU Lesser General Public
+; License along with this library; if not, write to the Free Software
+; Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+;
+
+; Import: MOVREG_ (macro.mac), MOVOFF_ (macro.mac), MOVSEG_ (macro.mac),
+;	  MOVRR_ (macro.mac), MOVOO_ (macro.mac), MOVROO_ (macro.mac),
+;	  MOVREG2 (macro.mac), MOVREGax_ (macro.mac)
+; Export: j, saveFAR, MOVSEG, POPSEG, movadd, movsub, memcopy,
+;	  movidx, out_, outw, inb, inw
+
+j		equ	jmp short
+
+saveFAR		macro	addr:req,segm:req,offs	; :rest
+		mov	word ptr addr[0],offs
+		mov	word ptr addr[2],segm
+endm
+
+MOVSEG		macro	segreg:req,val:req,temp,segname ; :rest
+		MOVSEG_	<segreg>,<val>,<temp>,<segname>
+endm
+
+POPSEG		macro	segreg:req,segname ; :rest
+		pop	segreg
+		assume	segreg:segname
+endm
+
+;------------------------------------------------------------------------
+
+movadd		macro	dst:req,base,index ; :vararg
+	ifb <index>
+		MOVREG_	<dst>,<base>		;; dst=base
+		exitm
+	elseifidni <index>,<dst>
+	  ifb <base>
+		shl	dst,1			;; dst+=dst
+	  else
+		movadd	<dst>,,<base>		;; dst=dst+base
+	  endif
+	  exitm
+	elseif (.type index) eq 00100100b
+	;; symbol is defined and expression is a constant value
+	if index eq 0
+		MOVREG_	<dst>,<base>		;; dst=base+0
+		exitm
+	endif
+	endif
+
+	ifnb <base>
+	ifdifi <base>,<dst>
+	  if (.type base) eq 00100100b
+	    ;; symbol is defined and expression is a constant value
+	    if (.type index) eq 00100100b
+	      ;; symbol is defined and expression is a constant value
+		MOVREG_ <dst>,<(base)+(index)>	;; dst=const+const
+	    elseif base eq 0
+		MOVREG_	<dst>,<index>		;; dst=0+index
+	    else
+		movadd	<dst>,<index>,<base>	;; dst=index+const
+	    endif
+	    exitm
+	  endif
+
+	  ??ASL instr <,ax,cx,dx,bx,sp,bp,si,di,eax,ecx,edx,ebx,esp,ebp,esi,edi,>,<,&dst&,>
+	  if ??ASL
+	  ??ASL instr <,bx,bp,si,di,>,<,&base&,>
+	  if ??ASL
+	    if ??ASL gt 6
+		??ASL instr <,bx,bp,>,<,&index&,>
+	    else
+		??ASL instr <,si,di,>,<,&index&,>
+	    endif
+	    if (??ASL ne 0) or ((.type index) eq 00100100b)
+		;; symbol is defined and expression is a constant value
+		lea	dst,[(base)+(index)]
+		exitm
+	    endif
+	  endif
+	  endif
+
+		mov	dst,base
+	endif ;; ifdifi <base>,<dst>
+	endif ;; ifnb <base>
+
+	if (.type index) eq 00100100b
+	;; symbol is defined and expression is a constant value
+	if index eq 1
+		inc	dst
+		exitm
+	elseif index eq -1
+		dec	dst
+		exitm
+	elseif (index eq 2) or (index eq -2)
+	  ??ASL instr <,ax,cx,dx,bx,sp,bp,si,di,>,<,&dst&,>
+	  if ??ASL
+	    if index eq 2
+		inc	dst
+		inc	dst
+	    else
+		dec	dst
+		dec	dst
+	    endif
+	    exitm
+	  endif
+	endif
+	endif
+		add	dst,index
+endm
+
+movsub		macro	dst:req,base,index ; :vararg
+	ifb <index>
+		MOVREG_	<dst>,<base>		;; dst=base
+		exitm
+	elseifidni <index>,<base>
+		MOVREG_	<dst>,0			;; dst=base-base
+		exitm
+	elseifidni <index>,<dst>
+	  ifb <base>
+		MOVREG_	<dst>,0			;; dst-=dst
+	  else
+		movsub	<dst>,,<base>		;; dst=base-dst=-(dst-base)
+		neg	dst
+	  endif
+	  exitm
+	elseif (.type index) eq 00100100b
+	;; symbol is defined and expression is a constant value
+	if index eq 0
+		MOVREG_	<dst>,<base>		;; dst=base-0
+		exitm
+	endif
+	endif
+
+	ifnb <base>
+	ifdifi <base>,<dst>
+	  if (.type base) eq 00100100b
+	    ;; symbol is defined and expression is a constant value
+	    if (.type index) eq 00100100b
+	      ;; symbol is defined and expression is a constant value
+		MOVREG_ <dst>,<(base)-(index)>	;; dst=const-const
+	    elseif base eq 0
+		MOVREG_	<dst>,<index>
+		neg	dst			;; dst=0-index=-index
+	    elseif base eq -1
+		MOVREG_	<dst>,<index>
+		not	dst			;; dst=-1-index
+	    else
+		MOVREG_	<dst>,<base>
+		sub	dst,index		;; dst=const-index
+	    endif
+	    exitm
+	  endif
+
+	  ??ASL instr <,ax,cx,dx,bx,sp,bp,si,di,eax,ecx,edx,ebx,esp,ebp,esi,edi,>,<,&dst&,>
+	  if ??ASL
+	  ??ASL instr <,bx,bp,si,di,>,<,&base&,>
+	  if ??ASL
+	  if (.type index) eq 00100100b
+	  ;; symbol is defined and expression is a constant value
+		lea	dst,[(base)-(index)]
+		exitm
+	  endif
+	  endif
+	  endif
+
+		mov	dst,base
+	endif ;; ifdifi <base>,<dst>
+	endif ;; ifnb <base>
+
+	if (.type index) eq 00100100b
+	;; symbol is defined and expression is a constant value
+	if index eq 1
+		dec	dst
+		exitm
+	elseif index eq -1
+		inc	dst
+		exitm
+	elseif (index eq 2) or (index eq -2)
+	  ??ASL instr <,ax,cx,dx,bx,sp,bp,si,di,>,<,&dst&,>
+	  if ??ASL
+	    if index eq 2
+		dec	dst
+		dec	dst
+	    else
+		inc	dst
+		inc	dst
+	    endif
+	    exitm
+	  endif
+	endif
+	endif
+		sub	dst,index
+endm
+
+;------------------------------------------------------------------------
+
+memcopy		macro	cnt:=<cx>,dstseg,dstsegname,dstoff,srcseg,srcsegname,srcoff ; :vararg
+	if (.type cnt) ne 00100100b
+	  ;; symbol not defined or expression not a constant value
+		MOVROO_	cx,<cnt>,di,<dstoff>,si,<srcoff>
+		MOVSEG_	es,<dstseg>,,<dstsegname>
+		MOVSEG_	ds,<srcseg>,,<srcsegname>
+		rep	movsb
+	else
+		MOVOO_	di,<dstoff>,si,<srcoff>
+		MOVSEG_	es,<dstseg>,,<dstsegname>
+		MOVSEG_	ds,<srcseg>,,<srcsegname>
+	  if (cnt) gt 10
+		MOVREG_	cx,(cnt)/2
+		rep	movsw
+	  else
+	    rept (cnt)/2
+		movsw
+	    endm
+	  endif
+	  if (cnt) mod 2
+		movsb
+	  endif
+	endif
+endm
+
+;------------------------------------------------------------------------
+
+movidx		macro	reg:req,index:req,base,oldindex ; :vararg
+	ifb <oldindex>
+		movadd	<reg>,<base>,<index>
+	elseifb <base>
+		movadd	<reg>,,<(index)-(oldindex)>
+	elseif ((index)-(oldindex) lt -2) or \
+		((index)-(oldindex) gt 2) or \
+		((oldindex eq 2) or (oldindex eq -2)) and (index eq 0)
+		movadd	<reg>,<base>,<index>
+	else
+		movadd	<reg>,,<(index)-(oldindex)>
+	endif
+endm
+
+;------------------------------------------------------------------------
+
+out_		macro	port:=<dx>,lo:=<al>,hi ; :vararg
+	if (.type port) eq 00100100b
+	;; symbol is defined and expression is a constant value
+	if port lt 100h
+		MOVREG2	ax,ah,al,<hi>,<lo>
+	  ifb <hi>
+		out	port,al
+	  else
+		out	port,ax
+	  endif
+		exitm
+	endif
+	endif
+		MOVREGax_ dx,dh,dl,<port>,<hi>,<lo>
+	ifb <hi>
+		out	dx,al
+	else
+		out	dx,ax
+	endif
+endm
+
+outw		macro	port:=<dx>,val ; :vararg
+	if (.type port) eq 00100100b
+	;; symbol is defined and expression is a constant value
+	if port lt 100h
+		MOVREG_	ax,<val>
+		out	port,ax
+		exitm
+	endif
+	endif
+		MOVRR_	dx,<port>,ax,<val>
+		out	dx,ax
+endm
+
+inb		macro	var,port ; :vararg
+	ifnb <port>
+	if (.type port) eq 00100100b
+	;; symbol is defined and expression is a constant value
+	if port lt 100h
+		in	al,port
+		MOVREG_	<var>,al
+		exitm
+	endif
+	endif
+	endif
+		MOVREG_	dx,<port>
+		in	al,dx
+		MOVREG_	<var>,al
+endm
+
+inw		macro	var,port ; :vararg
+	ifnb <port>
+	if (.type port) eq 00100100b
+	;; symbol is defined and expression is a constant value
+	if port lt 100h
+		in	ax,port
+		MOVREG_	<var>,ax
+		exitm
+	endif
+	endif
+	endif
+		MOVREG_	dx,<port>
+		in	ax,dx
+		MOVREG_	<var>,ax
+endm

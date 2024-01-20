@@ -1,0 +1,60 @@
+; Assembler source library
+; Copyright (c) 2002 Arkady Belousov <ark@mos.ru>
+;
+; This library is free software; you can redistribute it and/or modify it
+; under the terms of the GNU Lesser General Public License as published by
+; the Free Software Foundation; either version 2.1 of the License, or (at
+; your option) any later version.
+;
+; This library is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU Lesser General Public License for more details.
+;
+; You should have received a copy of the GNU Lesser General Public
+; License along with this library; if not, write to the Free Software
+; Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+;
+
+CODE_		macro	op:req,name,def ; :vararg
+		OPCODE_&op
+name		def
+endm
+
+;------------------------------------------------------------------------
+
+call_		macro	name:req,value ; :vararg
+		db	0E8h		; CALL NEAR word
+name		dw	value-$-2
+endm
+
+jmp_		macro	name:req,value ; :vararg
+		db	0E9h		; JMP NEAR word
+name		dw	value-$-2
+endm
+
+call_far	macro	name ; :vararg
+		db	09Ah		; CALL FAR dword
+name		dd	?
+endm
+
+jmp_far		macro	name ; :vararg
+		db	0EAh		; JMP FAR dword
+name		dd	?
+endm
+
+;------------------------------------------------------------------------
+
+fixnear		macro	name:req,value ; :vararg
+		mov	[name],value-name-2
+endm
+
+fixcode		macro	offs:req,op,arg ; :vararg
+	ifb <arg>
+		mov	[offs],op
+	elseifb <op>
+		mov	byte ptr offs[1],arg
+	else
+		mov	word ptr [offs],((arg) shl 8)+op
+	endif
+endm

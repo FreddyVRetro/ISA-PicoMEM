@@ -1,0 +1,164 @@
+; Assembler source library
+; Copyright (c) 2002 Arkady Belousov <ark@mos.ru>
+;
+; This library is free software; you can redistribute it and/or modify it
+; under the terms of the GNU Lesser General Public License as published by
+; the Free Software Foundation; either version 2.1 of the License, or (at
+; your option) any later version.
+;
+; This library is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU Lesser General Public License for more details.
+;
+; You should have received a copy of the GNU Lesser General Public
+; License along with this library; if not, write to the Free Software
+; Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+;
+
+; PIC (Programmable Interrupt Controller)
+; - IBM PC contains Intel 8259A PIC chipset.
+; - IBM PC AT contains two 8259A cascaded through IRQ2 and original IRQ2
+;   line on the ISA bus attached to IRQ9 (second IRQ line on slave PIC).
+
+;-------------------------------------------------------------------------
+
+; 8259A contains:
+; - IRR (Interrupt Request Register): reflects active IRQ lines; R/O
+; - ISR (In Service Register): reflects IRQ accepted by CPU, which are not
+;	yet acknowledged by EOI command; R/O
+; - IMR (Interrupt Mask Register): disables selected IRQ lines; R/W
+
+; IRQ processing in 8086 mode:
+; 1. IRR sets bit for IRQ line, at which signal front is detected.
+; 2. 8259A sends INT signal to CPU if IRR bit is not masked by IMR and its
+;    priority is greater, than highest in ISR (i.e. same IRQ also will not
+;    be processed until its ISR bit is cleared).
+; 3. CPU answers by INTA impulse.
+; 4. ISR sets bit with highest priority from IRR and clears it in IRR.
+; 5. CPU sends second INTA impulse, at which 8259A sends 8-bit address.
+; 6. ISR bits cleared by EOI command later or at the end of second INTA
+;    impulse in AutoEOI mode.
+; In cascade mode INT signal sent and first INTA impulse accepted by master
+; PIC, then it allows the slave PIC to accept (and answer) second INTA impulse.
+
+; Bounds:
+; - IRR bit is cleared if consequent IRQ line goes down; if IRQ line goes down
+;   before second INTA impulse, then 8259A sends IRQ7 address (but not sets
+;   ISR7 bit).
+; - it is undocumented what happens after EOI if new front(s) come in at IRQ
+;   line or IRQ line goes down after new front(s) before EOI for this IRQ.
+
+; 8259A accepts commands of two types: sequence of 2-4 ICW (initialization
+; command words) or 3 different OCW (output control words). After ICW1 IRR
+; and IMR are cleared, IRQ7 gets priority 7, slave gets address 7, special
+; mask mode is cleared and read mode is set for IRR.
+
+
+;=========================================================================
+
+; I/O ports addresses
+
+PIC1_ICW1	equ	20h		; All ICW W/O
+PIC1_ICW2	equ	21h		; ICW2/ICW3/ICW4 goes to 21h/0A1h
+PIC1_ICW3	equ	21h		;  immediately after ICW1
+PIC1_ICW4	equ	21h
+
+PIC1_OCW2	equ	20h		; W/O
+PIC1_OCW3	equ	20h		; W/O; also set IRR or ISR read mode
+
+PIC1_IRR	equ	20h		; R/O; selected by OCW3_read
+PIC1_ISR	equ	20h		; R/O; selected by OCW3_read
+PIC1_IRQ	equ	20h		; R/O; returned in polling mode
+					;  (OCW3_POLL), valid if high bit set
+PIC1_IMR	equ	21h		; R/O for IMR, W/O for OCW1
+
+PIC2_ICW1	equ	0A0h
+PIC2_ICW2	equ	0A1h
+PIC2_ICW3	equ	0A1h
+PIC2_ICW4	equ	0A1h
+
+PIC2_OCW2	equ	0A0h
+PIC2_OCW3	equ	0A0h
+
+PIC2_IRR	equ	0A0h
+PIC2_ISR	equ	0A0h
+PIC2_IRQ	equ	0A0h
+PIC2_IMR	equ	0A1h
+
+
+;-------------------------------------------------------------------------
+
+; ICW defenitions
+
+ICW1	record	ICW1_ADDR:3,	\; for 8080/8085 CPUs only
+				\; value of A5-A7 address lines
+		ICW1_ID  :1=1,	\; should be set for ICW1
+		ICW1_LTIM:1,	\
+		ICW1_ADI :1,	\; for 8080/8085 CPUs only
+				\; =0 intr vectors use 8 bytes
+				\; =1 intr vectors use 4 bytes
+		ICW1_SNGL:1,	\; =0 cascade mode
+				\; =1 single 8259A mode (and no ICW3)
+		ICW1_ICW4:1	 ; =1 ICW4 will be sent
+
+; ICW1_LTIM values:
+ICW1_edge	equ	0	; edge triggered mode
+ICW1_level	equ	1	; level triggered mode
+
+ICW2_8080	record	ICW2_8080_ADDR:8	; A8-A15 address lines
+ICW2_8086	record	ICW2_8086_ADDR:5,	\; T3-T7 address lines
+			ICW2_reserved:3
+
+; - ICW3 for master PIC contains bit mask with 1 for each IRQ line at which
+;   slave PIC is attached;
+; - ICW3 for slave PIC contains IRQ line # (in three lowest bits), at which
+;   it is connected.
+
+ICW4	record	ICW4_special:1,	\; =1 special fully nested mode
+		ICW4_BUF    :2,	\
+		ICW4_autoEOI:1,	\
+		ICW4_CPU    :1
+
+; ICW4_CPU values:
+ICW4_8080	equ	0
+ICW4_8086	equ	1
+
+; ICW4_BUF values:
+ICW4_nonbuf	equ	00b
+ICW4_SLAVE	equ	10b	; PIC is slave
+ICW4_MASTER	equ	11b	; PIC is master
+
+
+;-------------------------------------------------------------------------
+
+; OCW defenitions
+
+; OCW1 inits IMR value
+
+OCW2	record	OCW2_CMD  :3,	\
+		OCW2_ID   :2=0,	\; should be set for OCW2
+		OCW2_level:3=0
+
+; OCW2_CMD values:
+OCW2_EOI	equ	001b	; nonspecific EOI
+OCW2_specEOI	equ	011b	; specific EOI + level
+OCW2_ROTEOI	equ	101b	; rotate on nonspecific EOI
+OCW2_ROTspecEOI equ	111b	; rotate on specific EOI + level
+OCW2_ROTAEOI	equ	100b	; rotate in auto EOI mode (set)
+OCW2_noROTAEOI	equ	000b	; rotate in auto EOI mode (clear)
+OCW2_priority	equ	110b	; set lowest priority + level
+OCW2_NOP	equ	010b
+
+OCW3	record	OCW3_mask:2=0,	\
+		OCW3_ID  :2=1,	\; should be set for OCW3
+		OCW3_POLL:1=0,	\; =1 polling mode
+		OCW3_read:2
+
+; OCW3_read values:
+OCW3_IRR	equ	10b	; IRR read mode
+OCW3_ISR	equ	11b	; ISR read mode
+
+; OCW3_mask values:
+OCW3_mask_clear equ	10b	; reset special mask mode
+OCW3_mask_set	equ	11b	; set special mask mode

@@ -1,0 +1,157 @@
+; Assembler source library
+; Copyright (c) 2002 Arkady Belousov <ark@mos.ru>
+;
+; This library is free software; you can redistribute it and/or modify it
+; under the terms of the GNU Lesser General Public License as published by
+; the Free Software Foundation; either version 2.1 of the License, or (at
+; your option) any later version.
+;
+; This library is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU Lesser General Public License for more details.
+;
+; You should have received a copy of the GNU Lesser General Public
+; License along with this library; if not, write to the Free Software
+; Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+;
+
+; UART (Universal Asynchronous Receiver/Transmitter)
+; - IBM PC contains one of 8250, 16450, 16550, 16550A, 16550AFN or
+;   compatible chipsets, which implements RS-232C interface.
+; - IBM PC usually contains up to four UART at next addresses and IRQ:
+;   3F8h/IRQ4, 2F8h/IRQ3, 3E8h/IRQ4, 2E8h/IRQ3. Founded UART addresses
+;   recorded in BIOS data area.
+
+
+;=========================================================================
+
+; I/O port address indexes
+
+RBR_index	equ	0	; [R/O] [DLAB=0] Receive Buffer Register
+THR_index	equ	0	; [W/O] [DLAB=0] Transmitter Holding Register
+IER_index	equ	1	; [DLAB=0] Interrupt Enable Register
+DL_index	equ	0	; [DLAB=1] Divisor Latch, 16-bit
+IIR_index	equ	2	; [R/O] Interrupt Identification Register
+FCR_index	equ	2	; [W/O] FIFO Control Register (16550+ only)
+LCR_index	equ	3	; Line Control Register
+MCR_index	equ	4	; Modem Control Register
+LSR_index	equ	5	; Line Status Register
+MSR_index	equ	6	; Modem Status Register
+SCR_index	equ	7	; Scratch Register (16450+)
+
+;-------------------------------------------------------------------------
+
+; Registers definitions
+
+; RBR returns received bytes.
+
+; THR accepts bytes to send.
+
+; DL used to program the bps rate as follows:
+;	1843200 Hz / 16 / desired rate	= divisor
+;	1843200 Hz / 16 / divisor	= obtained rate
+; For example, to get 1200 bps 1843200/16/1200=96 value should be used.
+; Max speed is a 1843200/16/1=115200 bps.
+
+IER	record	IER_reserved:4,	\
+		IER_MSR     :1,	\; Enable Delta Status Signals Interrupt
+				\; =1 interrupt when one of delta (MSR) is set
+		IER_LSR     :1,	\; Enable Line Status Interrupt
+				\; =1 interrupt when transmission errors
+		IER_THRE    :1,	\; Enable Transmitter Buffer Empty Interrupt
+				\; =1 THRE (THR empty) interrupt enabled
+		IER_DR	    :1	 ; Enable Receiver Buffer Full Interrupt
+				 ; =1 DR (data ready) interrupt enabled
+
+IIR	record	IIR_FIFO    :2,	\; FIFO enable
+				\; =11b if FCR_enable=1 for 16550A
+				\; =10b if FCR_enable=1 for 16550
+				\; =0 in other cases
+		IIR_reserved:2,	\
+		IIR_IID	    :3,	\; Interrupt IDentification
+		IIR_pending :1	 ; =0 interrupt is pending
+
+; IIR allows to detect the cause of an interrupt. Only one interrupt is
+; reported at a time; they are priorized. IIR_pending tells if the UART
+; triggered interrupt. After parsing IIR_IID IIR_pending should be tested
+; again - if it is still =0, there is another interrupt to be serviced.
+
+; IIR_IID values:
+
+IID_LSR  equ 011b ; priority=1,source=status
+		  ;  OE/PE/FE/break in LSR set. Serviced by reading LSR.
+IID_DR	 equ 010b ; priority=2,source=receiver
+		  ;  DR (data ready) or trigger level reached. Serviced by
+		  ;  reading RBR until under level.
+IID_FIFO equ 110b ; priority=2,source=FIFO
+		  ;  No Receiver FIFO action since 4 words time (neither IN
+		  ;  nor OUT) but data in RX FIFO. Serviced by reading RBR.
+IID_THRE equ 001b ; priority=3,source=transmitter
+		  ;  THRE. Serviced by reading IIR or writing to THR.
+IID_MSR  equ 000b ; priority=4,source=modem
+		  ;  One of the delta in MSR set. Serviced by reading MSR.
+
+FCR	record	FCR_trigger :2,	\; RX FIFO trigger level select (1,4,8,14)
+		FCR_reserved:2,	\
+		FCR_DMA     :1,	\; DMA mode select
+		FCR_TXreset :1,	\; Transmitter FIFO reset
+		FCR_RXreset :1,	\; Receiver FIFO reset
+		FCR_enable  :1	 ; FIFO enable
+
+LCR	record	LCR_DLAB    :1,	\; Divisor Latch Access Bit
+		LCR_SBR     :1,	\; Set BReak
+				\; =1 forces TxD +12V (break)
+		LCR_parity  :3,	\; parity type
+		LCR_stop    :1,	\; stop bits (1-1.5/2, 1.5 if word length=5)
+		LCR_wordlen :2	 ; word length (5-8 bits)
+
+; LCR_parity values:
+
+LCR_noparity	equ	     0
+LCR_oddparity	equ	000b+1
+LCR_evenparity	equ	010b+1
+LCR_markparity	equ	100b+1	; parity bit always 1
+LCR_spaceparity	equ	110b+1	; parity bit always 0
+
+MCR	record	MCR_reserved:2,	\
+		MCR_AFE     :1,	\; Automatic Flow control Enable
+		MCR_loop    :1,	\; =1 local loopback, all outputs disabled
+		MCR_OUT2    :1,	\; =1 transfer UART interrupts to PIC
+		MCR_OUT1    :1,	\; programs -OUT1 (normally not used; best
+				\;  is to set this bit)
+		MCR_RTS     :1,	\; programs -RTS
+		MCR_DTR     :1	 ; programs -DTR
+
+LSR	record	LSR_FIFOerr :1,	\; =1 errors is pending in the RX FIFO chain
+		LSR_TEMT    :1,	\; Transmitter Empty (last word has been sent)
+		LSR_THRE    :1,	\; THR Empty (new data can be written to THR)
+		LSR_break   :1,	\; =1 broken line detected (set if RxD is
+				\;  'space' for more than 1 word)
+		LSR_FE	    :1,	\; =1 framing error (stop bit missing)
+		LSR_PE	    :1,	\; =1 parity error (transmission error)
+		LSR_OE	    :1,	\; =1 overrun error (loss of data)
+		LSR_RBF     :1	 ; Receiver Buffer Full, Data Ready (DR)
+
+; - LSR_FIFOerr, LSR_TEMT, LSR_break, LSR_FE, LSR_PE and LSR_OE reset by
+;   reading LSR.
+; - LSR_THRE reset by writing THR; when FIFO enabled LSR_THRE cleared
+;   whenever any data in TX FIFO (not when FIFO is full).
+; - LSR_RBF reset by reading RBR (but only if the RX FIFO is empty).
+
+MSR	record	MSR_DCD     :1,	\; Data Carrier Detect
+		MSR_RI	    :1,	\; Ring Indicator
+		MSR_DSR	    :1,	\; Data Set Ready
+		MSR_CTS	    :1,	\; Clear To Send
+		MSR_DDCD    :1,	\; Delta DCD
+		MSR_TERI    :1,	\; Trailing Edge Ring Indicator
+		MSR_DDSR    :1,	\; Delta DSR
+		MSR_DCTS    :1	 ; Delta CTS
+
+; MSR allows to check modem status lines. The delta bits are set if the
+; corresponding signals have changed since the last reading (except for
+; TERI which is only set if MSR_RI cleared and the phone stopped ringing).
+
+; In loopback mode (when MCR_loop=1) MSR_DCD=MCR_OUT2, MSR_RI=MCR_OUT1
+; MSR_DSR=MCR_DTR and MSR_CTS=MCR_RTS. The delta bits act accordingly to
+; the level transition of the data written to MCR.

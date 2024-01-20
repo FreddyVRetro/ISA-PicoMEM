@@ -1,0 +1,40 @@
+; Assembler source library
+; Copyright (c) 2002 Arkady Belousov <ark@mos.ru>
+;
+; This library is free software; you can redistribute it and/or modify it
+; under the terms of the GNU Lesser General Public License as published by
+; the Free Software Foundation; either version 2.1 of the License, or (at
+; your option) any later version.
+;
+; This library is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU Lesser General Public License for more details.
+;
+; You should have received a copy of the GNU Lesser General Public
+; License along with this library; if not, write to the Free Software
+; Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+;
+
+OPCODE_MOV_AL	equ <db 0B0h>
+OPCODE_MOV_CL	equ <db 0B1h>
+OPCODE_MOV_DL	equ <db 0B2h>
+OPCODE_MOV_BL	equ <db 0B3h>
+OPCODE_MOV_AH	equ <db 0B4h>
+OPCODE_MOV_CH	equ <db 0B5h>
+OPCODE_MOV_DH	equ <db 0B6h>
+OPCODE_MOV_BH	equ <db 0B7h>
+OPCODE_MOV_AX	equ <db 0B8h>
+OPCODE_MOV_CX	equ <db 0B9h>
+OPCODE_MOV_DX	equ <db 0BAh>
+OPCODE_MOV_BX	equ <db 0BBh>
+
+OPCODE_ADD_AX	equ <db 05h>
+OPCODE_AND_AX	equ <db 25h>
+OPCODE_XOR_AX	equ <db 35h>
+OPCODE_OR_AL	equ <db 0Ch>
+OPCODE_AND_AL	equ <db 24h>
+OPCODE_XOR_AL	equ <db 34h>
+OPCODE_CMP_AL	equ <db 3Ch>
+
+OPCODE_CMP_DI	equ <db 81h,0FFh>
