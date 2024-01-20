@@ -65,8 +65,18 @@ The Pi Pico is limmited in its speed, this is excellent and bad at the same time
 - We can still program the Pico and Feel like doing coding on a "Retro" Machine, so we don't have the effect "Look, it is easy, he put a processor in the PC that can emulate the full PC"
 
 Memory emulation:
+
+As the PicoMEM is an 8Bit ISA Card, the RAM Emulation may be slower than the PC Own RAM.
+The PicoMEM is then more suitable to extend a 512Kb PC to 640K, Add some UMB (For Driver) than extend an IBM PC With 128Kb of RAM.
+
+Memory emulation capabilities :
+- The PicoMEM BIOS auto detect (At Hardwsare level) the 1st Mb of RAM and Display the RAM MAP with a "Checkit" like Display.
+- You can select to add RAM from the Internal SRAM (128Kb with No Wait State)
+- Emulation from the PSRAM (External RAM) can add RAM to any Address Space.
+- Then, EMS Emulation eemulate a LOTECH Board woth Up to 4Mb.
+
+Memory emulation limitations :
 - Memory emulation with PSRAM is quite slow for the moment, but multiple mecanism like a 32bit cache will improve this. (And Maybe DMA)
-  
 - The emulated Memory does not support DMA, I did not proof it is not 100% feasible, but it require quite complex coding to be possible (Snif the DMA registers, change code that may add unstability)
   Anyway:  
     - As the PicoMEM emulate the Floppy, we can disable temporarily the RAM emulation if the Disk access are not working.
@@ -80,9 +90,12 @@ Tested machines:
 - IBM 5150, 5160, 5170 : All Ok, except keyboard not responding on 5170.
 - Compaq Portable 2 (286): Ok
 - Amstrad PC1512, PC1640, PC200: Working, but fail to start all the times on one PC1512 and sometime on PC1640 (Corrected in Rev 1.1).
-- Tandy 1000 : Does not work yet due to the specific memory map.
 - Worked on Various 486, 386 (No confirmation of the ISA Clock speed yet)
+
+Failing Machines :
 - Failed on a 386 with 12MHz ISA Clock
+- Commodore PC10 / PC20 (Timing issue, fix in progress)
+- Tandy 1000 : Does not work yet due to the specific memory map. (SX, EX, HX, TL ...)
 
 
 ### License
