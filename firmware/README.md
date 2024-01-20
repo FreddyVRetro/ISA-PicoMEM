@@ -4,7 +4,7 @@ How to read thhe Firmware name
 
 PM_MonthDay_D0 : PicoMEM Firmware released the Day/Month at Base Address D0
 
-# How to update the Firmware ?
+## How to update the Firmware ?
 
 The firmware update is done like for any Pi Pico : 
 
@@ -16,7 +16,7 @@ Difference for the PicoMEM 1.1 :
 - The PicoMEM must be plugged into a PC so that the programming work. 
   Power on the PC (The Retro one) and press the button at the same time.
 
-### Firmwares Revision History : 
+## Firmwares Revision History : 
 
 ### PM_Dec28: 5150 Support is Back
 Corrected the 5150 Support, If someone can test it more to be sure….
