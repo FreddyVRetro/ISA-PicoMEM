@@ -77,6 +77,7 @@ The PicoMEM is then more suitable to extend a 512Kb PC to 640K, Add some UMB (Fo
 
 ### Memory emulation limitations :
 - Memory emulation with PSRAM is quite slow for the moment, but multiple mecanism like a 32bit cache will improve this. (And Maybe DMA)
+- You can't add Conventionnal Memory from PSRAM Emulated RAM: DOS Boot Will crash
 - The emulated Memory does not support DMA, I did not proof it is not 100% feasible, but it require quite complex coding to be possible (Snif the DMA registers, change code that may add unstability)
   Anyway:  
     - As the PicoMEM emulate the Floppy, we can disable temporarily the RAM emulation if the Disk access are not working.
@@ -108,5 +109,5 @@ For Commercial use, you must contact me before.
 * [Ian Scott](https://github.com/polpo/): Idea to use the Pi Pico instead of the not available Pi 2/4 and Zero plus help on the Hardware design.
 * [PSRAM Code by Ian Scott](https://github.com/polpo/rp2040-psram) : PSRAM PIO Code.
 * [FatFS by Chan](http://elm-chan.org/fsw/ff/00index_e.html) : ExFS Library for microcontrollers.
-* [FatFS by Carl J Kugler III] (https://github.com/carlk3/no-OS-FatFS-SD-SPI-RPi-Pico) : FatFS for SD Access in SPI with a Pi Pico
+* [FatFS by Carl J Kugler III](https://github.com/carlk3/no-OS-FatFS-SD-SPI-RPi-Pico) : FatFS for SD Access in SPI with a Pi Pico
 * DOSBox (www.dosbox.com): DosBOX BIOS Int13h Code, heavily modified for ExFS support and PicoMEM Interface, with bug correction.
