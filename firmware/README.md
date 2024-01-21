@@ -18,6 +18,21 @@ Difference for the PicoMEM 1.1 :
 
 ## Firmwares Revision History : 
 
+### PM_W_Jan21_C8_Test:
+Merge of the latest BIOS and ISA Code.
+This Firmware work only with a Pico W Board, use the PM_Dec28 Otherwise
+
+ne2000 emulation via Wifi presend, but for test only :
+- Create a wifi.txt file with the SSID in the first line and the Password in the 2nd line
+- use ne2000.com 8Bit (command line : ne2000 0x60 0x3 0x300)
+- The PicoMEM can't tell if the connection fail and does not try to re connect.
+- The Wifi Access point need to be relatively close to increase the chance of connection success. 
+The IRQ Can be changed in the BIOS Menu (Default is IRQ 3)
+
+Other changes :
+- Memory read Access speed increased
+- Added Boot HDD Number selection in the BIOS (Not Active)
+
 ### PM_Dec28: 5150 Support is Back
 Corrected the 5150 Support, If someone can test it more to be sure….
 Added BIOS Menu option to select uSD and PSRAM Speed, but not implemented in the Pico
