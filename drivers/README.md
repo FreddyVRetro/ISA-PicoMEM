@@ -15,5 +15,3 @@ The IRQ Can be changed in the BIOS Menu (Default is IRQ 3)
 
 PicoMEM Mouse driver is a modified CTMouse driver.
 It can detect the PicoMEM and does not need any parameter (IRQ is Auto detected)
-
-

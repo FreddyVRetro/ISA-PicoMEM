@@ -3,6 +3,7 @@
 How to read thhe Firmware name 
 
 PM_MonthDay_D0 : PicoMEM Firmware released the Day/Month at Base Address D0
+PM_W_xxx_xxx   : PicoMEM Firmware for the Pico W Only (For ne2000)
 
 ## How to update the Firmware ?
 
@@ -18,11 +19,16 @@ Difference for the PicoMEM 1.1 :
 
 ## Firmwares Revision History : 
 
+### PM_W_Jan21_xx:
+
+- Version only for the Pico W Boards
+- Added support for PM2000 (NE2000 PicoMEM Version detecting I/O and Port
+
 ### PM_W_Jan21_C8_Test:
 Merge of the latest BIOS and ISA Code.
 This Firmware work only with a Pico W Board, use the PM_Dec28 Otherwise
 
-ne2000 emulation via Wifi presend, but for test only :
+ne2000 emulation via Wifi presend, but "for test only" :
 - Create a wifi.txt file with the SSID in the first line and the Password in the 2nd line
 - use ne2000.com 8Bit (command line : ne2000 0x60 0x3 0x300)
 - The PicoMEM can't tell if the connection fail and does not try to re connect.
