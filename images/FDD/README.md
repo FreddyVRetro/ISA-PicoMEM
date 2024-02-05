@@ -10,9 +10,13 @@ Images included in this repository:
 # Operating System Floppy Boot Images on the Internet
 
 Site that has MS-DOS 3 to 6: https://www.allbootdisks.com/download/dos.html (tested ok)
+
 Site that has DOS 1 to 7.1: https://winworldpc.com/product/ms-dos/1x (untested)
-Svarog86 (FreeDOS) : https://svarog86.sourceforge.net/
+
+Svarog86 (FreeDOS) : https://svarog86.sourceforge.net
+
 SvarDOS (New relase of Swarog86): http://svardos.org/
+
 Site that Malwarebytes flags as having riskware: bootdisk.com (BEWARE)
 
 # Software Floppy Images on the Internet
