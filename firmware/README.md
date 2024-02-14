@@ -24,7 +24,13 @@ Difference for the PicoMEM 1.1 :
 - Version only for the Pico W Boards
 - Added support for PM2000 (NE2000 PicoMEM Version detecting I/O and Port
 
-### PM_W_Jan21_C8_Test:
+### PM_W_Feb11_C8_Test (and D0):
+- Added the POST Code function : Port 80h code will be displayed if a 4 Digit Qwiic display is connected :
+ https://www.sparkfun.com/products/16916
+- Some internal optimisation 
+ 
+
+### PM_W_Jan21_C8_Test (and D0): 
 Merge of the latest BIOS and ISA Code.
 This Firmware work only with a Pico W Board, use the PM_Dec28 Otherwise
 
