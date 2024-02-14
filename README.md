@@ -47,6 +47,8 @@ Software :
 - Floppy and Disk emulation from .img files stored in uSD through FasFs and DosBOX int13h emulation code.
 - Emulate 2 Floppy and 4 Disk (80h to 83h), Disk up to 4Gb (More later)
 - USB Mouse support through a USB OTC Adapter. (Micro USB to USB A or USB Hub)
+- New : POST Code on Rev 1.1 and 1.11 (Port 80 Display in Hexa) through this device : https://www.sparkfun.com/products/16916
+- New (Still "Beta") : ne2000 emulation via Wifi is working on boards with a PicoW.
 
 ## Future Functionality
 
@@ -56,6 +58,7 @@ Software :
 - I added a connector on the board, that can open the door for lot of stuff (More or less "Secret" for the moment, I need to keep some surprize for myself)
 - Use the Pi PicoW for ne2000 network card emulation through Wifi : Proof of concept done already.
 - Bluetooth support for device like Gamepad may be added.
+- Use of the Qwiic connector for various information display, maybe RTC and other.
 
 ## Compatibility/Limitations
  
@@ -77,8 +80,8 @@ The PicoMEM is then more suitable to extend a 512Kb PC to 640K, Add some UMB (Fo
 
 ### Memory emulation limitations :
 - Memory emulation with PSRAM is quite slow for the moment, but multiple mecanism like a 32bit cache will improve this. (And Maybe DMA)
-- You can't add Conventionnal Memory from PSRAM Emulated RAM: DOS Boot Will crash
-- The emulated Memory does not support DMA, I did not proof it is not 100% feasible, but it require quite complex coding to be possible (Snif the DMA registers, change code that may add unstability)
+- You can't add Conventionnal Memory from PSRAM Emulated RAM: DOS Boot Will crash. (To be corrected later)
+- The emulated Memory does not support DMA, Add support for it may be done in one or two months (April/May 2024)
   Anyway:  
     - As the PicoMEM emulate the Floppy, we can disable temporarily the RAM emulation if the Disk access are not working.
     - For SoundCard, if the PC has 512Kb of base RAM, it is really unlikely that the DMA Buffer will be placed in emulated RAM, it may work 90% of the time.
@@ -86,6 +89,8 @@ The PicoMEM is then more suitable to extend a 512Kb PC to 640K, Add some UMB (Fo
 ### Disk emulation:
 uSD Disk access are really fast even compared to the XTIDE, but it it currently limitted by the uSD acces time for write.
 You may have compatibility problem with some uSD, even if the compatibility has been greatly improved in the November 2023 firmware.
+Disk Write from a buffer stored in emulated RAM via PSRAM does not work.
+
 
 ### Tested machines:
 - IBM 5150, 5160, 5170 : All Ok, except keyboard not responding on 5170.
