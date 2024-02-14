@@ -67,7 +67,7 @@ The Pi Pico is limmited in its speed, this is excellent and bad at the same time
 - Multiple complex function can't be emulated at the same time, choices need to be done.
 - We can still program the Pico and Feel like doing coding on a "Retro" Machine, so we don't have the effect "Look, it is easy, he put a processor in the PC that can emulate the full PC"
 
-### Memory emulation:
+## Memory emulation
 
 As the PicoMEM is an 8Bit ISA Card, the RAM Emulation may be slower than the PC Own RAM.
 The PicoMEM is then more suitable to extend a 512Kb PC to 640K, Add some UMB (For Driver) than extend an IBM PC With 128Kb of RAM.
@@ -86,19 +86,33 @@ The PicoMEM is then more suitable to extend a 512Kb PC to 640K, Add some UMB (Fo
     - As the PicoMEM emulate the Floppy, we can disable temporarily the RAM emulation if the Disk access are not working.
     - For SoundCard, if the PC has 512Kb of base RAM, it is really unlikely that the DMA Buffer will be placed in emulated RAM, it may work 90% of the time.
 
-### Disk emulation:
+## Disk emulation
 uSD Disk access are really fast even compared to the XTIDE, but it it currently limitted by the uSD acces time for write.
 You may have compatibility problem with some uSD, even if the compatibility has been greatly improved in the November 2023 firmware.
 Disk Write from a buffer stored in emulated RAM via PSRAM does not work.
 
+The PicoMEM can add 4 disks to the BIOS, Disk up to 4Gb.
+It can also mount Floppy image as A: or B:
 
-### Tested machines:
+The data transfer is done via the RAM, then, it offer the maximum possible speed for 8088 CPU without DMA.
+
+## ne2000 emulation via Wifi
+
+I consider this as still Beta, because the I/O Port is not yet configurable and need some experience to have it working.
+
+How to use it :
+- Create a wifi.txt file with the SSID in the first line and the Password in the 2nd line
+- use ne2000.com 8Bit (command line : ne2000 0x60 0x3 0x300) or pm2000 (command line : pm2000 0x60)
+- The PicoMEM can't tell if the connection fail and does not try to re connect.
+- The Wifi Access point need to be relatively close to increase the chance of connection success. The IRQ Can be changed in the BIOS Menu (Default is IRQ 3)
+
+## Tested machines
 - IBM 5150, 5160, 5170 : All Ok, except keyboard not responding on 5170.
 - Compaq Portable 2 (286): Ok
 - Amstrad PC1512, PC1640, PC200: Working, but fail to start all the times on one PC1512 and sometime on PC1640 (Corrected in Rev 1.1).
 - Worked on Various 486, 386 (No confirmation of the ISA Clock speed yet)
 
-### Failing Machines :
+## Failing Machines
 - Failed on a 386 with 12MHz ISA Clock
 - Commodore PC10 / PC20 (Timing issue, fix in progress)
 - Tandy 1000 : Does not work yet due to the specific memory map. (SX, EX, HX, TL ...)
