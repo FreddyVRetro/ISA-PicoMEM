@@ -11,9 +11,10 @@ The PicoMEM Board can be seen as both a working PC extention board as well as a 
 This GitHub Repository does not contains the Firmware for the moment.
 However, PMMOUSE and PMEMM Source are available.
 
-If you are interrested bwy a Board, I created a form:
+If you are interrested by a Board, I created a form:
 https://docs.google.com/forms/d/e/1FAIpQLScwYPvnVoGynLLgP_hiLMH_qn9uBX1sxims7Ah4LabjQ0mSLw/viewform
 
+! Only one Board per person for the moment, as I do Small batch.
 
 ## Board description
 
