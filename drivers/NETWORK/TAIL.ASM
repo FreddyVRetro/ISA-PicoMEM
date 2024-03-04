@@ -95,8 +95,10 @@ db '$'
 
 copyleft_msg	label	byte
  db "Packet driver skeleton copyright 1988-93, Crynwr Software.",CR,LF
+if PicoMEM  eq 0 
  db "This program is freely copyable; source must be available; NO WARRANTY.",CR,LF
  db "See the file COPYING.DOC for details; send FAX to +1-315-268-9201 for a copy.",CR,LF
+endif 
  db CR,LF,'$'
 
 no_resident_msg	label	byte

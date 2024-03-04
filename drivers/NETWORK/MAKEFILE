@@ -400,59 +400,6 @@ ethersl.com: head.obj ethersl.obj tail.obj 8250defs.asm
 	exe2com ethersl
 	del ethersl.exe
 
-plip.com: head.obj plip.obj tail.obj
-	$(LINK) head plip tail,plip/m;
-	exe2com plip
-	del plip.exe
-
-smc_wd.obj: smc_wd.asm 8390.asm
-
-smc_wd.com: head.obj smc_wd.obj tail.obj
-	$(LINK) head smc_wd tail,smc_wd/m;
-	exe2com smc_wd
-	del smc_wd.exe
-
-wd8003e.com: wd8003e.obj
-	$(LINK) wd8003e,wd8003e/m;
-	exe2com wd8003e
-	del wd8003e.exe
-
-pkt8000.obj: pkt8000.asm umac.asm
-	$(ASM) /I$(INC) /Iultra\lminc pkt8000, pkt8000;
-
-pkt8000.com: head.obj pkt8000.obj tail.obj
-	$(LINK) head pkt8000 tail,pkt8000/m;
-	exe2com pkt8000
-	del pkt8000.exe
-
-pkt8232.obj: pkt8232.asm umac.asm
-	$(ASM) /I$(INC) /Ismceisa /Iultra\lminc pkt8232, pkt8232;
-
-pkt8232.com: head.obj pkt8232.obj tail.obj
-	$(LINK) head pkt8232 tail,pkt8232/m;
-	exe2com pkt8232
-	del pkt8232.exe
-
-pkt8016.obj: pkt8016.asm umac.asm
-	$(ASM) /I$(INC) /Ismcpcmcia pkt8016, pkt8016;
-
-pkt8016.com: head.obj pkt8016.obj tail.obj
-	$(LINK) head pkt8016 tail,pkt8016/m;
-	exe2com pkt8016
-	del pkt8016.exe
-
-ibmtoken.com: head.obj ibmtoken.obj tail.obj
-	$(LINK) head ibmtoken tail,ibmtoken/m;
-	exe2com ibmtoken
-	del ibmtoken.exe
-
-ne1000.obj: ne1000.asm 8390.asm
-
-ne1000.com: head.obj ne1000.obj tail.obj
-	$(LINK) head ne1000 tail,ne1000/m;
-	exe2com ne1000
-	del ne1000.exe
-
 ne2000.obj: ne2000.asm 8390.asm
 
 ne2000.com: head.obj ne2000.obj tail.obj
@@ -467,18 +414,12 @@ pm2000.com: head.obj pm2000.obj tail.obj
 	exe2com pm2000
 	del pm2000.exe
 
-
 ne2100.obj: ne2100.asm lance.asm
 
 ne2100.com: head.obj ne2100.obj tail.obj
 	$(LINK) head ne2100 tail,ne2100/m;
 	exe2com ne2100
 	del ne2100.exe
-
-ne2.com: head.obj ne2.obj tail.obj
-	$(LINK) head ne2 tail,ne2/m;
-	exe2com ne2
-	del ne2.exe
 
 ethiie.obj: ethiie.asm 8390.asm
 
