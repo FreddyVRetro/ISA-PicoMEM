@@ -81,10 +81,10 @@ The PicoMEM is then more suitable to extend a 512Kb PC to 640K, Add some UMB (Fo
 - The PicoMEM BIOS auto detect (At Hardwsare level) the 1st Mb of RAM and Display the RAM MAP with a "Checkit" like Display.
 - You can select to add RAM from the Internal SRAM (128Kb with No Wait State)
 - Emulation from the PSRAM (External RAM) can add RAM to any Address Space.
-- Then, EMS Emulation eemulate a LOTECH Board woth Up to 4Mb.
+- Then, EMS Emulation emulate a LOTECH Board with Up to 4Mb.
 
 ### Memory emulation limitations :
-- Memory emulation with PSRAM is quite slow for the moment, but multiple mecanism like a 32bit cache will improve this. (And Maybe DMA)
+- Memory emulation with PSRAM is quite slow for the moment, but multiple mecanism like a 32bit cache will improve this. (And maybe DMA)
 - You can't add Conventionnal Memory from PSRAM Emulated RAM: DOS Boot Will crash. (To be corrected later)
 - The emulated Memory does not support DMA, Add support for it may be done in one or two months (April/May 2024)
   Anyway:  
