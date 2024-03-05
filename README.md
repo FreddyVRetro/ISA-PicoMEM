@@ -44,7 +44,7 @@ Software :
   > We can emulate the whole 1Mb of RAM address space from the PSRAM. (With 6 Wait Stated minimum added)
   > EMS Emulation of Up to 6/7 Mb. (Only 4Mb for the moment as using the LoTech EMS Driver)
   > Memory emulation is used to add 4Kb of "Private" memory for the PicoMEM BIOS Usage.
-  > 16Kb of RAM is also added for disk access (Or other) 512b only is used for the moment.
+  > 8Kb of RAM is also added for disk access (Or other) 512b only is used for the moment.
 
 - ROM Emulation for its internal BIOS and custom ROM loaded from the MicroSD. (Custom ROM not implemented yet)
 - The Board has its own BIOS, used to automatically detect/Extend/Configure the RAM emulation and select Floppy/Disk images.
@@ -62,7 +62,7 @@ Software :
 - I added a connector on the board, that can open the door for lot of stuff (More or less "Secret" for the moment, I need to keep some surprize for myself)
 - Use the Pi PicoW for ne2000 network card emulation through Wifi : Proof of concept done already.
 - Bluetooth support for device like Gamepad may be added.
-- Use of the Qwiic connector for various information display, maybe RTC and other.
+- Use of the Qwiic connector for more information display (OLED), maybe RTC and other.
 
 ## Compatibility/Limitations
  
@@ -73,8 +73,9 @@ The Pi Pico is limmited in its speed, this is excellent and bad at the same time
 
 ## Memory emulation
 
-As the PicoMEM is an 8Bit ISA Card, the RAM Emulation may be slower than the PC Own RAM.
+As the PicoMEM is an 8Bit ISA Card, the RAM Emulation may be slower than the PC own RAM.
 The PicoMEM is then more suitable to extend a 512Kb PC to 640K, Add some UMB (For Driver) than extend an IBM PC With 128Kb of RAM.
+(RAM Card for 5150/5160 is still recommended)
 
 ### Memory emulation capabilities :
 - The PicoMEM BIOS auto detect (At Hardwsare level) the 1st Mb of RAM and Display the RAM MAP with a "Checkit" like Display.
@@ -112,6 +113,7 @@ How to use it :
 
 ## Tested machines
 - IBM 5150, 5160, 5170 : All Ok, except keyboard not responding on 5170.
+- IBM PS/2 30 286 (Warning : As its HDD use DMA, does not boot if emulated RAM is added)
 - Compaq Portable 2 (286): Ok
 - Amstrad PC1512, PC1640, PC200: Working, but fail to start all the times on one PC1512 and sometime on PC1640 (Corrected in Rev 1.1).
 - Worked on Various 486, 386 (No confirmation of the ISA Clock speed yet)
@@ -119,6 +121,7 @@ How to use it :
 ## Failing Machines
 - Failed on a 386 with 12MHz ISA Clock
 - Commodore PC10 / PC20 (Timing issue, fix in progress)
+- Schneider Euro PC2 : RAM Emulation does not work (Probably due to the special Euro PC2 Memory features)
 - Tandy 1000 : Does not work yet due to the specific memory map. (SX, EX, HX, TL ...)
 
 
