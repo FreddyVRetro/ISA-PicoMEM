@@ -84,7 +84,7 @@ The PicoMEM is then more suitable to extend a 512Kb PC to 640K, Add some UMB (Fo
 
 ### Memory emulation limitations :
 - Memory emulation with PSRAM is quite slow for the moment, but multiple mecanism like a 32bit cache will improve this. (And Maybe DMA)
-- You can't add Conventionnal Memory from PSRAM Emulated RAM: DOS Boot Will crash. (To be corrected later)
+- You can't add Conventionnal Memory from PSRAM Emulated RAM: DOS Boot Will crash. ((Corrected in March 10 Rev)
 - The emulated Memory does not support DMA, Add support for it may be done in one or two months (April/May 2024)
   Anyway:  
     - As the PicoMEM emulate the Floppy, we can disable temporarily the RAM emulation if the Disk access are not working.
@@ -93,7 +93,7 @@ The PicoMEM is then more suitable to extend a 512Kb PC to 640K, Add some UMB (Fo
 ## Disk emulation
 uSD Disk access are really fast even compared to the XTIDE, but it it currently limitted by the uSD acces time for write.
 You may have compatibility problem with some uSD, even if the compatibility has been greatly improved in the November 2023 firmware.
-Disk Write from a buffer stored in emulated RAM via PSRAM does not work.
+Disk Write from a buffer stored in emulated RAM via PSRAM does not work. (Corrected in March 10 Rev)
 
 The PicoMEM can add 4 disks to the BIOS, Disk up to 4Gb.
 It can also mount Floppy image as A: or B:
