@@ -19,6 +19,9 @@ Difference for the PicoMEM 1.1 :
 
 ## Firmwares Revision History : 
 
+### PM_W_Mar11_xx:
+- ! The Floppy disk bug was still present : Corrected and tested.
+
 ### PM_W_Mar10_xx:
 - + The ne2000 IO Port can be changed and ne2000 can be disabled.
 - ! It is now possible to BOOT DOS With RAM emulated with PSRAM.
