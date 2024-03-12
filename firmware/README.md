@@ -10,10 +10,10 @@ PM_W_xxx_xxx   : PicoMEM Firmware for the Pico W Only (For ne2000)
 The firmware update is done like for any Pi Pico : 
 
 Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button on the Pico at the same time:
-- A Folder is the automùatically opened on the PC, you need to copy the file to this “Virtual Disk”, 
+- A Folder is the automatically opened on the PC, you need to copy the file to this “Virtual Disk”, 
   wait until the folder automatically closes and it is finished.
 
-Difference for the PicoMEM 1.1 : 
+Warning, For the PicoMEM 1.1 ONLY (Corrected on the 1.11): 
 - The PicoMEM must be plugged into a PC so that the programming work. 
   Power on the PC (The Retro one) and press the button at the same time.
 
