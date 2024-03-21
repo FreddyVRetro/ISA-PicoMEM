@@ -1,7 +1,7 @@
 # ISA PicoMEM Extension board (For 8086/8088 PC)
 
 ## Introduction
-This folder contaons the drivers needed for the PicoMEM
+This folder contains the drivers needed for the PicoMEM
 
 ## NE2000.COM
 
@@ -22,3 +22,8 @@ Does not start if the PicoMEM is not detected
 
 PicoMEM Mouse driver is a modified CTMouse driver.
 It can detect the PicoMEM and does not need any parameter (IRQ is Auto detected)
+
+## PMEMM
+
+Driver code in progress for 4Mb EMS and auto detection.
+You can use the Lotech LTEMM Driver for the moment
