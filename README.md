@@ -118,19 +118,22 @@ How to use it :
 - IBM PS/2 30 286 (Warning : As its HDD use DMA, does not boot if emulated RAM is added)
 - Compaq Portable 2 (286): Ok
 - Amstrad PC1512, PC1640, PC200: Working, but fail to start all the times on one PC1512 and sometime on PC1640 (Corrected in Rev 1.1).
+- Schneider Euro PC2 : Working, but may have some Glitch with PSRAM Emulated RAM.
 - Worked on Various 486, 386 (No confirmation of the ISA Clock speed yet)
+- Tested with some Pentium, Pentium MMX, Pentium 2.
 
 ## Failing Machines
 - Failed on a 386 with 12MHz ISA Clock
 - Commodore PC10 / PC20 (Timing issue, fix in progress)
-- Schneider Euro PC2 : RAM Emulation does not work (Probably due to the special Euro PC2 Memory features)
+- Schneider Euro PC 1 : PicoMEM BIOS Does not start even if visible.
+
 - Tandy 1000 : Does not work yet due to the specific memory map. (SX, EX, HX, TL ...)
 
 
 ## License
 
-GNU v2
-For Commercial use, you must contact me before.
+Firmware : GNU v2 For Commercial use, you must contact me before.
+Source is not published Yet, I am not sure about how to manage a published code and it may not be usefull to publish for the moment.
 
 ## Contributors / External Libraries
 
@@ -139,3 +142,4 @@ For Commercial use, you must contact me before.
 * [FatFS by Chan](http://elm-chan.org/fsw/ff/00index_e.html) : ExFS Library for microcontrollers.
 * [FatFS by Carl J Kugler III](https://github.com/carlk3/no-OS-FatFS-SD-SPI-RPi-Pico) : FatFS for SD Access in SPI with a Pi Pico
 * DOSBox (www.dosbox.com): DosBOX BIOS Int13h Code, heavily modified for ExFS support and PicoMEM Interface, with bug correction.
+* ne2000 Emulation code, adapted by yyzkevin.
