@@ -5,6 +5,8 @@ How to read thhe Firmware name
 PM_MonthDay_D0 : PicoMEM Firmware released the Day/Month at Base Address D0
 PM_W_xxx_xxx   : PicoMEM Firmware for the Pico W Only (For ne2000)
 
+New : In the debug sub directory, you can find "Debug" versions firmwares.
+
 ## How to update the Firmware ?
 
 The firmware update is done like for any Pi Pico : 
@@ -18,6 +20,17 @@ Warning, For the PicoMEM 1.1 ONLY (Corrected on the 1.11):
   Power on the PC (The Retro one) and press the button at the same time.
 
 ## Firmwares Revision History : 
+
+### PM_W_Apr2_xx:
+- + Added support of multi page Images selection : Up to 32 Images, 2 pages.
+- + Added the Floppy image SWAP under DOS : Press Left Ctrl+Shift+F1 to select another A: Floppy image.
+-   This is working only in text mode.
+- + Post Code values added in the BIOS Initialisation phase. (Visible only with the QwiiC external screen)
+- + Changed the "PicoMEM Init" text : Display a . for every Init phase.
+- ! Corrected a display bug : the image selection windows did not clear completely.
+
+### PM_Apr2_D0:
+- Not Wifi Version of the above firmware.
 
 ### PM_W_Mar11_xx:
 - ! The Floppy disk bug was still present : Corrected and tested.
