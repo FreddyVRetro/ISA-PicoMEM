@@ -435,10 +435,13 @@ if PicoMEM  eq 1
 		mov dx,1234h	; To be added to be sure
 		int 13h
 
+	    cmp bx,0
+		je @@NoPicomem
+
 		mov	int_no,ah
 		mov	io_addr,bx
 
-		call print_parameters
+;		call print_parameters
 
 		jmp @@PMDetectEnd
 @@NoPicomem:

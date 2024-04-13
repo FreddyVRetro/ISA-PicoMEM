@@ -11,7 +11,7 @@ The Pi Pico also has a 8Mbyte PSRAM connected in SPI and a MicroSD Slot.
 The PicoMEM Board can be seen as both a working PC extention board as well as a Development platform.
 
 This GitHub Repository does not contains the Firmware for the moment.
-However, PMMOUSE and PMEMM Source are available.
+However, PMMOUSE, PMEMM and PM2000 Source are available.
 
 If you are interrested by a Board, I created a form:
 https://docs.google.com/forms/d/e/1FAIpQLScwYPvnVoGynLLgP_hiLMH_qn9uBX1sxims7Ah4LabjQ0mSLw/viewform
@@ -117,7 +117,7 @@ How to use it :
 - IBM 5150, 5160, 5170 : All Ok, except keyboard not responding on 5170.
 - IBM PS/2 30 286 (Warning : As its HDD use DMA, does not boot if emulated RAM is added)
 - Compaq Portable 2 (286): Ok
-- Amstrad PC1512, PC1640, PC200: Working, but fail to start all the times on one PC1512 and sometime on PC1640 (Corrected in Rev 1.1).
+- Amstrad PC1512, PC1640, PPC1640 (Address D000), PC200: Working, but does not initialize all the time on Rev <1.11
 - Schneider Euro PC2 : Working, but may have some Glitch with PSRAM Emulated RAM.
 - Worked on Various 486, 386 (No confirmation of the ISA Clock speed yet)
 - Tested with some Pentium, Pentium MMX, Pentium 2.
@@ -126,6 +126,7 @@ How to use it :
 - Failed on a 386 with 12MHz ISA Clock
 - Commodore PC10 / PC20 (Timing issue, fix in progress)
 - Schneider Euro PC 1 : PicoMEM BIOS Does not start even if visible.
+- Failed on an Amstrad PPC640 on Latest firmware (Retro Erik) to be confirmed.
 
 - Tandy 1000 : Does not work yet due to the specific memory map. (SX, EX, HX, TL ...)
 

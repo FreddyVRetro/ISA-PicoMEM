@@ -237,7 +237,7 @@ endif
 
 	public	copyright_msg
 if PicoMEM  eq 1
-copyright_msg	db	"PicoMEM (NE2000) Packet Driver, version "
+copyright_msg	db	"PicoMEM (NE2000) Packet Driver 0.2, version "
 else
 copyright_msg	db	"Packet driver for NE2000, version "
 endif
