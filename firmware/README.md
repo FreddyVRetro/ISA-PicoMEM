@@ -21,6 +21,12 @@ Warning, For the PicoMEM 1.1 ONLY (Corrected on the 1.11):
 
 ## Firmwares Revision History : 
 
+### PM_W_Apr14_xx:
+- + Added USB Joystick suport (XBOX and PS4 Compatibles) Only one joystick for the moment, no driver needed. Need to be enabled in the BIOS
+- + PMEMM EMS Driver is now available for 4Mb of EMS.
+- ! Fixed the Boot on Sega Teradrive
+- ! Small fix on the POST Code (Don't miss Code anymore)
+
 ### PM_W_Apr2_xx:
 - + Added support of multi page Images selection : Up to 32 Images, 2 pages.
 - + Added the Floppy image SWAP under DOS : Press Left Ctrl+Shift+F1 to select another A: Floppy image.
