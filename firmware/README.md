@@ -5,6 +5,8 @@ How to read thhe Firmware name
 PM_MonthDay_D0 : PicoMEM Firmware released the Day/Month at Base Address D0
 PM_W_xxx_xxx   : PicoMEM Firmware for the Pico W Only (For ne2000)
 
+If you use an XTIDE or a Disk BIOS, Use the DO (D000) Picomem Firmware and place the XTIDE in C800.
+
 New : In the debug sub directory, you can find "Debug" versions firmwares.
 
 ## How to update the Firmware ?
@@ -21,6 +23,12 @@ Warning, For the PicoMEM 1.1 ONLY (Corrected on the 1.11):
 
 ## Firmwares Revision History : 
 
+### PM_W_Apr21_xx:
+- Warning : As Timing changes has been done, I would like as many feedback as possible, Go to the previous firmware in case of problem.
+- + RAM/ROM Emulation is faster : Now Work on the Commodore PC10 and maybe more
+- + Added the Number of Floppy drive and Disk Drive display in the BIOS
+- ! Changed the POST Code : PicoMEM BIOS Port is 81h, PC BIOS Still 80h
+
 ### PM_W_Apr14_xx:
 - + Added USB Joystick suport (XBOX and PS4 Compatibles) Only one joystick for the moment, no driver needed. Need to be enabled in the BIOS
 - + PMEMM EMS Driver is now available for 4Mb of EMS.
@@ -29,7 +37,7 @@ Warning, For the PicoMEM 1.1 ONLY (Corrected on the 1.11):
 
 ### PM_W_Apr2_xx:
 - + Added support of multi page Images selection : Up to 32 Images, 2 pages.
-- + Added the Floppy image SWAP under DOS : Press Left Ctrl+Shift+F1 to select another A: Floppy image.
+- + Added the Floppy image SWAP under DOS : Press Left Ctrl+Shift+F2 to select another A: Floppy image.
 -   This is working only in text mode.
 - + Post Code values added in the BIOS Initialisation phase. (Visible only with the QwiiC external screen)
 - + Changed the "PicoMEM Init" text : Display a . for every Init phase.
