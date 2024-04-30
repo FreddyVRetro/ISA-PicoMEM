@@ -1,13 +1,15 @@
 # ISA PicoMEM Firmware Repository
 
-How to read thhe Firmware name 
+**How to read the Firmware name:**<br /> 
 
-PM_MonthDay_D0 : PicoMEM Firmware released the Day/Month at Base Address D0
-PM_W_xxx_xxx   : PicoMEM Firmware for the Pico W Only (For ne2000)
+**PM_MonthDay_D0** : Firmware released the Day/Month at Base Address D0 (*)<br />
+**PM_W_xxx_xxx**   : Firmware for the Pico W Only (For ne2000)
 
-If you use an XTIDE or a Disk BIOS, Use the DO (D000) Picomem Firmware and place the XTIDE in C800.
+If you use an XTIDE or a Disk BIOS, Use the DO (D000) Picomem Firmware and place the XTIDE in C800.<br />
+**New:** In the debug sub directory, you can find "Debug" versions firmwares.<br />
 
-New : In the debug sub directory, you can find "Debug" versions firmwares.
+**WARNING:** One new firmware may add incompatibility, pease try the previous versions of the firmware.<br />
+(*) The Base Addres is the BIOS ROM location in memory, it can be C80000h or D0000h.<br />
 
 ## How to update the Firmware ?
 
@@ -15,17 +17,17 @@ The firmware update is done like for any Pi Pico :
 
 Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button on the Pico at the same time:
 - A Folder is the automatically opened on the PC, you need to copy the file to this “Virtual Disk”, 
-  wait until the folder automatically closes and it is finished.
-
-Warning, For the PicoMEM 1.1 ONLY (Corrected on the 1.11): 
+  wait until the folder automatically closes and it is finished.<br />
+**WARNING:** For the PicoMEM 1.1 ONLY (Corrected on the 1.11): 
 - The PicoMEM must be plugged into a PC so that the programming work. 
   Power on the PC (The Retro one) and press the button at the same time.
 
 ## Firmwares Revision History : 
 
 ### PM_W_Apr21_xx:
-- Warning : As Timing changes has been done, I would like as many feedback as possible, Go to the previous firmware in case of problem.
-- + RAM/ROM Emulation is faster : Now Work on the Commodore PC10 and maybe more
+- **WARNING:** As Timing changes has been done, I would like as many feedback as possible, **Go to the previous firmware in case of problem.**
+- + RAM/ROM Emulation is faster : Now Work on the Commodore PC10 and maybe more.<br />
+    On one PC10, it needed to be put in 8 or 10MHz mode to work.
 - + Added the Number of Floppy drive and Disk Drive display in the BIOS
 - ! Changed the POST Code : PicoMEM BIOS Port is 81h, PC BIOS Still 80h
 
@@ -37,8 +39,8 @@ Warning, For the PicoMEM 1.1 ONLY (Corrected on the 1.11):
 
 ### PM_W_Apr2_xx:
 - + Added support of multi page Images selection : Up to 32 Images, 2 pages.
-- + Added the Floppy image SWAP under DOS : Press Left Ctrl+Shift+F2 to select another A: Floppy image.
--   This is working only in text mode.
+- + Added the Floppy image SWAP under DOS : **Press Left Ctrl+Shift+F2** to select another A: Floppy image.<br />
+    This is working only in text mode.
 - + Post Code values added in the BIOS Initialisation phase. (Visible only with the QwiiC external screen)
 - + Changed the "PicoMEM Init" text : Display a . for every Init phase.
 - ! Corrected a display bug : the image selection windows did not clear completely.
@@ -55,19 +57,19 @@ Warning, For the PicoMEM 1.1 ONLY (Corrected on the 1.11):
 - ! Disk Write supported with RAM Emulated from PSRAM.
 - + Function to create new HDD Images added in the Disk BIOS Menu.
 - ! Corrected a bug that made the Computer Floppy drive not usable.
--   The Computer configuration detection is now moved to the BootStrap Code :
+- + The Computer configuration detection is now moved to the BootStrap Code :
 -   > Should increase the compatibility with Memory and Disk Boards using ROM.
 - These changes should allow the usager of DOS in High RAM (Emulated); Boot to DOS 6.22 With 736Kb of RAM ...
 
 ### PM_W_Feb11_C8_Test (and D0):
 - Added the POST Code function : Port 80h code will be displayed if a 4 Digit Qwiic display is connected :
- https://www.sparkfun.com/products/16916
-- Some internal optimisation 
+<br /> https://www.sparkfun.com/products/16916
+- Some internal optimisation  
 
 ### PM_W_Jan21_xx:
 
 - Version only for the Pico W Boards
-- + Added support for PM2000 (NE2000 PicoMEM Version detecting I/O and Port 
+- + Added support for PM2000 (NE2000 PicoMEM Version detecting I/O and Port  
 
 ### PM_W_Jan21_C8_Test (and D0): 
 Merge of the latest BIOS and ISA Code.
