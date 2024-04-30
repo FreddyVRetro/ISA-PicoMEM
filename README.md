@@ -4,23 +4,23 @@
 
 ## Introduction
 
-The PicoMEM is designed as a way to run Emulated ISA boards on a real PC.
-The PicoMEM Board currently connect the full 8Bit Memory and I/O Bus plus an IRQ to a Raspberry Pi Pico, through some multiplexor/Level shifter chip.
-The Pi Pico also has a 8Mbyte PSRAM connected in SPI and a MicroSD Slot.
+The PicoMEM is designed as a way to run Emulated ISA boards on a real PC.<br />
+The PicoMEM Board currently connect the full 8Bit Memory and I/O Bus plus an IRQ to a Raspberry Pi Pico, through some multiplexor/Level shifter chip.<br />
+The Pi Pico also has a 8Mbyte PSRAM connected in SPI and a MicroSD Slot.<br />
 
 The PicoMEM Board can be seen as both a working PC extention board as well as a Development platform.
 
-This GitHub Repository does not contains the Firmware for the moment.
+This GitHub Repository does not contains the Firmware for the moment.<br />
 However, PMMOUSE, PMEMM and PM2000 Source are available.
 
-If you are interrested by a Board, I created a form:
+If you are interrested by a Board, I created a form:<br />
 https://docs.google.com/forms/d/e/1FAIpQLScwYPvnVoGynLLgP_hiLMH_qn9uBX1sxims7Ah4LabjQ0mSLw/viewform
 
 ! Only one Board per person for the moment, as I do Small batch.
 
 ## Board description
 
-The PicoMEM exist in 3 Releases : 1.0, 1.1 and 1.11
+The PicoMEM exist in 3 Releases : 1.0, 1.1 and 1.11<br />
 
 Hardware : 
   - 2 Layers ISA Board connecting a Raspberry Pi Pico through some buffers/Multiplexor and inverter.
@@ -48,13 +48,14 @@ Software :
   > Memory emulation is used to add 4Kb of "Private" memory for the PicoMEM BIOS Usage.
   > 8Kb of RAM is also added for disk access (Or other) 512b only is used for the moment.
 
-- ROM Emulation for its internal BIOS and custom ROM loaded from the MicroSD. (Custom ROM not implemented yet)
-- The Board has its own BIOS, used to automatically detect/Extend/Configure the RAM emulation and select Floppy/Disk images.
-- Floppy and Disk emulation from .img files stored in uSD through FasFs and DosBOX int13h emulation code.
-- Emulate 2 Floppy and 4 Disk (80h to 83h), Disk up to 4Gb (More later)
-- USB Mouse support through a USB OTC Adapter. (Micro USB to USB A or USB Hub)
-- New : POST Code on Rev 1.1 and 1.11 (Port 80 Display in Hexa) through this device : https://www.sparkfun.com/products/16916
-- New (Still "Beta") : ne2000 emulation via Wifi is working on boards with a PicoW.
+- **ROM Emulation** for its internal BIOS and custom ROM loaded from the MicroSD. (Custom ROM not implemented yet)<br />
+  The Board has its own BIOS, used to automatically detect/Extend/Configure the RAM emulation and select Floppy/Disk images.
+- **Floppy and Disk** emulation from .img files stored in uSD through FasFs and DosBOX int13h emulation code.<br />
+  Emulate 2 Floppy and 4 Disk (80h to 83h), Disk up to 4Gb (More later)
+- **USB Mouse** support through a USB OTC Adapter. (Micro USB to USB A or USB Hub)
+- NEW: **POST Code** on Rev 1.1 and 1.11 (Port 80 Display in Hexa) through this device : https://www.sparkfun.com/products/16916
+- NEW: (Still "Beta") **ne2000 network card** emulation via Wifi is working on boards with a PicoW.
+- NEW: **USB Joystick** for PS4 and Xinput controllers.
 
 ## Future Functionality
 
@@ -87,18 +88,16 @@ The PicoMEM is then more suitable to extend a 512Kb PC to 640K, Add some UMB (Fo
 
 ### Memory emulation limitations :
 - Memory emulation with PSRAM is quite slow for the moment, but multiple mecanism like a 32bit cache will improve this. (And Maybe DMA)
-- You can't add Conventionnal Memory from PSRAM Emulated RAM: DOS Boot Will crash. (Corrected in March 10 Rev)
-- The emulated Memory does not support DMA, Add support for it may be done in one or two months (April/May 2024)
+- **The emulated Memory does not support DMA**, Add support for it may be done in one or two months (May/June 2024)
   Anyway:  
     - As the PicoMEM emulate the Floppy, we can disable temporarily the RAM emulation if the Disk access are not working.
     - For SoundCard, if the PC has 512Kb of base RAM, it is really unlikely that the DMA Buffer will be placed in emulated RAM, it may work 90% of the time.
 
 ## Disk emulation
-uSD Disk access are really fast even compared to the XTIDE, but it it currently limitted by the uSD acces time for write.
-You may have compatibility problem with some uSD, even if the compatibility has been greatly improved in the November 2023 firmware.
-Disk Write from a buffer stored in emulated RAM via PSRAM does not work. (Corrected in March 10 Rev)
+uSD Disk access are really fast even compared to the XTIDE, but it it currently limitted by the uSD acces time for write.<br />
+You may have compatibility problem with some uSD, even if the compatibility has been greatly improved in the November 2023 firmware.<br />
 
-The PicoMEM can add 4 disks to the BIOS, Disk up to 4Gb.
+The PicoMEM can add 4 disks to the BIOS, Disk up to 4Gb.<br />
 It can also mount Floppy image as A: or B:
 
 The data transfer is done via the RAM, then, it offer the maximum possible speed for 8088 CPU without DMA.
@@ -107,11 +106,11 @@ The data transfer is done via the RAM, then, it offer the maximum possible speed
 
 I consider this as still Beta, because the I/O Port is not yet configurable and need some experience to have it working.
 
-How to use it :
+**How to use it :**
 - Create a wifi.txt file with the SSID in the first line and the Password in the 2nd line
 - use ne2000.com 8Bit (command line : ne2000 0x60 0x3 0x300) or pm2000 (command line : pm2000 0x60)
 - The PicoMEM can't tell if the connection fail and does not try to re connect.
-- The Wifi Access point need to be relatively close to increase the chance of connection success. The IRQ Can be changed in the BIOS Menu (Default is IRQ 3)
+- The Wifi Access point need to be relatively close to increase the chance of connection success. The IRQ Can be changed in the BIOS Menu (Default is IRQ 3)<br />
 
 ## Tested machines
 - IBM 5150, 5160, 5170 : All Ok, except keyboard not responding on 5170.
@@ -120,16 +119,14 @@ How to use it :
 - Amstrad PC1512, PC1640, PPC1640 (Address D000), PC200: Working, but does not initialize all the time on Rev <1.11
 - Schneider Euro PC2 : Working, but may have some Glitch with PSRAM Emulated RAM.
 - Worked on Various 486, 386 (No confirmation of the ISA Clock speed yet)
-- Tested with some Pentium, Pentium MMX, Pentium 2.
+- Tested with some Pentium, Pentium MMX, Pentium 2.<br />
 
 ## Failing Machines
 - Failed on a 386 with 12MHz ISA Clock
 - Commodore PC10 / PC20 (Timing issue, fix in progress)
 - Schneider Euro PC 1 : PicoMEM BIOS Does not start even if visible.
 - Failed on an Amstrad PPC640 on Latest firmware (Retro Erik) to be confirmed.
-
-- Tandy 1000 : Does not work yet due to the specific memory map. (SX, EX, HX, TL ...)
-
+- Tandy 1000 : Does not work yet due to the specific memory map. (SX, EX, HX, TL ...)<br />
 
 ## License
 
