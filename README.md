@@ -90,10 +90,10 @@ The PicoMEM is then more suitable to extend a 512Kb PC to 640K, Add some UMB (Fo
 - Memory emulation with PSRAM is quite slow for the moment, but multiple mecanism like a 32bit cache will improve this. (And Maybe DMA)
 - **The emulated Memory does not support DMA**, Add support for it may be done in one or two months (May/June 2024)
   Anyway:  
-    - As the PicoMEM emulate the Floppy, we can disable temporarily the RAM emulation if the Disk access are not working.
+    - As the real floppy use DMA, you should disable temporarily the RAM emulation if the real Disk access are not working.
     - For SoundCard, if the PC has 512Kb of base RAM, it is really unlikely that the DMA Buffer will be placed in emulated RAM, it may work 90% of the time.
 
-## Disk emulation
+## Disk "emulation"
 uSD Disk access are really fast even compared to the XTIDE, but it it currently limitted by the uSD acces time for write.<br />
 You may have compatibility problem with some uSD, even if the compatibility has been greatly improved in the November 2023 firmware.<br />
 
@@ -101,6 +101,9 @@ The PicoMEM can add 4 disks to the BIOS, Disk up to 4Gb.<br />
 It can also mount Floppy image as A: or B:
 
 The data transfer is done via the RAM, then, it offer the maximum possible speed for 8088 CPU without DMA.
+
+Warning : The PicoMEM Does not emulate a "Real" Hard disk or a Floppy controller, it is done via the BIOS interruption redirection.<br /> 
+Then, the real Floppy is still fully operationnal.
 
 ## ne2000 emulation via Wifi
 
