@@ -94,20 +94,27 @@ The PicoMEM is then more suitable to extend a 512Kb PC to 640K, Add some UMB (Fo
     - For SoundCard, if the PC has 512Kb of base RAM, it is really unlikely that the DMA Buffer will be placed in emulated RAM, it may work 90% of the time.
 
 ## Disk "emulation"
-uSD Disk access are really fast even compared to the XTIDE, but it it currently limitted by the uSD acces time for write.<br />
-You may have compatibility problem with some uSD, even if the compatibility has been greatly improved in the November 2023 firmware.<br />
 
 The PicoMEM can add 4 disks to the BIOS, Disk up to 4Gb.<br />
 It can also mount Floppy image as A: or B:
 
-The data transfer is done via the RAM, then, it offer the maximum possible speed for 8088 CPU without DMA.
+The PicoMEM does not emulate disk, it send the BIOS Disk access commands to the Pi Pico. <br />
+Then, it is more a "Disk BIOS" emulator than a Disk emulator. <br />
 
-Warning : The PicoMEM Does not emulate a "Real" Hard disk or a Floppy controller, it is done via the BIOS interruption redirection.<br /> 
-Then, the real Floppy is still fully operationnal.
+Another particularity is that it use Memory to perform the Data transfer, this allow for the maximum possible transfer speed, even on 8088 CPU. <br />
+Anyway, single sector read is slower than multiple sector reas as the PicoMEM need to read the sector from the SD, then send the data to the PC Memory. <br />
+With multiple sector Read, the Pico read the next sector while the data is copied to the PC Memory.
+
+It is highly recommended to use reasonable disk size, below 500Mb. <br /> 
+100 or 200Mb are ideal size, as it will be recognized and usable by DOS 6 and DOS 3.31 <br />
+As you can add 4 Disk with 4 partitions, you can create diferent disk images for different usage, like a partition with games, another with music ...
+
+**Warning :** You may have compatibility problem with some uSD, even if the compatibility has been greatly improved in the November 2023 firmware.<br />
 
 ## ne2000 emulation via Wifi
 
-I consider this as still Beta, because the I/O Port is not yet configurable and need some experience to have it working.
+The PicoMEM can emulate a ne2000 network card via Wifi.<br />
+The wifi code is preliminary, the PicoMEM can't see if the access point is connected or not, code improvement in progress.
 
 **How to use it :**
 - Create a wifi.txt file with the SSID in the first line and the Password in the 2nd line
