@@ -16,22 +16,24 @@ However, PMMOUSE, PMEMM and PM2000 Source are available.
 To follow the PicoMEM news, see it in action on multiple machines you can follow me on X:
 [FreddyV on X](https://x.com/FreddyVETELE)
 
-To see my other projects, here is my Youtube Channel :
+To see my other projects, here is my Youtube Channel:
 [FreddyV Retro Zone](https://www.youtube.com/@freddyvretrozone2849)
 
-If you are interrested by a Board (Mainly for Europe), I created a form:<br />
-[FreddyV PicoMEM Form](https://docs.google.com/forms/d/e/1FAIpQLScwYPvnVoGynLLgP_hiLMH_qn9uBX1sxims7Ah4LabjQ0mSLw/viewform)
+### How to get a PicoMEM ?
 
-**The PicoMEM is also available at Texelec !**
+**The PicoMEM is available at Texelec !**
 [Texelec PicoMEM link](https://texelec.com/product/picomem/?highlight=picomem)
 
-! Only one Board per person for the moment, as I do Small batch.
+You can have one from me (Mainly for Europe, with wait time), on my form:
+[FreddyV PicoMEM Form](https://docs.google.com/forms/d/e/1FAIpQLScwYPvnVoGynLLgP_hiLMH_qn9uBX1sxims7Ah4LabjQ0mSLw/viewform)
+
+Gerber and full sources are not available for the moment, It is planned to have them open source (no date for the moment)
 
 ## Board description
 
 The PicoMEM exist in 3 Releases : 1.0, 1.1 and 1.11<br />
 
-Hardware : 
+**Hardware :**
   - 2 Layers ISA Board connecting a Raspberry Pi Pico through some buffers/Multiplexor and inverter.
   - The Pi Pico is connected to the full Memory and I/O Address space, and one IRQ. (No DMA)
   - The Pi Pico is connected to a PSRAM (8Mb, 100/130MHz, PIO) and a MicroSD (12/24MHz, SPI) slot in SPI.
@@ -41,38 +43,39 @@ Hardware :
   - QwiiC Connector (SPI) (Added to V1.1)
   - Rev 1.11 Changes : Allow for programming with the Board disconnected and USB Powser Jumper can be always On.
 
-Software :
+**Software :**
   - a Full BIOS with a "Phoenix BIOS Like" text interface in assembly.
-  - C/C++ Code in the Pi Pico.
+  - C/C++ Code, PIO and ARM assembly on the Pi Pico.
   - Multiple other projects library used. (List below)
   - The PC can send multiple command to ask the Pico to perform tasks.
   - In the reverse, the Pico can also send commands to the Pico.
 
 ## Current Functionality
 
-- Memory emulation with 16Kb Address granularity:
+**- Memory emulation with 16Kb Address granularity:**
   > 128Kb of RAM can be emulated from the Pi Pico internal RAM with No Wait State.
   > We can emulate the whole 1Mb of RAM address space from the PSRAM. (With 6 Wait Stated minimum added)
   > EMS Emulation of Up to 6/7 Mb. (Only 4Mb for the moment as using the LoTech EMS Driver)
   > Memory emulation is used to add 4Kb of "Private" memory for the PicoMEM BIOS Usage.
-  > 8Kb of RAM is also added for disk access (Or other) 512b only is used for the moment.
+  > 4Kb of RAM is also added for disk access (Or other) 512b only is used for the moment.
 
 - **ROM Emulation** for its internal BIOS and custom ROM loaded from the MicroSD. (Custom ROM not implemented yet)<br />
   The Board has its own BIOS, used to automatically detect/Extend/Configure the RAM emulation and select Floppy/Disk images.
-- **Floppy and Disk** emulation from .img files stored in uSD through FasFs and DosBOX int13h emulation code.<br />
+- **Floppy and Disk** "emulation" from .img files stored in uSD through FasFs and DosBOX int13h emulation code.<br />
   Emulate 2 Floppy and 4 Disk (80h to 83h), Disk up to 4Gb (More later)
 - **USB Mouse** support through a USB OTC Adapter. (Micro USB to USB A or USB Hub)
-- NEW: **POST Code** on Rev 1.1 and 1.11 (Port 80 Display in Hexa) through this device : https://www.sparkfun.com/products/16916
+- **POST Code** on Rev 1.1 and 1.11 (Port 80 Display in Hexa) through this device : https://www.sparkfun.com/products/16916
 - NEW: (Still "Beta") **ne2000 network card** emulation via Wifi is working on boards with a PicoW.
 - NEW: **USB Joystick** for PS4 and Xinput controllers.
 
 ## Future Functionality
 
-- There is already a mecanism implemented so that the Pi Pico can send command to the PC, ve can have the Pi Pico taking "Virtually" the control of the PC.
+- There is already a mecanism implemented so that the Pi Pico can send command to the PC, we can have the Pi Pico taking "Virtually" the control of the PC.
   > This can be used to perform ROM/RAM dump, Disk/Floppy DUMP/Write, display/kb redirection....
-- More USB Host to be added  (Keyboard, Joystick...)
-- I added a connector on the board, that can open the door for lot of stuff (More or less "Secret" for the moment, I need to keep some surprize for myself)
-- Use the Pi PicoW for ne2000 network card emulation through Wifi : Proof of concept done already.
+- More USB Host to be added  (Keyboard, MIDI...)
+- I added a connector on the board, that can open the door for lot of stuff. <br />
+(More or less "Secret" for the moment, I need to keep some surprize for myself)
+- Use the Pi Pico W for ne2000 network card emulation through Wifi : Proof of concept done already.
 - Bluetooth support for device like Gamepad may be added.
 - Use of the Qwiic connector for more information display (OLED), maybe RTC and other.
 
@@ -86,20 +89,23 @@ The Pi Pico is limmited in its speed, this is excellent and bad at the same time
 ## Memory emulation
 
 As the PicoMEM is an 8Bit ISA Card, the RAM Emulation may be slower than the PC own RAM.
-The PicoMEM is then more suitable to extend a 512Kb PC to 640K, Add some UMB (For Driver) than extend an IBM PC With 128Kb of RAM.
+The PicoMEM is then **more suitable to extend a 512Kb PC to 640K**, Add some UMB (For Driver) **than extend an IBM PC With 128Kb of RAM**.
 (RAM Card for 5150/5160 is still recommended)
 
 ### Memory emulation capabilities :
+
 - The PicoMEM BIOS auto detect (At Hardwsare level) the 1st Mb of RAM and Display the RAM MAP with a "Checkit" like Display.
 - You can select to add RAM from the Internal SRAM (128Kb with No Wait State)
 - Emulation from the PSRAM (External RAM) can add RAM to any Address Space.
 - Then, EMS Emulation emulate a LOTECH Board with Up to 4Mb.
+- Disk access on PM RAM emulated memory are done at the Pico uSD speed. (3Mb/s)
 
 ### Memory emulation limitations :
+
 - Memory emulation with PSRAM is quite slow for the moment, but multiple mecanism like a 32bit cache will improve this. (And Maybe DMA)
 - **The emulated Memory does not support DMA**, Add support for it may be done in one or two months (May/June 2024)
   Anyway:  
-    - As the real floppy use DMA, you should disable temporarily the RAM emulation if the real Disk access are not working.
+    - As the real floppy use DMA, **you should disable temporarily the RAM emulation** if the real Disk access are not working.
     - For SoundCard, if the PC has 512Kb of base RAM, it is really unlikely that the DMA Buffer will be placed in emulated RAM, it may work 90% of the time.
 
 ## Disk "emulation"
@@ -131,21 +137,24 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 - The PicoMEM can't tell if the connection fail and does not try to re connect.
 - The Wifi Access point need to be relatively close to increase the chance of connection success. The IRQ Can be changed in the BIOS Menu (Default is IRQ 3)<br />
 
-## Tested machines
-- IBM 5150, 5160, 5170 : All Ok, except keyboard not responding on 5170.
+## Tested machines :
+- IBM 5150, 5160, 5170
 - IBM PS/2 30 286 (Warning : As its HDD use DMA, does not boot if emulated RAM is added)
 - Compaq Portable 2 (286): Ok
-- Amstrad PC1512, PC1640, PPC1640 (Address D000), PC200: Working, but does not initialize all the time on Rev <1.11
-- Schneider Euro PC2 : Working, but may have some Glitch with PSRAM Emulated RAM.
-- Worked on Various 486, 386 (No confirmation of the ISA Clock speed yet)
-- Tested with some Pentium, Pentium MMX, Pentium 2.<br />
+- Amstrad PC1512, PC1640, PPC1640 (Address D000), Sinclair PC200 (It is my DEV Machine)
+- Schneider Euro PC2, Olivetti M21, Sega TeraDrive.
+- Worked on Various 486, 386, 286 (Has more chance to work with lower ISA Clocks)
+- Tested with some Pentium, Pentium MMX, Pentium 2, AMD K6 ...<br />
+- Amiga 2000 with a A2286 Board. (Use the BIOS in C800)
+- Book8088 (At 4.77MHz, next FW will work at 8MHz)
 
-## Failing Machines
+## Failing Machines :
 - Failed on a 386 with 12MHz ISA Clock
+- Fail on some fast 286 (16MHz)
 - Commodore PC10 / PC20 (Timing issue, fix in progress)
-- Schneider Euro PC 1 : PicoMEM BIOS Does not start even if visible.
+- Schneider Euro PC 1
 - Failed on an Amstrad PPC640 on Latest firmware (Retro Erik) to be confirmed.
-- Tandy 1000 : Does not work yet due to the specific memory map. (SX, EX, HX, TL ...)<br />
+- **Tandy 1000** : Does not work yet due to the specific memory map. (SX, EX, HX, TL ...)<br />
 
 ## License
 
@@ -160,3 +169,4 @@ Source is not published Yet, I am not sure about how to manage a published code 
 * [FatFS by Carl J Kugler III](https://github.com/carlk3/no-OS-FatFS-SD-SPI-RPi-Pico) : FatFS for SD Access in SPI with a Pi Pico
 * DOSBox (www.dosbox.com): DosBOX BIOS Int13h Code, heavily modified for ExFS support and PicoMEM Interface, with bug correction.
 * ne2000 Emulation code, adapted by yyzkevin.
+* XInput library for the USB Joystick.
