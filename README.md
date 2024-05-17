@@ -13,8 +13,17 @@ The PicoMEM Board can be seen as both a working PC extention board as well as a 
 This GitHub Repository does not contains the Firmware for the moment.<br />
 However, PMMOUSE, PMEMM and PM2000 Source are available.
 
-If you are interrested by a Board, I created a form:<br />
-https://docs.google.com/forms/d/e/1FAIpQLScwYPvnVoGynLLgP_hiLMH_qn9uBX1sxims7Ah4LabjQ0mSLw/viewform
+To follow the PicoMEM news, see it in action on multiple machines you can follow me on X:
+[FreddyV on X](https://x.com/FreddyVETELE)
+
+To see my other projects, here is my Youtube Channel :
+[FreddyV Retro Zone](https://www.youtube.com/@freddyvretrozone2849)
+
+If you are interrested by a Board (Mainly for Europe), I created a form:<br />
+[FreddyV PicoMEM Form](https://docs.google.com/forms/d/e/1FAIpQLScwYPvnVoGynLLgP_hiLMH_qn9uBX1sxims7Ah4LabjQ0mSLw/viewform)
+
+**The PicoMEM is also available at Texelec !**
+[Texelec PicoMEM link](https://texelec.com/product/picomem/?highlight=picomem)
 
 ! Only one Board per person for the moment, as I do Small batch.
 
