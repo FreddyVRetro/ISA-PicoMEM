@@ -153,7 +153,6 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 - Fail on some fast 286 (16MHz)
 - Commodore PC10 / PC20 (Timing issue, fix in progress)
 - Schneider Euro PC 1
-- Failed on an Amstrad PPC640 on Latest firmware (Retro Erik) to be confirmed.
 - **Tandy 1000** : Does not work yet due to the specific memory map. (SX, EX, HX, TL ...)<br />
 
 ## License
