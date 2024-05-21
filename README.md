@@ -158,8 +158,11 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 
 ## License
 
-Firmware : GNU v2 For Commercial use, you must contact me before.
-Source is not published Yet, I am not sure about how to manage a published code and it may not be usefull to publish for the moment.
+Hardware and Software are currently closed. <br />
+
+As the PicoMEM contains various public source, I Will publish it as well as Public.<br />
+Anyway, I consider it not ready to be opened yet, as I am not sure about the License to use and how to manage it.<br />
+If you want to participate, You can ask me access to the source on demand.<br />
 
 ## Contributors / External Libraries
 
