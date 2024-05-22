@@ -70,7 +70,7 @@ The PicoMEM exist in 3 Releases : 1.0, 1.1 and 1.11<br />
 
 ## Future Functionality
 
-- There is already a mecanism implemented so that the Pi Pico can send command to the PC, we can have the Pi Pico taking "Virtually" the control of the PC.
+- There is already a mechanism implemented, so that the Pi Pico can send command to the PC, we can have the Pi Pico taking "Virtually" the control of the PC.
   > This can be used to perform ROM/RAM dump, Disk/Floppy DUMP/Write, display/kb redirection....
 - More USB Host to be added  (Keyboard, MIDI...)
 - I added a connector on the board, that can open the door for lot of stuff. <br />
@@ -102,7 +102,7 @@ The PicoMEM is then **more suitable to extend a 512Kb PC to 640K**, Add some UMB
 
 ### Memory emulation limitations :
 
-- Memory emulation with PSRAM is quite slow for the moment, but multiple mecanism like a 32bit cache will improve this. (And Maybe DMA)
+- Memory emulation with PSRAM is quite slow for the moment, but multiple mechanism like a 32bit cache will improve this. (And Maybe DMA)
 - **The emulated Memory does not support DMA**, Add support for it may be done in one or two months (May/June 2024)
   Anyway:  
     - As the real floppy use DMA, **you should disable temporarily the RAM emulation** if the real Disk access are not working.
