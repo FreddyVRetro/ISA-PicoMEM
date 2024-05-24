@@ -1,0 +1,6 @@
+#Config for Book8088 rename to config.txt
+BIOS C800
+PREBOOT
+
+#HDD0 xxxxxx  
+#HDD1 xxxxxx
