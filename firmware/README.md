@@ -24,6 +24,18 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 
 ## Firmwares Revision History : 
 
+- + Added Wifi connection status detection and Display (BIOS Menu, Left Ctrl+Alt+F1)
+    It can display if the wifi.txt file is missing, wrong SSID, Password, Signal strength...
+- ! Fixed some Wifi connection problem with connection retry. (every 5s)
+- + Configuration file (config.txt) support added : The BIOS Base Address can be changed in this file. 
+    It can also force to start the Setup when the Optional ROM start (For Book8088 Support) can't be used in some systems (Like IBM5150)
+- + RAM/ROM emulation speed increased : The PicoMEM now work on the Book8088 at 8MHz, with out of standard ISA (250 vs 500ns MEMR Timing)
+    This speed increase will surely allow for more compatible system.
+- + You can now plug an I2S DAC on the board and enjoy Adlib emulation. It is preliminary and need fix, but it is working quite well.
+- ! Display bug in the image selection display
+- ! Corrected the "Extention" Typo :P
+- - Removed Boot HDD Number from the BIOS, will de obsolete.
+
 ### PM_W_Apr21_xx:
 - **WARNING:** As Timing changes has been done, I would like as many feedback as possible, **Go to the previous firmware in case of problem.**
 - + RAM/ROM Emulation is faster : Now Work on the Commodore PC10 and maybe more.<br />

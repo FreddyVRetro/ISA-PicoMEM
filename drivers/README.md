@@ -3,6 +3,8 @@
 ## Introduction
 This folder contains the drivers needed for the PicoMEM
 
+17/05/24 : PMMOUSE Updated to correct a bug with ne2000 on IRQ 3
+
 ## NE2000.COM
 
 ne2000 TCP Driver for DOS, to be used with Mtcp
