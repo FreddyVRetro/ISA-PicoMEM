@@ -27,7 +27,11 @@ To see my other projects, here is my Youtube Channel:
 You can have one from me (Mainly for Europe, with wait time), on my form:
 [FreddyV PicoMEM Form](https://docs.google.com/forms/d/e/1FAIpQLScwYPvnVoGynLLgP_hiLMH_qn9uBX1sxims7Ah4LabjQ0mSLw/viewform)
 
-Gerber and full sources are not available for the moment, It is planned to have them open source (no date for the moment)
+Gerber and full sources are not available for the moment. The source code will be released soon.
+
+### How to use the PicoMEM ?
+
+Please go to the Wiki page : https://github.com/FreddyVRetro/ISA-PicoMEM/wiki
 
 ## Board description
 
