@@ -6,7 +6,7 @@
 **PM_W_xxx_xxx**   : Firmware for the Pico W Only (For ne2000)
 
 If you use an XTIDE or a Disk BIOS, Use the DO (D000) Picomem Firmware and place the XTIDE in C800.<br />
-**New:** In the debug sub directory, you can find "Debug" versions firmwares.<br />
+**New:** There is no more firmware with different base Address as it is configurable.
 
 **WARNING:** One new firmware may add incompatibility, pease try the previous versions of the firmware.<br />
 (*) The Base Addres is the BIOS ROM location in memory, it can be C80000h or D0000h.<br />
@@ -24,6 +24,7 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 
 ## Firmwares Revision History : 
 
+### PM_W_May28_xx:
 - + Added Wifi connection status detection and Display (BIOS Menu, Left Ctrl+Alt+F1)
     It can display if the wifi.txt file is missing, wrong SSID, Password, Signal strength...
 - ! Fixed some Wifi connection problem with connection retry. (every 5s)
