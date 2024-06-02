@@ -25,7 +25,7 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 ## Firmwares Revision History : 
 
 ### PM_W_May28_xx:
-- + Added Wifi connection status detection and Display (BIOS Menu, Left Ctrl+Alt+F1)
+- + Added Wifi connection status detection and Display (BIOS Menu, Left Shift+Ctrl+F1)
     It can display if the wifi.txt file is missing, wrong SSID, Password, Signal strength...
 - ! Fixed some Wifi connection problem with connection retry. (every 5s)
 - + Configuration file (config.txt) support added : The BIOS Base Address can be changed in this file. 
