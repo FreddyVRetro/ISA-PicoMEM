@@ -69,17 +69,15 @@ The PicoMEM exist in 3 Releases : 1.0, 1.1 and 1.11<br />
   Emulate 2 Floppy and 4 Disk (80h to 83h), Disk up to 4Gb (More later)
 - **USB Mouse** support through a USB OTC Adapter. (Micro USB to USB A or USB Hub)
 - **POST Code** on Rev 1.1 and 1.11 (Port 80 Display in Hexa) through this device : https://www.sparkfun.com/products/16916
-- NEW: (Still "Beta") **ne2000 network card** emulation via Wifi is working on boards with a PicoW.
-- NEW: **USB Joystick** for PS4 and Xinput controllers.
+- **ne2000 network card** emulation via Wifi is working on boards with a PicoW.
+- **USB Joystick** for PS4 and Xinput controllers.
+- NEW: **Adlib** using a PCM502 I2S module.
 
 ## Future Functionality
 
 - There is already a mechanism implemented, so that the Pi Pico can send command to the PC, we can have the Pi Pico taking "Virtually" the control of the PC.
   > This can be used to perform ROM/RAM dump, Disk/Floppy DUMP/Write, display/kb redirection....
 - More USB Host to be added  (Keyboard, MIDI...)
-- I added a connector on the board, that can open the door for lot of stuff. <br />
-(More or less "Secret" for the moment, I need to keep some surprize for myself)
-- Use the Pi Pico W for ne2000 network card emulation through Wifi : Proof of concept done already.
 - Bluetooth support for device like Gamepad may be added.
 - Use of the Qwiic connector for more information display (OLED), maybe RTC and other.
 
@@ -89,6 +87,7 @@ The Board can't be used for Video emulation, as it require a way for the Pico to
 The Pi Pico is limmited in its speed, this is excellent and bad at the same time:
 - Multiple complex function can't be emulated at the same time, choices need to be done.
 - We can still program the Pico and Feel like doing coding on a "Retro" Machine, so we don't have the effect "Look, it is easy, he put a processor in the PC that can emulate the full PC"
+- There are still problems on various machines.
 
 ## Memory emulation
 
@@ -124,9 +123,9 @@ Another particularity is that it use Memory to perform the Data transfer, this a
 Anyway, single sector read is slower than multiple sector reas as the PicoMEM need to read the sector from the SD, then send the data to the PC Memory. <br />
 With multiple sector Read, the Pico read the next sector while the data is copied to the PC Memory.
 
-It is highly recommended to use reasonable disk size, below 500Mb. <br /> 
+It is highly recommended to use reasonable disk image size, below 500Mb. <br /> 
 100 or 200Mb are ideal size, as it will be recognized and usable by DOS 6 and DOS 3.31 <br />
-As you can add 4 Disk with 4 partitions, you can create diferent disk images for different usage, like a partition with games, another with music ...
+As you can add 4 Disk with 4 partitions, you can create diferent disk images for different usage, like a partition with games, another with music ... <br />
 
 **Warning :** You may have compatibility problem with some uSD, even if the compatibility has been greatly improved in the November 2023 firmware.<br />
 
@@ -149,14 +148,15 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 - Schneider Euro PC2, Olivetti M21, Sega TeraDrive.
 - Worked on Various 486, 386, 286 (Has more chance to work with lower ISA Clocks)
 - Tested with some Pentium, Pentium MMX, Pentium 2, AMD K6 ...<br />
-- Amiga 2000 with a A2286 Board. (Use the BIOS in C800)
-- Book8088 (At 4.77MHz, next FW will work at 8MHz)
+- Amiga 2000 with a A2286/A2386 SX Board. (Use the BIOS in C800)
+- Book8088 (At 4.77MHz and 8MHzwith the latest firmware), The Power need to be connected at 8MHz.
 
 ## Failing Machines :
 - Failed on a 386 with 12MHz ISA Clock
 - Fail on some fast 286 (16MHz)
 - Commodore PC10 / PC20 (Timing issue, fix in progress)
 - Schneider Euro PC 1
+- Amiga 2000 with a A2088.
 - **Tandy 1000** : Does not work yet due to the specific memory map. (SX, EX, HX, TL ...)<br />
 
 ## License
