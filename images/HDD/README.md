@@ -2,6 +2,8 @@
 
 The 2 images are DOS 3.31 and DOS 6.22 Bootable images with no application.
 
+**NEW :** D33_200M_EN Image with some utilities, MTCP, MicroWEB and PicoMEM Drivers
+
 ### What is a .IMG File ?
 
 .IMG files are disk binary images, with all the Disk sectors (512bytes) stored one after the other.<br />
