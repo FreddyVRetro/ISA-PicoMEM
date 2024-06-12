@@ -2904,6 +2904,38 @@ emminit:
 emminit1:
 		MOV	SI,OFFSET start_msg	;display start messege.
 		CALL	strdsp
+
+; PicoMEM : Detect the PicoMEM IRQ and Parameters
+
+		mov ax,6000h	; PicoMEM Function 0 : Detect
+		mov dx,1234h	; To be added to be sure
+		int 13h
+		cmp dx,0AA55h
+		jne @@NoPicomem
+
+;		mov  SI,offset detected_msg
+;		CALL strdsp
+
+		mov ax,6001h	;PM BIOS Function 1 : Get RAM Config
+		mov dx,1234h	; To be added to be sure
+		int 13h			; Return CX: Port DX: Address
+		cmp cx,0
+		jne @@PMEMS_Ok
+		
+		jmp errems
+@@PMEMS_Ok:	
+; Set the Port and Address
+		mov emsio,cx
+		mov page_frame_seg,dx
+		jmp @@Continue
+
+@@NoPicomem:		
+		mov  SI,OFFSET notdetected_msg 
+		CALL strdsp
+		jmp errems
+		
+@@Continue:		
+		
 		CALL	ckemsio			;check EMS i/o port
 		jc	errems			;error ?
 		CALL	ramchk			;check EMS memory
@@ -3070,12 +3102,21 @@ instmsg		ENDP
 ;	cf = 0 : OK
 ;	cf = 1 : NG
 ;--------------------------------------------------------------------
+; PicoMEM : Port can be tested
 ckemsio		PROC	NEAR
 		MOV	DX,CS:EMSIO
-; JJP		IN	AL,DX
-; JJP		CMP	AL,255			;check TRS flag
-; JJP		JE	ckems3
-ckems4:
+		MOV AL,0AAh
+		OUT DX,AL
+		IN AL,DX
+		CMP AL,0AAh
+		JNE ckems3
+		MOV AL,055h
+		OUT DX,AL
+		IN AL,DX
+		CMP AL,055h
+		JNE ckems3		
+		MOV AL,0
+		OUT DX,AL
 		CLC				;reset CF
 		RET
 ckems3:
@@ -3195,7 +3236,8 @@ imgchk		PROC	NEAR
 		OUT	I8042+1,AL
 imgchk2:
 		MOV	AL,AH
-        CBW
+;        CBW
+		XOR AH,AH		; PicoMEM Debug
 		MOV	DI,OFFSET tstpage
 		CALL	dbinasc			;change binary -> ascii.
 		MOV	SI,OFFSET tstpage	;display message..
@@ -3559,12 +3601,14 @@ info:
 ;--------------------------------------------------------------------
 ;	EMM driver initial routine work data area
 ;--------------------------------------------------------------------
-start_msg   DB  CR,LF
-            DB	'PMEMM: Lo-tech EMM Driver for PicoMEM'
+start_msg   DB	'PMEMM: Lo-tech EMM Driver for PicoMEM '
 msg_ver     DB  'r01'
 		    DB	CR,LF,'$'
+;detected_msg     db 'PicoMEM Detected',CR,LF,'$'
+notdetected_msg  db	'Error : PicoMEM Not Detected',CR,LF,'$'
+none2000_msg     db 'NE2000 emulation disabled : Skip install',CR,LF,'$'
 install_msg	label   byte
-page_msg	DB	'Page frame specification: Frame Segment at '
+page_msg	DB	'Page frame Segment at '
 segadr		DB	'0000',CR,LF
 total_pg	DB	'0000 pages found on EMS board at '
 pioadr		DB	'0000',CR,LF
@@ -3572,20 +3616,19 @@ pioadr		DB	'0000',CR,LF
 totmem      DB  '0000K RAM Available.',CR,LF,LF,'$'
 hard_w_err	DB	'No EMS board found.',CR,LF,'$'
 nopage_err	DB	'No EMS memory found.',CR,LF,'$'
-notinst		DB	'Installation failed - No EMS available.',CR,LF,LF,'$'
+notinst		DB	'Installation failed - No EMS available.',CR,LF,'$'
 pagemsg		DB	'0000 Pages testing, Esc bypass test',CR,'$'
 tstpage		DB	'0000',CR,'$'
 info_msg    DB  CR,LF
 			DB  'Expanded Memory Manager for the PicoMEM Board.',CR,LF
-			DB	CR,LF
 			DB	'Based on original works Copyright (c) 1988, Alex Tsourikov.',CR,LF
-			DB	'All rights reserved.',CR,LF
+;			DB	'All rights reserved.',CR,LF
 			DB  CR,LF
             DB  'http://www.lo-tech.co.uk/wiki/2MB-EMS-Board',CR,LF
             DB  'Syntax:    DEVICE=PMEMM.EXE [/switches]',CR,LF
             DB  CR,LF
-            DB  '  /p:nnnn - Page frame address(E000)',CR,LF
-            DB  '  /i:nnn  - EMS i/o port base address(260)',CR,LF
+;            DB  '  /p:nnnn - Page frame address(E000)',CR,LF
+;            DB  '  /i:nnn  - EMS i/o port base address(260)',CR,LF
             DB  '  /h:nnn  - Maximal number of handles(64)',CR,LF
             DB  '  /d:nn   - Depth of contest saves(5)',CR,LF
 ;            db  '  /f:nnn  - First page number(0)',CR,LF

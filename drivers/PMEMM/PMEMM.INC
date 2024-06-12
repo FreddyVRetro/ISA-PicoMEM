@@ -8,6 +8,7 @@
 ;
 ;       Структура физической страницы EMS
 ;
+; PicoMEM : Increased PAGE_MAX
 phys_page_struct                STRUC
     Emm_Handle2                 DW      ?       ;дескриптор-владелец страницы
     Phys_page_port		DW	?	;physical page i/o port address
