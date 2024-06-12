@@ -71,7 +71,7 @@ The PicoMEM exist in 3 Releases : 1.0, 1.1 and 1.11<br />
 - **POST Code** on Rev 1.1 and 1.11 (Port 80 Display in Hexa) through this device : https://www.sparkfun.com/products/16916
 - **ne2000 network card** emulation via Wifi is working on boards with a PicoW.
 - **USB Joystick** for PS4 and Xinput controllers.
-- NEW: **Adlib** using a PCM502 I2S module.
+- NEW: **Adlib** using a PCM5102 I2S module.
 
 ## Future Functionality
 
