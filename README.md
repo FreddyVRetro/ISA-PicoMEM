@@ -1,4 +1,4 @@
-# ISA PicoMEM Extension board (For 8086/8088 PC)
+fvf# ISA PicoMEM Extension board (For 8086/8088 PC)
 
 <a href="url"><img src="https://github.com/FreddyVRetro/ISA-PicoMEM/blob/main/jpg/PM111_Close.jpg" align="middle" height=50% width=50% ></a>
 
@@ -21,7 +21,7 @@ To see my other projects, here is my Youtube Channel:
 
 ### How to get a PicoMEM ?
 
-**The PicoMEM is available at Texelec ! (Mainely for the USA)**
+**The PicoMEM is available at Texelec ! (Mainly for the USA)**
 [Texelec PicoMEM link](https://texelec.com/product/picomem/?highlight=picomem)
 
 **The PicoMEM at Flamelily Shop (For the UK)**
