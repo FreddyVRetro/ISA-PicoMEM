@@ -21,10 +21,10 @@ To see my other projects, here is my Youtube Channel:
 
 ### How to get a PicoMEM ?
 
-**The PicoMEM is available at Texelec ! (Mainely for the USA)**
+**The PicoMEM is available at Texelec ! (Mainly for the USA)**
 [Texelec PicoMEM link](https://texelec.com/product/picomem/?highlight=picomem)
 
-**The PicoMEM at Flamelily Shop (For the UK)**
+**NEW: The PicoMEM at Flamelily Shop (For the UK)**
 [Flamelily PicoMEM link](https://shop.flamelily.co.uk/picomem)
 
 You can have one from me (Mainly for Europe, with wait time), on my form:
