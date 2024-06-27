@@ -24,6 +24,9 @@ To see my other projects, here is my Youtube Channel:
 **The PicoMEM is available at Texelec ! (Mainly for the USA)**
 [Texelec PicoMEM link](https://texelec.com/product/picomem/?highlight=picomem)
 
+**NEW: The PicoMEM at Serdahop (Mainly for the Europe)**
+[Serdashop PicoMEM](https://www.serdashop.com/PicoMEM)
+
 **NEW: The PicoMEM at Flamelily Shop (For the UK)**
 [Flamelily PicoMEM link](https://shop.flamelily.co.uk/picomem)
 
