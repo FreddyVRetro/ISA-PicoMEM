@@ -161,7 +161,8 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 - Failed on a 386 with 12MHz ISA Clock
 - Fail on some fast 286 (16MHz)
 - Commodore PC10 / PC20 (Timing issue, fix in progress)
-- Schneider Euro PC 1
+- Schneider Euro PC 1.
+- NuXT / EMM8088 homebrew computers seems to have problem.
 - Amiga 2000 with a A2088.
 - **Tandy 1000** : Does not work yet due to the specific memory map. (SX, EX, HX, TL ...)<br />
 
