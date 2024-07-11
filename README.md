@@ -151,7 +151,7 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 - IBM PS/2 30 286 (Warning : As its HDD use DMA, does not boot if emulated RAM is added)
 - Compaq Portable 2 (286): Ok
 - Amstrad PC1512, PC1640, PPC1640 (Address D000), Sinclair PC200 (It is my DEV Machine)
-- Schneider Euro PC2, Olivetti M21, Sega TeraDrive.
+- Schneider Euro PC2, Olivetti M21, Olivetti M24, Sega TeraDrive. (BIOS Display problem on Olivetti Mono and LCD Screens)
 - Worked on Various 486, 386, 286 (Has more chance to work with lower ISA Clocks)
 - Tested with some Pentium, Pentium MMX, Pentium 2, AMD K6 ...<br />
 - Amiga 2000 with a A2286/A2386 SX Board. (Use the BIOS in C800)
