@@ -24,6 +24,17 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 
 ## Firmwares Revision History : 
 
+## Corrections in progress:
+- + You can now define the Hardware Interrupt with the "IRQ x" Parameter in the config
+    This will skip the IRQ Test code that may crash on some PC (When the Initialisation crash after 3 Dot (...) )
+- ! Adlib emulation Prince of persia (missing notes) bug Corrected (And surely errors in other music)
+- ! Now display an error and refuse to enable ne2000 is wifi.txt is missing or has error (no SSID/Pwd)
+- ! Boot on XTA HDD corrected (on one test machine)
+- ! Memory config was reset if the config.txt file was not present (EMS)
+- ! EMS/PSRAM Emulation can't be selected anymore in case of PSRAM error/disabled
+- ! Display a warning message in the disk menu if the uSD is missing or in error.
+- + Port I/O timing improved.
+
 ### PM_W_May28_xx:
 - + Added Wifi connection status detection and Display (BIOS Menu, Left Shift+Ctrl+F1)
     It can display if the wifi.txt file is missing, wrong SSID, Password, Signal strength...
