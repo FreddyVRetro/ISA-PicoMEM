@@ -6,9 +6,9 @@
 **PM_W_xxx_xxx**   : Firmware for the Pico W Only (For ne2000)
 
 If you use an XTIDE or a Disk BIOS, Use the DO (D000) Picomem Firmware and place the XTIDE in C800.<br />
-**New:** There is no more firmware with different base Address as it is configurable.
+**New:** There is no more firmware with different base Address as it is configurable. (config.txt)
 
-**WARNING:** One new firmware may add incompatibility, pease try the previous versions of the firmware.<br />
+**WARNING:** One new firmware may add incompatibility, please try the previous versions of the firmware.<br />
 (*) The Base Addres is the BIOS ROM location in memory, it can be C80000h or D0000h.<br />
 
 ## How to update the Firmware ?
@@ -24,16 +24,21 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 
 ## Firmwares Revision History : 
 
-## Corrections in progress:
-- + You can now define the Hardware Interrupt with the "IRQ x" Parameter in the config
+### PM_W_Jul16: This firmware contains mainly bug fix.
+- + Port I/O timing improved.
+- + The Key Shortcut activation is now done via the pminit.exe utility : 
+-   PMINIT /k to be executed after loading "keyb" and eventually doskey, 4DOS ...
+- + You can now define the Hardware Interrupt with the "IRQ x" Parameter in the config.txt
     This will skip the IRQ Test code that may crash on some PC (When the Initialisation crash after 3 Dot (...) )
 - ! Adlib emulation Prince of persia (missing notes) bug Corrected (And surely errors in other music)
 - ! Now display an error and refuse to enable ne2000 is wifi.txt is missing or has error (no SSID/Pwd)
-- ! Boot on XTA HDD corrected (on one test machine)
+- ! Boot on XTA HDD corrected: Conflict between DMA and Picomem I/O port (on one test machine)
 - ! Memory config was reset if the config.txt file was not present (EMS)
 - ! EMS/PSRAM Emulation can't be selected anymore in case of PSRAM error/disabled
-- ! Display a warning message in the disk menu if the uSD is missing or in error.
-- + Port I/O timing improved.
+- ! NE2000 IRQ 9 and 10 (not supported) removed from the setup
+- ! Display a warning message in the disk menu if the uSD is missing or in error
+- ! Now the emulated image in HDD0 is no more disabled if there is an existed HDD :
+    You can boot on a disk image, but the real HDD will not be accessible, or place the image disk on HDD1 like before.
 
 ### PM_W_May28_xx:
 - + Added Wifi connection status detection and Display (BIOS Menu, Left Shift+Ctrl+F1)

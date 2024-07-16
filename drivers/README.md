@@ -35,3 +35,11 @@ DEVICE=PMEMM.EXE /n
 
 The Driver is able to detect the PicoMEM, the EMS Port and Address.
 Then, /p and /i parameters are not needed.
+
+##PMINIT.EXE
+
+PicoMEM Initialisation tool.<br />
+I will regularly update the tools to add init fonctions when DOS is Booted.<br />
+
+To enable the Key Shortcut: (Left Shift + Ctrl + F1 for information and F2 For A: Floppy change)<br />
+PMINIT /k
