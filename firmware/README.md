@@ -4,6 +4,9 @@
 
 **PM_MonthDay_D0** : Firmware released the Day/Month at Base Address D0 (*)<br />
 **PM_W_xxx_xxx**   : Firmware for the Pico W Only (For ne2000)
+**PM_W_xxx_MD**    : For Monochrome screen / LCD
+**PM_W_xxx_FR**    : Fast RAM Mode for PC needing faster ISA RAM Access 
+
 
 If you use an XTIDE or a Disk BIOS, Use the DO (D000) Picomem Firmware and place the XTIDE in C800.<br />
 **New:** There is no more firmware with different base Address as it is configurable. (config.txt)
@@ -23,6 +26,10 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
   Power on the PC (The Retro one) and press the button at the same time.
 
 ## Firmwares Revision History : 
+
+### PM_W_Jul16_MD: July 16 Firmware for M24 Mono / LCD Screens
+
+### PM_W_Jul16_FR : July 16 Firmware in Fast RAM Mode (No more PSRAM, but faster RAM Access)
 
 ### PM_W_Jul16: This firmware contains mainly bug fix.
 - + Port I/O timing improved.
