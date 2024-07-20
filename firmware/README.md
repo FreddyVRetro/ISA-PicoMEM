@@ -32,11 +32,11 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 ### PM_W_Jul16_FR : July 16 Firmware in Fast RAM Mode (No more PSRAM, but faster RAM Access)
 
 ### PM_W_Jul16: This firmware contains mainly bug fix.
-- + Port I/O timing improved.
-- + The Key Shortcut activation is now done via the pminit.exe utility : 
--   PMINIT /k to be executed after loading "keyb" and eventually doskey, 4DOS ...
-- + You can now define the Hardware Interrupt with the "IRQ x" Parameter in the config.txt
-    This will skip the IRQ Test code that may crash on some PC (When the Initialisation crash after 3 Dot (...) )
+- New: Port I/O timing improved.
+- New: The Key Shortcut activation is now done via the pminit.exe utility :<br /> 
+       PMINIT /k to be executed after loading "keyb" and eventually doskey, 4DOS ...
+- New: You can now define the Hardware Interrupt with the "IRQ x" Parameter in the config.txt<br />
+       This will skip the IRQ Test code that may crash on some PC (When the Initialisation crash after 3 Dot (...) )
 - ! Adlib emulation Prince of persia (missing notes) bug Corrected (And surely errors in other music)
 - ! Now display an error and refuse to enable ne2000 is wifi.txt is missing or has error (no SSID/Pwd)
 - ! Boot on XTA HDD corrected: Conflict between DMA and Picomem I/O port (on one test machine)
@@ -48,37 +48,37 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
     You can boot on a disk image, but the real HDD will not be accessible, or place the image disk on HDD1 like before.
 
 ### PM_W_May28_xx:
-- + Added Wifi connection status detection and Display (BIOS Menu, Left Shift+Ctrl+F1)
-    It can display if the wifi.txt file is missing, wrong SSID, Password, Signal strength...
+- New: Added Wifi connection status detection and Display (BIOS Menu, Left Shift+Ctrl+F1)
+       It can display if the wifi.txt file is missing, wrong SSID, Password, Signal strength...
 - ! Fixed some Wifi connection problem with connection retry. (every 5s)
-- + Configuration file (config.txt) support added : The BIOS Base Address can be changed in this file. 
-    It can also force to start the Setup when the Optional ROM start (For Book8088 Support) can't be used in some systems (Like IBM5150)
-- + RAM/ROM emulation speed increased : The PicoMEM now work on the Book8088 at 8MHz, with out of standard ISA (250 vs 500ns MEMR Timing)
-    This speed increase will surely allow for more compatible system.
-- + You can now plug an I2S DAC on the board and enjoy Adlib emulation. It is preliminary and need fix, but it is working quite well.
+- New: Configuration file (config.txt) support added : The BIOS Base Address can be changed in this file. 
+       It can also force to start the Setup when the Optional ROM start (For Book8088 Support) can't be used in some systems (Like IBM5150)
+- New: RAM/ROM emulation speed increased : The PicoMEM now work on the Book8088 at 8MHz, with out of standard ISA (250 vs 500ns MEMR Timing)
+       This speed increase will surely allow for more compatible system.
+- New: You can now plug an I2S DAC on the board and enjoy Adlib emulation. It is preliminary and need fix, but it is working quite well.
 - ! Display bug in the image selection display
 - ! Corrected the "Extention" Typo :P
 - - Removed Boot HDD Number from the BIOS, will de obsolete.
 
 ### PM_W_Apr21_xx:
 - **WARNING:** As Timing changes has been done, I would like as many feedback as possible, **Go to the previous firmware in case of problem.**
-- + RAM/ROM Emulation is faster : Now Work on the Commodore PC10 and maybe more.<br />
-    On one PC10, it needed to be put in 8 or 10MHz mode to work.
-- + Added the Number of Floppy drive and Disk Drive display in the BIOS
+- New:  RAM/ROM Emulation is faster : Now Work on the Commodore PC10 and maybe more.<br />
+        On one PC10, it needed to be put in 8 or 10MHz mode to work.
+- New:  Added the Number of Floppy drive and Disk Drive display in the BIOS
 - ! Changed the POST Code : PicoMEM BIOS Port is 81h, PC BIOS Still 80h
 
 ### PM_W_Apr14_xx:
-- + Added USB Joystick suport (XBOX and PS4 Compatibles) Only one joystick for the moment, no driver needed. Need to be enabled in the BIOS
-- + PMEMM EMS Driver is now available for 4Mb of EMS.
+- New: Added USB Joystick suport (XBOX and PS4 Compatibles) Only one joystick for the moment, no driver needed. Need to be enabled in the BIOS
+- New: PMEMM EMS Driver is now available for 4Mb of EMS.
 - ! Fixed the Boot on Sega Teradrive
 - ! Small fix on the POST Code (Don't miss Code anymore)
 
 ### PM_W_Apr2_xx:
-- + Added support of multi page Images selection : Up to 32 Images, 2 pages.
-- + Added the Floppy image SWAP under DOS : **Press Left Ctrl+Shift+F2** to select another A: Floppy image.<br />
-    This is working only in text mode.
-- + Post Code values added in the BIOS Initialisation phase. (Visible only with the QwiiC external screen)
-- + Changed the "PicoMEM Init" text : Display a . for every Init phase.
+- New: Added support of multi page Images selection : Up to 32 Images, 2 pages.
+- New: Added the Floppy image SWAP under DOS : **Press Left Ctrl+Shift+F2** to select another A: Floppy image.<br />
+       This is working only in text mode.
+- New: Post Code values added in the BIOS Initialisation phase. (Visible only with the QwiiC external screen)
+- New: Changed the "PicoMEM Init" text : Display a . for every Init phase.
 - ! Corrected a display bug : the image selection windows did not clear completely.
 
 ### PM_Apr2_D0:
