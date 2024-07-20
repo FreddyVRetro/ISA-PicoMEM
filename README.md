@@ -51,7 +51,8 @@ The PicoMEM exist in 3 Releases : 1.0, 1.1 and 1.11<br />
   - The MicroSD connector share the SPI BUS of the PSRAM, adding some limitations. (We need to stop the PC IRQ during Disk Access)
   - One IRQ Line that can be connected to IRQ 3 or 5 for Rev 1.0, 2,5 or 7 for Rev 1.1.
   - QwiiC Connector (SPI) (Added to V1.1)
-  - Rev 1.11 Changes : Allow for programming with the Board disconnected and USB Powser Jumper can be always On.
+
+**NEW** PicoMEM LP 1.0 the Low profile variant of the PicoMEM will soon be available !
 
 **Software :**
   - a Full BIOS with a "Phoenix BIOS Like" text interface in assembly.
