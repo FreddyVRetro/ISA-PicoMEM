@@ -51,7 +51,8 @@ The PicoMEM exist in 3 Releases : 1.0, 1.1 and 1.11<br />
   - The MicroSD connector share the SPI BUS of the PSRAM, adding some limitations. (We need to stop the PC IRQ during Disk Access)
   - One IRQ Line that can be connected to IRQ 3 or 5 for Rev 1.0, 2,5 or 7 for Rev 1.1.
   - QwiiC Connector (SPI) (Added to V1.1)
-  - Rev 1.11 Changes : Allow for programming with the Board disconnected and USB Powser Jumper can be always On.
+
+**NEW** PicoMEM LP 1.0 the Low profile variant of the PicoMEM will soon be available !
 
 **Software :**
   - a Full BIOS with a "Phoenix BIOS Like" text interface in assembly.
@@ -151,7 +152,7 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 - IBM PS/2 30 286 (Warning : As its HDD use DMA, does not boot if emulated RAM is added)
 - Compaq Portable 2 (286): Ok
 - Amstrad PC1512, PC1640, PPC1640 (Address D000), Sinclair PC200 (It is my DEV Machine)
-- Schneider Euro PC2, Olivetti M21, Olivetti M24, Sega TeraDrive. (BIOS Display problem on Olivetti Mono and LCD Screens)
+- Schneider Euro PC1 (Fast RAM Firmware, EuroPC2, Olivetti M21, Olivetti M24, Sega TeraDrive.
 - Worked on Various 486, 386, 286 (Has more chance to work with lower ISA Clocks)
 - Tested with some Pentium, Pentium MMX, Pentium 2, AMD K6 ...<br />
 - Amiga 2000 with a A2286/A2386 SX Board. (Use the BIOS in C800)
@@ -161,7 +162,7 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 - Failed on a 386 with 12MHz ISA Clock
 - Fail on some fast 286 (16MHz)
 - Commodore PC10 / PC20 (Timing issue, fix in progress)
-- Schneider Euro PC 1.
+- Schneider Euro PC 1. (**New:** Working now)
 - NuXT / EMM8088 homebrew computers seems to have problem.
 - Amiga 2000 with a A2088.
 - **Tandy 1000** : Does not work yet due to the specific memory map. (SX, EX, HX, TL ...)<br />
