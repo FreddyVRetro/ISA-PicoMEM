@@ -121,7 +121,7 @@ BIOS_SubMenu1 DB 3,8,BL_G,1,'EMS  Port:',0
 
 			  DB 45,16,BK_G,1,'- Not Implemented',0
 			  
-              DB 3,19,BK_G,1,'The Memory map show one Char per 16kB :',0			  
+              DB 3,19,BK_G,1,'The memory map shows one character per 16kB :',0
               DB 3,20,BL_G,1,'Computer Memory - S:System V:Video R:ROM',0
               DB 3,21,BL_G,1,'PicoMEM  Memory - B:BIOS   M:RAM   P:PSRAM  E:EMS  0/1:ROM Bank',0
               DB 0xFF,0xFF
@@ -194,10 +194,10 @@ BIOS_SubMenu2 DB 3,4,BL_G,1,'Floppy Drive A:',0
 			  DB 3,15,BL_G,1,'New Disk Image:',0
 			  DB 20,15,BK_G,1,'Select',0
 
-			  DB 45,12,BK_G,1,'- Set Off for XTIDE/Disk BIOS',0
+			  DB 45,12,BK_G,1,'- Set to off for XTIDE/Disk BIOS',0
 			  
-			  DB 3,20,BK_G,1,'Store the Floppy and Disk Images under FLOPPY\ and HDD\ Folders',0
-			  DB 3,21,BK_G,1,'Images files name <13 character and extention .img',0
+			  DB 3,20,BK_G,1,'Store the floppy and disk images under the FLOPPY\ and HDD\ folders',0
+			  DB 3,21,BK_G,1,'Use image filenames with <13 characters and the extension .img',0
 
 			  DB 0xFF,0xFF
 
