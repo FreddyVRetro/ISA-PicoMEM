@@ -27,7 +27,7 @@ To see my other projects, here is my Youtube Channel:
 **The PicoMEM at Serdashop (Europe / World)**
 [Serdashop PicoMEM](https://www.serdashop.com/PicoMEM)
 
-**The PicoMEM at Flamelily Shop (UK /World)**
+**The PicoMEM at Flamelily Shop (UK /World)  BOARDS On SALE**
 [Flamelily PicoMEM link](https://shop.flamelily.co.uk/picomem)
 
 You can have one from me (Mainly for Europe, with wait time), on my form:
