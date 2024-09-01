@@ -61,8 +61,9 @@ ORG 0X0000
 ; 0xAA55 Header
 DB 0x55
 DB 0xAA
-; Uses 16 512-byte pages : 12Kb
-DB 0x18
+; Uses 0x20 512-byte pages : 16Kb
+;DB 0x18
+DB 0x20
 %endif ; DOS_COM=1
 
     JMP PM_START
@@ -163,6 +164,9 @@ STR_DiskMount  DB 'Mount Disks',0x0D,0x0A,0
 %endif
 
 STR_STATUS   DB 'Status : ',0
+
+
+STR_Tandy DB 'Tandy',0x0D,0x0A,0
 ;STR_DISKTEST DB 'HDD Test : ',0x0D,0x0A,0
 ;STR_HDDLIST  DB 'CMD_HDD_Getlist',0x0D,0x0A,0
 ;STR_CMDINT13 DB 'CMD_Int13h',0x0D,0x0A,0
@@ -459,7 +463,7 @@ DBuffer_Ok:
 	BIOSPOST 0x02
 
 	printstr_w STR_TESTOK
-
+	
 ; ** As the BIOS RAM is Ok, increment the Init Counter
 	INC byte [BV_InitCount]
 
@@ -534,6 +538,7 @@ POST_InitCompleted:
     IN AL,DX
     CMP AL,STAT_READY
     JE StatusAtBootOk
+	
 	PUSH AX
     printstr_w STR_CRLF
 	printstr_w STR_STATUS
@@ -543,6 +548,35 @@ POST_InitCompleted:
 
     CALL PM_Reset
 StatusAtBootOk:
+
+; *** Tandy RAM Mode : Perform the RAM Scan, then initialise Conventionnal RAM and Reboot ***
+
+    CMP byte CS:[BV_TdyRAM],0
+	JE POST_NoTandyRAM
+
+    CMP byte CS:[BV_InitCount],1
+	JNE POST_TandyRAMTest2
+	
+; Detect the RAM confir before the PMRAM is used
+	CALL PM_Memory_FirstBoot     
+
+; Ask the PicoMEM to add the RAM
+
+    CLI 	; Stop IRQ to avoid problem
+
+	MOV AH,CMD_TDY_Init
+	CALL PM_SendCMD
+	CALL PM_WaitCMDEnd
+	
+    JMP PM_Reboot
+
+POST_TandyRAMTest2:
+    CMP byte CS:[BV_InitCount],2
+	JA POST_NoTandyRAM 
+
+; 2nd Tandy BOOT : Check if emulation worked and update the RAM MAP
+
+POST_NoTandyRAM:
 
 ; 4) Detect IRQ
 
@@ -641,6 +675,9 @@ SaveConfigOk:
 
 	CMP AX,16		; Error !! Don't touch the BIOS RAM Size (PC Minimum RAM Size is 16Kb)
 	JBE NotUpdateBIOSRAMSize
+
+    CMP byte CS:[BV_Tandy],1
+	JE NotUpdateBIOSRAMSize
 	
 ; *** Update the BIOS with the new memory size
 	CMP AX,640
@@ -721,51 +758,50 @@ DiskMount_End:
 ;    And increment the Disk number count (Initialized by the BIOS at each reboot)
 ;    http://www.techhelpmanual.com/259-int_41h_and_int_46h__hard_disk_parameter_pointers.html
 
-    CMP byte [HDD0_Attribute],0x80		; Emulated HDD ?
+    CMP byte [HDD0_Attribute],0x80	; Emulated HDD0 ?
 	JB DiskInit_NoHDD0
-
-    MOV AX,41h
+;HDD0 Present
+    MOV AX,41h						; Define the new DPT address
 	MOV DX,PM_DPT_0
 	MOV BX,OLD_DPT0
 	CALL BIOS_HookIRQ
 
-    MOV AX,040h
+    MOV AX,040h	; ! Useless now
 	MOV ES,AX
 	MOV byte ES:[BIOSVAR_DISKNB],1	; Set the Nb of disk in the BIOS
 
 DiskInit_NoHDD0:	
 
-    CMP byte [HDD1_Attribute],0x80		; Emulated HDD ?
+    CMP byte [HDD1_Attribute],0x80	; Emulated HDD1 ?
 	JB DiskInit_NoHDD1
 
-    MOV AX,46h
+    MOV AX,46h						; Define the new DPT address
 	MOV DX,PM_DPT_1
 	MOV BX,OLD_DPT1
 	CALL BIOS_HookIRQ
 
-    MOV AX,040h
+    MOV AX,040h	; ! Useless now
 	MOV ES,AX
 	INC byte ES:[BIOSVAR_DISKNB]
 
 DiskInit_NoHDD1:
 
-    CMP byte [HDD2_Attribute],0x80		; Emulated HDD ?
+    CMP byte [HDD2_Attribute],0x80	; Emulated HDD2 ?
 	JB DiskInit_NoHDD2
-	INC byte ES:[BIOSVAR_DISKNB]
+	INC byte ES:[BIOSVAR_DISKNB] 	; ! Useless now
 DiskInit_NoHDD2:
 
-    CMP byte [HDD3_Attribute],0x80		; Emulated HDD ?
+    CMP byte [HDD3_Attribute],0x80	; Emulated HDD3 ?
 	JB DiskInit_NoHDD3
-	INC byte ES:[BIOSVAR_DISKNB]
+	INC byte ES:[BIOSVAR_DISKNB] 	; ! Useless now
 DiskInit_NoHDD3:
 
     MOV AL,CS:[New_DiskNB]
-    MOV ES:[BIOSVAR_DISKNB],AL			; Set the Nb of disk as computer by the PicoMEM
+    MOV ES:[BIOSVAR_DISKNB],AL		; Set the Nb of disk as computer by the PicoMEM
 
 ; 3) Modify the Floppy number
 
-;    CALL FDD_UpdateBIOSVar
-    CALL FDD_UpdateBIOSVar2
+    CALL FDD_UpdateBIOSVar
 
 ; 4) Save previous IRQ13h and Install the new IRQ Vector
 
@@ -1164,7 +1200,7 @@ PC_FDDFound:
 ; Update the FDD Count in the BIOS Variable based on the current Nb and FDD0/FDD1 Enable
 ; !! Must be called only one time
 
-FDD_UpdateBIOSVar2:
+FDD_UpdateBIOSVar:
     PUSH ES
 	MOV AX,040h
 	MOV ES,AX
@@ -1214,76 +1250,6 @@ Floppy_Is2:
 
 	POP ES
 	RET
-
-%ifdef NODEF
-FDD_UpdateBIOSVar:
-
-	CALL BIOS_GetFDDNb
-; AH: Nb of Floppy
-; AL: BIOS Equipment Byte 
-
-	MOV BL,7
-	MOV AL,ES:[BIOSVAR_EQUIP]
-	CALL BIOS_PrintAL_Hex
-	printchar_w ':' 
-    
-;	PUSH ES
-;    PUSH AX
-;	MOV BL,7
-;	CALL BIOS_PrintAL_Hex	
-;	POP AX
-;    CALL Display_FloppyNB
-;	POP ES
-	
-	CMP byte [FDD0_Attribute],0x80	; Emulated Floppy ?
-	JB FDD0_0
-
-	CMP byte [FDD1_Attribute],0x80	; Emulated Floppy ?
-	JB FDD0_1_FDD1_0
-;FDD0 1 FDD1 1
-    CMP AH,2
-	JAE FDD_NoChange
-	
-    OR AL,01000001b  ; Enable B: floppy (set to 1, Means 2)
-	JMP FDD_DoChange
-; Set BIOS to Two Floppy	
-
-FDD0_1_FDD1_0:  ; One emulated Disk (FDD0)
-    CMP AH,0
-	JNE FDD_NoChange  ; Change only if No Disk at all
-; Set BIOS to One Floppy
-    OR AL,1			; Enable A: floppy
-	JMP FDD_DoChange
-	
-FDD0_0:
- 	CMP byte [FDD1_Attribute],0x80	; Emulated Floppy ?
-    JB FDD0_0_FDD1_0
-
-;FDD0_0_FDD1_1 
-	CMP AH,1
-	JNE FDD_NoChange ; Don't enable B only if A: Exist
-    OR AL,01000001b  ; Enable B: floppy (set to 1, Means 2)
-	JMP FDD_DoChange
- 
-FDD_DoChange:
-    MOV ES:[BIOSVAR_EQUIP],AL
-
-FDD0_0_FDD1_0: ; No emulated FDD0 and FDD1 > Do Nothing
-FDD_NoChange:
-
-	MOV BL,7
-	MOV AL,ES:[BIOSVAR_EQUIP]
-	CALL BIOS_PrintAL_Hex
-	printchar_w '-'
-
-;    PUSH AX
-;	MOV BL,7
-;	CALL BIOS_PrintAL_Hex	
-;	POP AX
-;    CALL Display_FloppyNB
-	
-	RET  ;FDD_UpdateBIOSVar End
-%endif
 
 
 ; Display the number of Floppy reader from the BIOS Variables
@@ -2128,6 +2094,10 @@ SmallWait2:
 	JE PM_Int19h_BASIC
 	CMP AL,'b'
 	JE PM_Int19h_BASIC	
+	CMP AL,'R'
+	JE PM_Reboot
+	CMP AL,'r'
+	JE PM_Reboot
 
 	JMP PM_Int19h_Start
 PM_Int19h_FDD:
@@ -2135,6 +2105,9 @@ PM_Int19h_FDD:
 	JMP PM_Int19h_Start
 PM_Int19h_BASIC:
 	Int 18h							; Int 18h > Go to the Basic
+PM_Reboot:
+    JMP 0F000h:0FFF0h		        ; Test Reboot
+	
 PM_Int19h_Start:
 	
 ;	xor	ax, ax
@@ -2569,8 +2542,7 @@ DISPLAY_StatusReg2:
 ; * DisplayInitStatus *	
 ; 0FFh : Disabled, 0FEh if init in progress, 0FDh Failure, 0FEh Skipped
 DisplayInitStatus:
-
-	MOV AL,[BX]
+	MOV AL,[BX]	
 	CMP AL,0FFh
 	JE Init_Disabled
 	CMP AL,0FDh

@@ -75,6 +75,14 @@ FirstBIOSRAMRead:
 
 ; To Execute only during the first Boot. (The PC RAM Should not change)
 PM_Memory_FirstBoot:
+
+    CMP byte CS:[MEM_Scanned],1
+	JNE PM_Memory_FirstBoot_Continue
+
+	RET
+PM_Memory_FirstBoot_Continue:
+
+    MOV byte CS:[MEM_Scanned],1
 	
 	CALL PM_GetBIOSRAMSize
 
@@ -97,7 +105,7 @@ PM_Memory_FirstBoot:
 
     MOV byte CS:[PMCFG_PC_MMAP+63],SMEM_ROM  ; There is always ROM in the last 16k
 
-; Detect the 16K Blocks containing ROM
+; Detect the 16K Blocks containing ROM (With PicoMEM RAM emulation)
     CALL MEM_Test_ROM
 
 %if DOS_COM=1
@@ -389,7 +397,7 @@ _16KBlock_IsUsed:
 	RET  
 ; PM_Test_ROM End
 
-; ** Fast RAM Test (16Kb Bloc)
+; ** Fast RAM Test (16Kb Bloc) Check if tghere is RAM at 4 Different address
 ; Input  : BL: Block number
 ; Output : C Set if Failure
 ;          ! Change DS
@@ -401,13 +409,15 @@ Test16KFast:
 	MOV DS,BX
 	XOR SI,SI
 	
-Test16KFastLoop:	
+Test16KFastLoop:
+    MOV AL,DS:[SI]			; Save the value
     MOV byte DS:[SI],0xAA
 	CMP byte DS:[SI],0xAA
 	JNE Test16KFail
     MOV byte DS:[SI],0x00
 	CMP byte DS:[SI],0x00
 	JNE Test16KFail
+    MOV DS:[SI],AL			; Restore the value
 	ADD SI,4096
 	LOOP Test16KFastLoop
 
@@ -480,6 +490,7 @@ MEM_Bottom:
 	JA MEM_Init_NoPMRAM		; Avoid invalid value
 
 MEM_FillPMRAM_Loop:
+
     PUSH SI
 	CMP AL,0
 	JNE MEM_FillPMRAM_Skip
@@ -487,20 +498,28 @@ MEM_FillPMRAM_Loop:
     CMP byte CS:[PMCFG_IgnoreAB],1 	; If Ignore Video segment, don't add RAM there
     JNE FillPMRAM_NoSkipVideo
 	MOV AX,SI
-	SUB AX,PMCFG_PM_MMAP					   ; Compute the Memory table index to AL
+	SUB AX,PMCFG_PM_MMAP		; Compute the Memory table index to AL
 	CMP AL,0xA*4
 	JBE FillPMRAM_NoSkipVideo
 	CMP AL,0xC*4
 	JAE FillPMRAM_NoSkipVideo
 	JMP MEM_FillPMRAM_Skip
 FillPMRAM_NoSkipVideo:
-	
+
+	CMP byte CS:[BV_Tandy],1	; Test if Tandy
+	JNE PMRAM_NoTandy
+	MOV AX,SI
+	SUB AX,PMCFG_PM_MMAP  	    ; Compute the Memory table index to AL
+	CMP AL,0x0A*4
+	JBE MEM_FillPMRAM_Skip		; If Tandy, don't extend Conv Memory
+PMRAM_NoTandy:	
+
     MOV byte [SI-1],MEM_RAM
 MEM_FillPMRAM_Skip:	
     POP SI
 	LODSB
 	CMP SI,PMCFG_PM_MMAP+0x40
-	JE MEM_Init_NoPSRAM     ; Stop if end is reached
+	JE MEM_Init_NoPSRAM     	; Stop if end is reached
 	LOOP MEM_FillPMRAM_Loop
 	
 MEM_Init_NoPMRAM:
@@ -517,14 +536,22 @@ MEM_FillPSRAM_Loop:
     CMP byte CS:[PMCFG_IgnoreAB],1 ; If Ignore Video segment, don't add RAM there
     JNE FillPSRAM_NoSkipVideo
 	MOV AX,SI
-	SUB AX,PMCFG_PM_MMAP					   ; Compute the Memory table index to AL
+	SUB AX,PMCFG_PM_MMAP		   ; Compute the Memory table index to AL
 	CMP AL,0xA*4
 	JBE FillPSRAM_NoSkipVideo
 	CMP AL,0xC*4
 	JAE FillPSRAM_NoSkipVideo
 	JMP MEM_FillPSRAM_Skip
 FillPSRAM_NoSkipVideo:
-	
+
+	CMP byte CS:[BV_Tandy],1	; Test if Tandy
+	JNE PSRAM_NoTandy
+	MOV AX,SI
+	SUB AX,PMCFG_PM_MMAP	    ; Compute the Memory table index to AL
+	CMP AL,0x0A*4
+	JBE MEM_FillPMRAM_Skip		; If Tandy, don't extend Conv Memory
+PSRAM_NoTandy:
+
     MOV byte [SI-1],MEM_PSRAM
 MEM_FillPSRAM_Skip:	
 	POP SI

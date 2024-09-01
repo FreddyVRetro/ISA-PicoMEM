@@ -30,8 +30,8 @@ G_B   EQU 23   ;Grey on Blue
 BL_LB EQU 48   ;Blue on Light Blue
 W_LB  EQU 63   ;White on Light Blue 
 BK_G  EQU 0x70 ;Black on Grey
-BL_G  EQU 0x71 ;Blue on Grey        Not working on most of the Mono screens
-;BL_G  EQU 0xF1 ;Blue on Grey Blink 
+BL_G  EQU 0x71 ;Blue on Grey    Not working on most of the Mono screens
+;BL_G  EQU 0x70 ;Blue on Grey :  Fix to Black on grey for mono screens
 R_G   EQU 0x74  ;Red on Grey
 
 ; Blue is not visible on some mono display

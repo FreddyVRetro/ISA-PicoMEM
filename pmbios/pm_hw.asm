@@ -38,17 +38,18 @@
 %assign CMD_SetMEMType    0x06
 %assign CMD_MEM_Init      0x07   ;// Configure the memory based on the Config table
 %assign CMD_SaveCfg       0x08   ;// Save the Configuration to the file
-%assign CMD_DEV_Init      0x09
+%assign CMD_DEV_Init      0x09   ;// Initialize the devices (Run at the BIOS Setup end)
+%assign CMD_TDY_Init      0x0A   ;// Initialize the Tandy RAM emulation
 
 ;// 2x Debug/Test CMD
 %assign CMD_SetMEM        0x22   ;// Set the First 64Kb of RAM to the SetRAMVal
 %assign CMD_TestMEM       0x23 
-%assign CMD_displayCMD    0x24
-%assign CMD_Test_PCCMD    0x25
 %assign CMD_StartUSBUART  0x28   ; Avoid using it in the BIOS
 
-%assign CMD_SendIRQ       0x30   ;// Enable the IRQ
+%assign CMD_SendIRQ       0x30   ;// Generate one IRQ
 %assign CMD_IRQAck        0x31   ;// Acknowledge IRQ
+
+%assign CMD_LockPort      0x37
 
 %assign CMD_USB_Enable    0x50
 %assign CMD_USB_Disable   0x51

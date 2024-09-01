@@ -45,7 +45,8 @@ PC_FloppyNB   DB 0x00    ; Number of Physical Floppy drive
 PC_MEM        DW 0x00	 ; PC RAM Size in Kb
 New_DiskNB    DB 0x00    ; Number of Disk in total after HDD Mount
 New_FloppyNB  DB 0x00    ; Number of Floppy in total after FDD Mount
-
+BV_Tandy      DB 0x00    ; 1 if Tandy mode
+BV_TdyRAM     DB 0x00    ; 
 
 BV_SIZE Equ 32           ; Size of the section above
 
@@ -255,6 +256,7 @@ BOOT_FDDFirst  DB 0      ; Set to 1 if 'A' is pressed
 Int19h_SkipSetup DB 0    ; Set to 1 if the Setup menu is in Int19h
 
 ; ** Variables used for the Menu and BIOS function
+MEM_Scanned     DB 0  ; Set to 1 when the Memory was scanned
 PM_FDDTotal     DB 0  ; Number of Floppy image on the uSD
 PM_HDDTotal     DB 0  ; Number of HDD image on the uSD
 PM_ROMTotal     DB 0  ; Number of ROM image on the uSD
@@ -290,7 +292,6 @@ PMB_Stack:    ; ! Used to display the Memory table
 ; Next 4Kb Block is RAM
 ;TIMES (VARS_OFFS+4*1024+4*1024)-($-$$) DB 0x66   ; Offset : Next 16Kb Block
 TIMES (VARS_OFFS+4*1024)-($-$$) DB 0x66   ; Offset : Next 16Kb Block
-PMB_Stack_End:
 
 ; Disk Buffer (16Kb)  ; copied other disk def to test from here
 PM_DISKB     DW 512
