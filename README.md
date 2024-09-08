@@ -151,7 +151,7 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 - IBM 5150, 5160, 5170
 - IBM PS/2 30 286 (Warning : As its HDD use DMA, does not boot if emulated RAM is added)
 - Compaq Portable 2 (286): Ok
-- Amstrad PC1512, PC1640, PPC1640 (Address D000), Sinclair PC200 (It is my DEV Machine)
+- Amstrad PC1512, PC1640, Sinclair PC200 (It is my DEV Machine)
 - Schneider Euro PC1 (Fast RAM Firmware, EuroPC2, Olivetti M21, Olivetti M24, Sega TeraDrive.
 - Worked on Various 486, 386, 286 (Has more chance to work with lower ISA Clocks)
 - Tested with some Pentium, Pentium MMX, Pentium 2, AMD K6 ...<br />
@@ -162,6 +162,7 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 - Failed on a 386 with 12MHz ISA Clock
 - Fail on some fast 286 (16MHz)
 - Commodore PC10 / PC20 (Timing issue, fix in progress)
+- Amstrad PPC512 /PPC640 : Problem on some PPC (Can't Boot) Not sure if it depends on the external ISA connectors boards used.
 - Schneider Euro PC 1. (**New:** Working now)
 - NuXT / EMM8088 homebrew computers seems to have problem.
 - Amiga 2000 with a A2088.
