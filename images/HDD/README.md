@@ -13,3 +13,7 @@ The 2 images are DOS 3.31 and DOS 6.22 Bootable images with no application.
 The PicoMEM will set the correct floppy geometry based on the files size.<br />
 Hard Disk Geometry will be set as H:16, S:63, C:x Then, Image of disk with different Sector or Head count will not work !<br />
 Images with the same number of Sector per Cylinder may be able to Boot but will not work.<br />
+
+29/09/24 : 
+
+- Updated the DOS 3.3 image with the latest drivers.
