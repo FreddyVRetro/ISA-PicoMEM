@@ -1,0 +1,274 @@
+
+
+            Crynwr TCP/IP Packet Drivers under DESQview
+              A. Pirard - University of Liege - Belgium
+
+     This text explains technical details to be understood in order to
+use the packet drivers under DESQview. I lists tested examples and
+expresses hopes for even better TCP/IP usability under multitasking.
+
+     DESQview is a system that I've been using for some years and that
+I find terribly useful. It does true multitasking and windowing of
+normal DOS applications and adds keyboard macros and cut & paste
+beautifully. The setup of some applications may require technical
+knowledge or assistance, but once done correctly, they perform nicely.
+In this text, 'application' means the set of DOS programs that are
+executed in one window.
+
+
+1 Theory
+--------
+
+     When each DESQview application is installed, its maximum memory
+size is indicated. DESQview itself can be installed in two flavors.
+Either each application takes its size out of what DESQview does not
+use of the 640 Kb the PC allows, and they must be swapped to disk to
+make room for more. Or, with an EEMS or (true) LIM 4.0 board and
+driver (expensive) or, by far the most comfortable, with a 386
+processor and Quarterdeck's QEMM386 driver, much of the system
+extensions, including DESQview, can be loaded above the 640 Kb limit,
+and applications can execute simultaneously in large address spaces
+(typically 535 KB) that can total up to physical (extended) memory
+before swapping is required. The replicated address spaces are called
+memory banks. The banks may be compared to the floors of a department
+store, sharing the same ground area, but where different activities
+can take place. DESQview 'switches in' each memory bank in turn to
+give a few time slices of processor time to its application.
+
+     One problem under DESQview and EMM is that the packet drivers
+execute calls to the TCP/IP applications. If they were executed before
+DESQview is started, they would not be loaded in banked memory and
+they would have to care to switch to the correct memory bank before
+the call, like climbing to the right floor to call for the right
+salesman.
+
+     Fortunately, there is a solution for the following two reasons:
+     1) These calls only occur only during a hardware interrupt. I
+cannot swear for all packet drivers, but it cannot conceivably be
+otherwise.
+     2) DESQview supervises hardware interrupts and detects when a
+program grabs a vector to install a handler to service an interrupt
+that DESQview considers for 'communication'. When such an interrupt
+occurs, DESQview switches to the correct memory bank before giving
+control to the handler. The 'communication' interrupts are: 2, 3, 4
+and 7 (plus 5 on AT) and, in the latest versions (4.26), 8-15. (Note
+that each application has its own set of interrupt vectors, but that
+the handler will execute with the set of the application that was
+interrupted, except its own interrupt 15h; it should rely only on its
+private memory).
+     3) But when a packet driver just interfaces with another
+driver, the latter may in turn do calls to the first. In this case,
+try to apply the same method as in the text about IBMTOKEN below.
+
+     So, if a packet driver is loaded as part of an application, its
+initialization will grab the interrupt vector of the communication
+card, DESQview will notice this, and interrupts and calls will occur
+under the correct memory bank. Should it be loaded before DESQview is
+active to see which interrupt is used, DESQview will not switch memory
+during interrupts, and the calls it cannot control will be made to the
+wrong memory bank and crash the system. Note that this doesn't hold
+for a flat memory space (first flavor) because there is no memory
+bank. But packet drivers are of no use to more than one application
+simultaneously (as I will regret below), and it consumes less
+permanent memory to load drivers in the application even then.
+
+     The application should close the device nicely by executing the
+packet drivers utility 'termin'. Termin makes sure no more interrupts
+will occur. Should termin not work (or not be given a chance to be
+executed, when the window is closed abnormally), things may still
+work. Here is why:
+     1) On a PC, the default interrupt handler should make sure they
+don't bother the system (either nullifying service (EOI+IRET) or best
+preventing them to occur (mask them at the controller)).
+     2) If the window is closed, DESQview returns the interrupts to
+the default handler (that was used before DESQview was started).
+     However, I have experienced that a Token-Ring card will crash the
+system when on interrupt IRQ2 but not on IRQ10 or IRQ11. Experiment if
+necessary.
+
+     In any case, the application must be installed as non-swappable.
+Note that the rumor that DESQview moves code about in memory is false,
+only Windows does.
+
+     With QEMM, make sure it knows where your communication card RAM
+is (QEMM parameters). Some cards hide the RAM until initialized.
+
+
+
+2 Example
+---------
+
+     A application using a packet driver can be installed by cloning
+'Big DOS'. It must be non-swappable. Of course, 'Memory Size' depends
+on storage available and needed by the TCP/IP program. The examples
+below run with DESQview 2.26, QEMM 5.0 and drivers 7 on a PS/2 70:
+
+Program Name............: CUTCP
+
+Keys to Use on Open Menu: TR                         Memory Size (in K): 450
+----------------------------------------------------------------------------
+Program...: C:\TCPIP\tcpip
+
+Parameters: call command /E:1024 /C c:\tcpip\cutcp tr g vm1
+
+Directory.: C:\TEST
+----------------------------------------------------------------------------
+ Options:
+                  Writes text directly to screen.......: [Y]
+                  Displays graphics information........: [Y]
+                  Virtualize text/graphics (Y,N,T).....: [Y]
+                  Uses serial ports (Y,N,1,2)..........: [Y]
+                  Requires floppy diskette.............: [N]
+
+
+System Memory (in K).......:   4   Maximum Program Memory Size (in K)..: 640
+
+Script Buffer Size.......:  2000   Maximum Expanded Memory Size (in K):  256
+
+Text Pages: 4  Graphics Pages: 2   Initial Mode:        Interrupts: 00 to FF
+----------------------------------------------------------------------------
+Window Position:
+   Maximum Height:  25       Starting Height:  25       Starting Row...:   0
+   Maximum Width.:  80       Starting Width.:  80       Starting Column:   0
+----------------------------------------------------------------------------
+                               Shared Program
+Pathname..:
+Data......:
+----------------------------------------------------------------------------
+Close on exit (Y,N,blank)......: [N]  Uses its own colors..............: [Y]
+Allow Close Window command.....: [N]  Runs in background (Y,N,blank)...: [ ]
+Uses math coprocessor..........: [Y]  Keyboard conflict (0-F)..........: [0]
+Share CPU when foreground......: [Y]  Share EGA when foreground/zoomed.: [Y]
+Can be swapped out (Y,N,blank).: [N]  Protection level (0-3)...........: [0]
+
+with the procedure TCPIP:
+
+c:\tcpip\drivers\3c523 0x60 7 0x300 0xC000
+%1 %2 %3 %4 %5 %6 %7 %8 %9
+c:\tcpip\drivers6\termin 0x60
+exit
+
+and the procedure CUTCP:
+
+set $CUTCP1=include~c:\tcpip\cutcp.c%1tr (network administrator setup)
+set $CUTCP2=include~c:\tcpip\cutcp.nik
+c:\tcpip\cutcp\tn3270 -d 0 -h c:\tcpip\cutcp.tel %2 %3 %4 %5 %6 %7 %8
+
+     If one wishes DOS commands under packet drivers, use only the
+application setup 'Parameter': 'call command /E:1024'. 'EXIT' will
+terminate the application nicely.
+     Note: really, 3C523 v6.1 has (had?) a bug that can be overcome by
+executing the version 5 once after each machine boot.
+
+
+3 Token-Ring driver
+-------------------
+
+     IBMTOKEN uses the IBM drivers DXMA0MOD.SYS and DXMC0MOD.SYS (A
+and C for short). This complicates things a bit.
+
+     C is the driver to grab the communication vector and, for the
+same reason as with packet drivers, must be loaded within the DESQview
+application. But C calls A for services via interrupt 5C. And if
+closing an application does not tell C to 'say good-bye' to A (if ever
+there is provision for that) before simply removing it from memory, A
+will tell C that it is already loaded when the application is started
+again. Consequently, A too must be loaded inside the application so
+that a fresh copy won't complain. But A sets flags in low core and
+will say that it is already active. Resetting these flags is the end
+of the story (almost, sorry but that's the way it is). DESQview
+installs a front-end to make sure that interrupt 5C is not preempted
+by another task. Letting things go would make A installing only its
+own 5C processing, and without DESQview's front end, TCP/IP will lock
+after a while by receiving no more IP data. Resetting the flag and
+preserving DESQview's front-end is the trickery behind the modules
+IBMTRDVx that I added to the packet driver collection.
+
+     Using IRQ2 for the Token-Ring card will crash the system when the
+window is closed and C 'brutally' removed from memory. Configure it to
+use IRQ10 or 11 instead (on a PS/2, that's booting with the reference
+diskette to change the TRN card setup). Then, use the application
+installation above with the following procedure TCPIP:
+
+d:\ibmpclan\ibmtrdv1
+device D:\IBMPCLAN\DXMA0MOD.SYS
+d:\ibmpclan\ibmtrdv2
+device D:\IBMPCLAN\DXMC0MOD.SYS ,
+:or device D:\IBMPCLAN\DXMC0MOD.SYS 4000010430A0
+c:\tcpip\drivers\ibmtoken 0x60 0
+%1 %2 %3 %4 %5 %6 %7 %8 %9
+c:\tcpip\drivers6\termin 0x60
+d:\ibmpclan\ibmtrdv3
+exit
+
+Notes:
+- the command 'device' is DESQview's, to load a SYS device driver as
+if it were plain COM.
+- Without the 'Locally managed address' parameter, a comma is
+required. I don't know which of IBM or Quarterdeck is right about the
+parameter memory format.
+- The whole Token Ring stuff is my real best. It works fine. But I
+cannot guarantee it does in all versions of the products involved.
+
+
+4 Wishes
+--------
+
+     Packet driver applications will execute in only a single DESQview
+window, just like under monotasking DOS, but no worse. TCP/IP has been
+devised with a multitasking environment in mind. MSDOS did not provide
+multitasking, forcing people to write monotasking TCP/IP applications
+instead. They probably simulate multitasking internally to some
+extent. Now that we have DESQview and Windows 3, TCP/IP on the PC
+should be rethought.
+
+     Multitasking DOS TCP/IP is making IP+TCP run in a separate window
+and applications (in other windows) interface with them via a socket
+API. This means an unloadable socket driver module that would depend
+on the environment, and interface the applications with the module
+containing IP+TCP. Under plain DOS, it would make plain calls. Under
+DESQview or Windows, it would be in common memory and provide task
+switching and synchronization (doing without loops).
+
+     TCP Inc have (maybe a standard for) a socket API and told me they
+have tried but got problems to make it DESQview compatible. I guess it
+should be feasible and that all is to be gained by everyone if FTP Inc
+did cooperate with Quarterdeck and Microsoft for a tremendous
+improvement of this API. I wouldn't be surprised most public domain
+TCP/IP applications use the socket API, even if internally, and should
+be easily converted to use an external one, maybe on a bimodal basis
+to make them portable.
+     DESQview and Windows environments are similar enough in this
+respect to kill the two birds with one stone.
+     I hope Quarterdeck won't mind my quoting their words. I'd like
+them to be heard by FTP Inc. about feasibility:
+"One thing I can tell you:  we are working on a driver which does
+indeed watch for NETBIOS or IPX calls which would require that the
+program be "mapped" back into memory in order for the call to operate
+correctly."
+
+     And now that the packet drivers have promiscuous mode, a similar
+enhancement would be most welcome at the data link level: recognize
+the environment, remember the address space of subscribers and provide
+task switching. Wouldn't it be lovely to have NETWATCH trace an
+application in another window?.
+
+     Finally, I'll report some words about usability of TCP/IP
+applications to us, those 'foreign' languages speakers. We badly need
+an 8-bit character set. The problem is that extensions of ASCII on
+different computers are incompatible and, for example, that text sent
+from a PC to a Mac or vice versa is incorrect. Just as IBM EBCDIC has
+to be translated to a common line code, ASCII, those different
+extended codes should be translated to a common one. RFCs should state
+(or programs act as if they did) that 8-bit is allowed (most often, 8-
+bit 'works') and that the code to be used is the true international
+standard ISO 8859. X-Windows already does that, why not Telnet, FTP
+and SMTP to name the main ones? IBM shouldn't be allowed to slip in
+its PC and EBCDIC codes by lack of standard. Even Telnet 3270 should
+use ISO 8859 because no one but IBM mainframers know what EBCDIC is
+(or should I say 'one' EBCDIC?).
+     But by far the easiest is that all those systems themselves start
+using ISO 8859, isn't it?
+     Thanks for considering this point for us to enjoy TCP/IP as much
+as you do.
+

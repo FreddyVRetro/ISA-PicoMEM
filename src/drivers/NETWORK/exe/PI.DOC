@@ -1,0 +1,112 @@
+PI Packet Driver Notes (January 1992)
+--------------------------------------
+
+See the file copying.doc for important information regarding this software.
+
+Many of you have asked for a packet driver for the Ottawa PI card which
+is compliant with the specification from FTP Software, Inc.  The second
+release is now available. It has been tested with several NOS variants
+and found to be functional.  Not all the features of the compiled-in
+driver are implemented though, so don't throw out your existing NOS
+with PI card support!
+
+It should be noted that any application used with this driver must be
+able to understand AX.25 formatted packets. In other words, the only
+practical use for it right now is to enable you to use variants of NOS
+which do not have PI card support compiled-in.
+
+There is an exception to this rule. The driver may be re-assembled to provide
+"simulated ethernet" support, ie, the card can be made to look like 
+an ethernet card to application software. See the comments in pi.asm for
+details.
+
+Limitations of this release:
+
+1. Only the A port (high speed port) works.
+2. Unlike the built-in driver, parameters must be specified on the command
+   line at the time the driver tsr is installed. They can't be changed
+   while NOS is running.
+3. There is no status command.
+
+Install the driver (pi.com) with the command:
+
+pi <packet_int> [hw_int] [io_addr] [dma] [baud] [TXD] [P] [slot] [tail]
+	[clocking mode] [Buffer size] [Number of buffers]
+
+The parameters are as follows:
+
+packet_int:     Software interrupt number the driver uses to communicate
+                with the application.
+
+hw_int:         The hardware interrupt in use. (set by a jumper on the card).
+                The interrupt least likely to conflict with other hardware
+                is IRQ 7.
+
+io_addr:        The address of the PI card IO registers (jumper).
+
+dma:            The DMA channel in use (jumper).  Usually channel 1.
+
+baud:           The desired baud rate when internal clocking is used.
+                Set to zero if external clocking is desired (as when using
+                the WA4DSY modem).
+
+TXD:            The transmit delay time in milliseconds. This is the time
+                which flags are sent before the actual data is transmitted.
+
+P:              Probability factor for the P-persistance algorithm (0..255).
+
+slot:           Slot time in milliseconds for the P-persistance algorithm.
+
+tail:           Delay time to allow the CRC and closing flag to be transmitted
+                before the transmitter is turned off. This value is calculated
+                by the driver if internal clocking is used, but may be over-
+                ridden from the command line if desired (value in msec.).
+
+clocking mode:  (new in version 2) If internal clocking is used (the baud
+                parm is not 0), this parameter gives further control over the
+                clocking. If it is 0 (default), the receive clock is recovered
+                from the received data, and NRZI coding is used. This mode is
+		suitable for driving a modem which does not provide external
+		clocking signals. The maximum baud rate in this mode is 
+		28,800 bits/sec.
+
+                If clocking mode is set to 1, a clock signal is output on
+                A-TXC, while receive clocking is derived from A_RXC. NRZ
+                coding is used. This mode is useful for connecting PI cards
+                back-to-back for example, because higher baud rates can be
+                obtained.  I have obtained 460,800 bits/sec using this mode
+                (your milage may vary).
+
+                A secondary effect of choosing mode 1 is that the baud
+                rate is 32 times that specified by the baud parameter.
+
+buffer size:    This parameter allows you to specify the amount of memory
+                to reserve for DMA buffers. The default size is 2048.
+
+number of buffers: The number of DMA buffers allocated to the driver. The
+                default is 5, and the minimum is 3. 
+
+For example:
+pi 0x7e 7 0x380 1 0 15 128 10 1 0 2048 5
+
+If any parameters after the first one are left off, defaults as shown in the
+above example will be used. These are typical parameters for use with the
+WA4DSY modem. If the first one is left off, the driver will complain.
+
+If you are using NOS, the attach command in autoexec.net should
+look like this:
+
+attach packet <packet_int_no> <label> <buffers> <MTU> <IP ADDRESS>
+
+For example:
+attach packet 0x7e pi0a 1 2000 your_IP_address
+
+Make sure that you use a TCP MSS which is at least 40 bytes less than the
+MTU.  Also, best results will usually be obtained with TCP WINDOW = TCP MSS.
+
+Please report your experiences with the driver to me, good or bad.
+
+Dave Perry
+VE3IFB
+perryd@software.mitel.com
+ve3ifb@ve3jf.#eon.on.can

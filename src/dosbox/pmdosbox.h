@@ -1,3 +1,5 @@
+// Various defines for DOSBOX Compatibility
+
 #ifndef PMDOSBOX_H
 #define PMDOSBOX_H
 

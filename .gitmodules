@@ -1,0 +1,6 @@
+[submodule "src/lib/tinyusb"]
+	path = src/lib/tinyusb
+	url = https://github.com/hathach/tinyusb
+[submodule "src/lib/tusb_xinput"]
+	path = src/lib/tusb_xinput
+	url = https://github.com/Ryzee119/tusb_xinput.git

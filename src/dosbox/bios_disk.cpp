@@ -26,7 +26,13 @@
 #include "../pm_debug.h"
 #include "../pm_gvars.h"
 #include "../pm_defines.h"
-#include "../psram_spi.h"
+#if USE_PSRAM
+#if USE_PSRAM_DMA
+#include "psram_spi.h"
+#else
+#include "..\psram_spi2.h"
+#endif
+#endif
 
 #include "dev_memory.h"   // Need access to the emulated RAM infos
 #include "../pm_pccmd.h"
@@ -42,7 +48,13 @@
 //PM File functions:
 #include "ff.h"
 
+#if USE_PSRAM_DMA
+#include "psram_spi.h"
+extern psram_spi_inst_t psram_spi;
+#else
+#include "..\psram_spi2.h"
 extern pio_spi_inst_t psram_spi;
+#endif
 
 const diskGeo DiskGeometryList[] = {
 	{ 160,  8, 1, 40, 0},

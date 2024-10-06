@@ -62,7 +62,7 @@ extern volatile uint16_t PM_BIOSADDRESS;
 extern void display_memmap();
 extern void display_memindex();
 extern uint8_t dev_memory_install(uint8_t MEM_Type, uint32_t Pico_Offset);
-extern void dev_memory_remove();
+extern void dev_memory_remove_ram();
 extern void dev_memorytype_remove(uint8_t type);
 
 __force_inline uint8_t GetMEMType(uint32_t Address)

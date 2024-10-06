@@ -49,3 +49,5 @@ Rev 0.2 : Added CMS, Adlib and Tandy initialisation (October 2024 Firmware)<br /
 /adlib x  - Enable/Disable the Adlib output (0:Off 1:On)<br />
 /cms x    - Enable/Disable the CMS output   (0:Off 1:220 x:Port)<br />
 /tdy x    - Enable/Disable the Tandy output (0:Off 1:2C0 x:Port)<br />
+/ x       - Enable/Disable the Joystick     (0:Off 1:On)<br />
+

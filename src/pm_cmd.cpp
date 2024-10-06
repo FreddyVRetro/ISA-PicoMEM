@@ -19,19 +19,30 @@ If not, see <https://www.gnu.org/licenses/>.
 
 #include <stdio.h>
 #include <string.h>
-#include "pm_debug.h"
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "hardware/irq.h"
 #include "hardware/vreg.h"
+#include "hardware/structs/bus_ctrl.h"
+#include "hardware/regs/busctrl.h"              /* Bus Priority defines */
+#ifndef RASPBERRYPI_PICO2
 #include "hardware/regs/vreg_and_chip_reset.h"
+#endif
 
+#if USE_PSRAM
+#if USE_PSRAM_DMA
 #include "psram_spi.h"
+#else
+#include "psram_spi2.h"
+#endif
+#endif
+#ifdef RASPBERRYPI_PICO_W
 #include "pico/cyw43_arch.h"
 #include "cyw43.h"
 #include "cyw43_stats.h"
-#include "hardware/structs/bus_ctrl.h"
-#include "hardware/regs/busctrl.h"              /* Bus Priority defines */
+#endif
+
+#include "pm_debug.h"
 
 // For Clock Display (Test)
 #include "hardware/clocks.h"
@@ -47,6 +58,7 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "dosbox\bios_disk.h"
 
 //Other PicoMEM Code
+#include "pm_dbg.h"
 #include "isa_iomem.pio.h"  // PIN Defines
 #include "pm_gvars.h"
 #include "picomem.h"
@@ -66,6 +78,8 @@ If not, see <https://www.gnu.org/licenses/>.
 #if USE_AUDIO
 #include "audio_devices.h"
 #include "dev_adlib.h"
+#include "dev_cms.h"
+#include "dev_tandy.h"
 #include "dev_pmaudio.h"
 #include "pm_audio.h"
 #else
@@ -73,11 +87,13 @@ void pm_audio_pause() {}
 void pm_audio_resume() {}
 #endif
 
+#ifdef RASPBERRYPI_PICO_W
 #if USE_NE2000
 extern "C" {
 #include "dev_ne2000.h"
 extern wifi_infos_t PM_Wifi;
 }
+#endif
 #endif
 
 extern "C" {
@@ -92,6 +108,9 @@ extern "C" {
 //#include "bsp/board_api.h"
 #include "tusb.h"
 #include "hid_dev.h"  // USB HID Devices variables : Mouse, KB, Joystick
+extern "C" {
+#include "usb.h"
+}
 #endif
 
 #if USE_USBHOST
@@ -160,7 +179,7 @@ bool KEYB_Enabled=false;
 // Serial Output variables
 
 bool SERIAL_Enabled=false;	// True is Serial output is enabled (Can do printf)
-bool SERIAL_USB=false;   	// True is Serial is oved USB
+bool SERIAL_USB=false;   	  // True is Serial is oved USB
 
 // PSRAM Memory variables / Registers
 
@@ -180,7 +199,8 @@ bool IRQ_raised=false;
 
 #define WIFI_STATUS_DELAY 10000000 // Delay in us between 2 Wifi get status call (10s)
 uint64_t wifi_getstatus_delay;
-
+uint64_t pm_cmd_1sdelay;
+uint8_t wifi_delay_counter;
 
 // Add in registers ?
 
@@ -218,9 +238,9 @@ uint8_t PM_IRQ_Raise(uint8_t Source,uint8_t Arg)
        else BV_IRQSource=Source;
 
     PM_INFO("i%d,%d ",BV_IRQSource,BV_IRQStatus);
-if (BV_IRQStatus!=IRQ_Stat_COMPLETED) 
+if (BV_IRQStatus!=IRQ_Stat_COMPLETED)
     {
-     printf("IRQ CONFL %d",BV_IRQStatus);
+     PM_ERROR("IRQ Confl %d\n",BV_IRQStatus);
     }
     BV_IRQArg=Arg;
     BV_IRQStatus=IRQ_Stat_REQUESTED;  
@@ -228,11 +248,11 @@ if (BV_IRQStatus!=IRQ_Stat_COMPLETED)
 #else
     if (IRQ_raised)
        {
-        printf("! IRQ still Up");
+        PM_ERROR("! IRQ still Up");
         gpio_put(PIN_IRQ,1);  // IRQ Down
         busy_wait_us(100);
        }
-    gpio_put(PIN_IRQ,0);  // IRQ Up
+    gpio_put(PIN_IRQ,0);      // IRQ Up
     IRQ_raised=true;
 #endif    
     return 0;
@@ -259,8 +279,21 @@ uint8_t PM_StartPSRAM()
 #if USE_PSRAM
 
  PM_INFO("PSRAM Init: ");
-
+#if USE_PSRAM_DMA
+//float div = (float)clock_get_hz(clk_sys) / (260000000); //
+ float div = (float)clock_get_hz(clk_sys) / (200000000); //
+ PM_INFO("PSRAM div : %f",div);
+ psram_spi = psram_spi_init_clkdiv(pio0, -1, div, true);
+ //psram_spi = psram_spi_init(pio0, -1);
+#else
  psram_spi = psram_init();
+#endif
+PM_INFO("6");
+psram_read8(&psram_spi, 0);
+PM_INFO("7");
+psram_write8(&psram_spi, 0,0xAA);
+PM_INFO("8");
+
  uint FirstErr=8; 
  uint i=0;
 
@@ -271,6 +304,7 @@ do   { // "Test 8Mb"
      psram_write8(&psram_spi, addr,0x55);
      if (psram_read8(&psram_spi, addr)!=0x55) FirstErr=i;
     } while ((FirstErr==8) && (++i<8));
+PM_INFO("9 ");
 
  if (FirstErr==8)
      {
@@ -279,7 +313,10 @@ do   { // "Test 8Mb"
       EPSRAM_Enabled=true;
 
       PM_INFO("OK,%d Mb \n",i);
-      return i;
+/*    do 
+      {psram_write8(&psram_spi, 0xAA,psram_read8(&psram_spi, 0x55));}
+      while (1); */
+      return i;  
      }
     else 
      {
@@ -317,13 +354,17 @@ return false;
 #endif    
 }
 
+FATFS SDFS;  // FileSystem Object for the SD
+
 //********************************************************
 //*          SDCARD Initialisation and test Code         *
 //********************************************************
 bool PM_StartSD()
 {
  sd_card_t *pSD = sd_get_by_num(0);
- FRESULT fr = f_mount(&pSD->fatfs, pSD->pcName, 1);
+ char drive_path[3] = "0:";
+
+ FRESULT fr = f_mount(&SDFS,drive_path, 1);
  if (FR_OK != fr) { 
      PM_ERROR("f_mount error: %s (%d)\n", FRESULT_str(fr), fr);
      qwiic_display_4char("EuSD");
@@ -397,6 +438,9 @@ bool PM_EnableSD()
     }
 }
 
+// ***********************************
+// ***** USB  Start / Stop Code  *****
+// ***********************************
 // PM_StartUSB: Initialise the USB Host Mode
 bool PM_StartUSB()
 {
@@ -432,10 +476,107 @@ void PM_StopUSB()
  BV_USBInit=0xFF;   // Disabled
 }
 
-// ****************************************************
-// ***** Pico MEMP Commands Run from the 2nd core *****
-// ****************************************************
+// *******************************
+// ***** Audio On / On Code  *****
+// *******************************
+void PM_Adlib_OnOff(uint16_t state)
+{
+ if (state)
+     {
+      PM_INFO("> Adlib On\n");      
+      dev_adlib_install();           // Will not reinstall if already installed
+     }
+     else
+     {
+      PM_INFO("> Adlib Off\n");
+      dev_adlib_remove();
+     }
 
+} //PM_Adlib_OnOff
+
+// Return 0 When Ok
+uint8_t PM_CMS_OnOff(uint16_t state)
+{
+
+ if (state)
+     {
+       if (state==1) state=0x220;    // Default CMS Port
+       PM_INFO("> CMS On %x\n",state);
+       return dev_cms_install(state);
+     }
+     else
+     {
+       PM_INFO("> CMS Off\n");      
+       dev_cms_remove();
+       return 0;
+     }
+} //PM_CMS_OnOff
+
+// Return 0 When Ok
+uint8_t PM_TDY_OnOff(uint16_t state)
+{
+ if (state)
+     {
+      if (state==1) state=0x2C0;    // Default Tandy Port
+      PM_INFO("> Tandy On %x\n",state);      
+      return dev_tdy_install(state);
+     }
+     else
+     {
+      dev_tdy_remove();
+      PM_INFO("> Tandy Off\n");        
+      return 0;
+     }
+} //PM_TDY _OnOff
+
+// PM_Audio_OnOff : Enablez/Disable the Audio device / Sound cards
+// state : 0: Off / 1: On
+void PM_Audio_OnOff(uint8_t state)
+{
+  if (state)
+    {
+      PM_Adlib_OnOff(PM_Config->Adlib);
+      PM_CMS_OnOff(PM_Config->CMSPort);
+      PM_TDY_OnOff(PM_Config->TDYPort);
+
+      quiic_4charLCD_enabled=false;    // Stop Qwiic when audio is active
+      pm_audio_start();
+    }
+    else
+    {
+      PM_Adlib_OnOff(0);
+      PM_CMS_OnOff(0);
+      PM_TDY_OnOff(0);      
+      pm_audio_stop();
+    }
+}    
+
+// PM_Joystick_OnOff : Enable/Disable the Joystick
+// state : 0: Off / 1: On
+// return false it it can't enable it
+bool PM_Joystick_OnOff(uint8_t state)
+{
+ if (state)
+    {
+     if (USB_Host_Enabled)
+      {
+       PM_INFO("-Enable Joystick\n");        
+       dev_joystick_install();
+       return true;
+      }
+      else return false;
+    }
+    else 
+    {
+      PM_INFO("-Disable Joystick\n");
+      dev_joystick_remove();
+      return true;      
+     }
+}
+
+// *************************************************************
+// *****     Pico MEMP Commands Run from the 2nd core      *****
+// *************************************************************
 void PM_ExecCMD()
 {
 //char spcc[]="Now the PicoMEM Can execute commands to the PC\r\n";
@@ -443,13 +584,12 @@ void PM_ExecCMD()
 //char spcc3[]="Printf3 ";
 
 //printf("CMD %x Data %x > ",PM_Command,PM_CmdDataL);
-if (PM_Command!=0) PM_INFO("CMD %x, > ",PM_Command,PM_CmdDataL);
+if (PM_Command!=0) PM_INFO("CMD %X,%X > ",PM_Command,PM_CmdDataL);
 
 
- switch(PM_Command) 
+ switch(PM_Command)
   {
    case CMD_Reset :         // CMD 0: Clean the Status or Enable/Disable the commands
-
     PM_INFO("Reset\n");
     PM_Status=STAT_READY;
     break;
@@ -492,6 +632,7 @@ if (PM_Command!=0) PM_INFO("CMD %x, > ",PM_Command,PM_CmdDataL);
     break;
    case CMD_MEM_Init :       // CMD 7: Initialize the memory emulation based on the Config
 // Started after the Setup / before the Boot
+// RAM initialisation can't be done if the BIOS Does not work / is not enabled.
      PM_INFO("MEM Init\n");    
 
      PM_INFO("PC RAM: %dKb\n",PC_MEM+256*PC_MEM_H);
@@ -503,7 +644,8 @@ if (PM_Command!=0) PM_INFO("CMD %x, > ",PM_Command,PM_CmdDataL);
         }
 
     // 1- Remove all emulated RAM
-     dev_memory_remove();
+
+    dev_memory_remove_ram();
  
     PM_INFO("Clean > Mem Type: ");
     for (int i=0;i<MEM_T_Size;i++)
@@ -519,19 +661,15 @@ if (PM_Command!=0) PM_INFO("CMD %x, > ",PM_Command,PM_CmdDataL);
 #if USE_PSRAM
      if (PM_Config->EMS_Port!=0)
         { 
-
          PM_INFO("EMS Port:%d %x ",PM_Config->EMS_Port,EMS_Port_List[PM_Config->EMS_Port]<<3);
          
-//       SetPortType(EMS_Port_List[PM_Config->EMS_Port],DEV_LTEMS,1);
          PORT_Table[EMS_Port_List[PM_Config->EMS_Port]]=DEV_LTEMS; // Set the EMS IO Port
-
          // Set the EMS @ decoding
          uint32_t EMS_Base=(EMS_Addr_List[PM_Config->EMS_Addr]<<14);
          SetMEMType(EMS_Base,MEM_EMS,MEM_S_16k*4);     //64Kb (126Kx4)
          SetMEMIndex(EMS_Base,MEM_EMS,MEM_S_16k*4);    //64Kb (126Kx4)         
 
          PM_INFO(" @:%x\n",EMS_Base);
-
         }
 #endif        
 
@@ -551,35 +689,51 @@ if (PM_Command!=0) PM_INFO("CMD %x, > ",PM_Command,PM_CmdDataL);
      PM_Status=STAT_READY;
     break;
 
-   case CMD_TDY_Init :
-    PM_INFO("Init Tandy RAM : %dx16Kb\n",BV_TdyRAM);
-     
-     BV_TdyRAM=8;  // Test
-     
+   case CMD_TDY_Init :  // Initialize the Tandy conventionnal RAM emulation
+    PM_INFO("Tandy RAM : %dx16Kb\n",BV_TdyRAM);
+    uint8_t PC_RamSize_Bloc;
+    PC_RamSize_Bloc=(PC_MEM+256*PC_MEM_H)/16;  //Compute the Number of 16 Kb Bloc RAM on the PC
+    
+    if ((PC_RamSize_Bloc+BV_TdyRAM)>40)
+       {
+        PM_INFO("Err, Too many RAM, Adjust size %d\n",PC_RamSize_Bloc+BV_TdyRAM);
+        BV_TdyRAM=40-PC_RamSize_Bloc;        
+       }
+
      if (BV_TdyRAM!=0)
       {
 
-      if (MAX_PMRAM!=0)
+      if (MAX_PMRAM!=0)      // Extend first with PMRAM
          {
           int AddBlock_NB;
           AddBlock_NB=BV_TdyRAM;
           if (BV_TdyRAM>MAX_PMRAM) AddBlock_NB=MAX_PMRAM;
           PM_INFO("Add %dx16K PMRAM \n",AddBlock_NB);
-          RAM_Offset_Table[MEM_RAM]=&PM_Memory[0]; // Place the RAM at the begining
-          SetMEMType(0,MEM_RAM,MEM_S_16k*AddBlock_NB);    //MEMType is "for info"
-          SetMEMIndex(0,MEM_RAM,MEM_S_16k*AddBlock_NB);   //MEMIndex is used for decoding
+          RAM_Offset_Table[MEM_RAM]=&PM_Memory[0];        // Place the RAM at the begining
+          SetMEMType(0,MEM_RAM,MEM_S_16k*AddBlock_NB);    // MEMType is "for info"
+          SetMEMIndex(0,MEM_RAM,MEM_S_16k*AddBlock_NB);   // MEMIndex is used for decoding
+          for (int i=0;i<MAX_PMRAM;i++)
+           {PM_Config->MEM_Map[i]=MEM_RAM;}              // Update the Memory MAP
          }
 
 #if USE_PSRAM
-     if (BV_TdyRAM>MAX_PMRAM)
+     if (BV_TdyRAM>MAX_PMRAM) // Then PSRAM
         {  // Add Tandy RAM as PSRAM From the Address MAX_PMRAM*+16KB, size (BV_TdyRAM-MAX_PMRAM)*16KB  
-          PM_INFO("Add %dx16K PSRAM \n",BV_TdyRAM-MAX_PMRAM);     
+          PM_INFO("Add %dx16K PSRAM, Addr %x \n",BV_TdyRAM-MAX_PMRAM,MAX_PMRAM<<14);     
           uint32_t MEM_Addr=MAX_PMRAM<<14;  // Shift 14 for 16Kb Block
           SetMEMType(MEM_Addr,MEM_PSRAM,MEM_S_16k*(BV_TdyRAM-MAX_PMRAM));
           SetMEMIndex(MEM_Addr,MEM_PSRAM,MEM_S_16k*(BV_TdyRAM-MAX_PMRAM));
+          for (int i=MAX_PMRAM;i<BV_TdyRAM;i++)
+           {PM_Config->MEM_Map[i]=MEM_PSRAM;}           // Update the Memory MAP
         }
+      for (int i=BV_TdyRAM;i<(BV_TdyRAM+PC_RamSize_Bloc);i++)
+           {PM_Config->MEM_Map[i]=SMEM_RAM;}           // Update the Memory MAP
+      PM_Config->MEM_Map[(BV_TdyRAM+PC_RamSize_Bloc)]=SMEM_VID;  // Last 16Kb is Video
+
 #endif     
       }
+     for (int i=0;i<40;i++) PM_INFO("%d ",PM_Config->MEM_Map[i]);
+         
      PM_Status=STAT_READY;
     break;
 
@@ -617,17 +771,12 @@ if (PM_Command!=0) PM_INFO("CMD %x, > ",PM_Command,PM_CmdDataL);
      PM_INFO("-Set SD: %d PSRAM %d (MHz)\n",PM_Config->SD_Speed,PM_Config->RAM_Speed);
 
 #if USE_USBHOST
-     if ((PM_Config->EnableJOY)&&(USB_Host_Enabled)) 
-       {
-        PM_INFO("-Enable Joystick\n");        
-        dev_joystick_install();
-       }
-       else dev_joystick_remove();
-#endif        
+     PM_Joystick_OnOff(PM_Config->EnableJOY);
+#endif
 
 #if PM_PICO_W
 #if USE_NE2000 
-     DelPortType(DEV_NE2000);                           // Remove the ne2000 Ports
+     DelPortType(DEV_NE2000);                            // Remove the ne2000 Ports
      if ((PM_Config->ne2000Port!=0)&&(PM_Config->ne2000Port<0x3E0))
         {         
          SetPortType(PM_Config->ne2000Port,DEV_NE2000,4); // Add the ne2000 Ports
@@ -635,48 +784,11 @@ if (PM_Command!=0) PM_INFO("CMD %x, > ",PM_Command,PM_CmdDataL);
         else PM_Config->ne2000Port=0;  // Force 0 if > 3E0
 
      PM_INFO("-NE2000: P %x I %d\n",PM_Config->ne2000Port,PM_Config->WifiIRQ);
-
-/* for (int i=0;i<128;i++) 
-   { 
-    if (i==(PM_Config->ne2000Port>>3)) printf("*");
-    printf ("%d,",PORT_Table[i]); 
-   } */
 #endif //USE_NE2000
 #endif
 
 #if USE_AUDIO
-   // WARNING Need to unallocate the RAM Taken by audio every time otherwise Crash !
-     if (PM_Config->Adlib)
-        {
-         PM_INFO("-Start Audio\n");
-         if (!dev_adlib_installed())
-            {
-             quiic_4charLCD_enabled=false;  // Stop Qwiic when audio is active
-             dev_adlib_install();           // Will not reinstall if already installed
-             pm_audio_start();
-             //play_adlib();
-            }
-        } else  // Remove Adlib
-        {
- //        pm_audio_stop();
- //        dev_adlib_remove();
-        }
-
-     if (PM_Config->TDYPort)
-        {
-        } else
-        {
-
-        }
-        
-     if (PM_Config->CMSPort)
-        {
-        } else
-        {
-
-        }        
-
-//for (;;) {};
+      PM_Audio_OnOff(PM_Config->AudioOut);
 #endif
 
       PM_Status=STAT_READY;
@@ -796,28 +908,35 @@ if (PM_Command!=0) PM_INFO("CMD %x, > ",PM_Command,PM_CmdDataL);
    case CMD_Mouse_Disable :   // CMD: 0x53
 
       PM_INFO("Disable Mouse\n");
-  
       MOUSE_Enabled=false;
       PM_CmdDataL=0;
       PM_Status=STAT_READY;
      break;
 
-   case CMD_Keyb_Enable :     // CMD: 0x54
+   case CMD_Keyb_OnOff :     // CMD: 0x54
 
-      PM_INFO("Enable Kb\n");
-  
-      KEYB_Enabled=true;
+      PM_INFO("Keyboard : ");
+      if (PM_CmdDataL) 
+         {
+          KEYB_Enabled=true;
+          printf("On\n");
+         }
+         else
+         {
+          KEYB_Enabled=false;
+          printf("Off\n");
+         }
       PM_CmdDataL=0;
       PM_Status=STAT_READY;
      break;  
 
-   case CMD_Keyb_Disable :    // CMD: 0x55
-
-      PM_INFO("Disable Kb\n");
-   
-      KEYB_Enabled=false;
-      PM_CmdDataL=0;
-      PM_Status=STAT_READY;
+   case CMD_Joy_OnOff:        // USB Joystick : 0: Off 1: on
+      uint16_t arg;
+      arg=((uint16_t)PM_CmdDataH<<8)+(uint16_t)PM_CmdDataL;
+      printf("%X",arg);
+      PM_CmdDataL=PM_Joystick_OnOff(arg);  
+      PM_CmdDataH=0;
+      PM_Status=STAT_READY;      
      break;
 	 
    case CMD_Wifi_Infos	:   // CMD: 0x60  Get the Wifi Status, retry to connect if not connected
@@ -829,7 +948,7 @@ if (PM_Command!=0) PM_INFO("CMD %x, > ",PM_Command,PM_CmdDataL);
         PM_Wifi_GetStatus();
         if ((PM_Wifi.Status==1)&&(PM_Wifi.rssi==0))
           {
-           printf("Retry Wifi connection\n");
+           PM_INFO("Retry Wifi connection\n");
            PM_RetryWifi();
           }
        }
@@ -841,6 +960,80 @@ if (PM_Command!=0) PM_INFO("CMD %x, > ",PM_Command,PM_CmdDataL);
 
 #endif //USE_NE2000
 #endif //PM_PICO_W
+      PM_Status=STAT_READY;
+     break;
+
+   case CMD_USB_Status	:   // CMD: 0x61  Get the USB Status string
+      uint8_t usbnb;
+      char *str_tmp;
+      str_tmp=(char *) &PCCR_Param;
+
+      usb_print_status();
+      if ((PM_Config->EnableUSB)==1)
+        {
+         usbnb=usb_get_devnb();
+    
+         str_tmp[0]=usbnb+1;  // Nb of Lines to display
+         str_tmp++;
+         sprintf(str_tmp,"   USB  : %d device%c", usbnb, usbnb == 1 ? ' ' : 's');
+         str_tmp[1]=0xFE;
+         printf("%s",str_tmp);
+         usbnb=strlen(str_tmp);
+         str_tmp+=usbnb+1;        // Move pointer at the end of the current string
+         for (uint8_t i = 0; i < CFG_TUH_DEVICE_MAX; i++)
+             if (tuh_mounted(i + 1))
+              {
+               //str_tmp[0]=0;
+               sprintf(str_tmp,"    %s",dev_message[i]);
+               printf("%s\n",str_tmp);
+               str_tmp+=strlen(str_tmp)+1;   // Move pointer at the end of the current string
+              }
+        }
+        else 
+        {
+         str_tmp[0]=0;  // Nothing to Display (No USB)
+        }
+      PM_Status=STAT_READY;
+     break;
+
+// *** Audio Commands  0x8x ***
+
+   case CMD_AudioOnOff:     // Full audio rendering 0: Off 1:On
+      PM_Audio_OnOff(PM_CmdDataL);
+      PM_Status=STAT_READY;
+     break;
+
+   case CMD_AdlibOnOff:      // Adlib Audio : 0 : Off 1: On default
+      arg=((uint16_t)PM_CmdDataH<<8)+(uint16_t)PM_CmdDataL;
+////      printf("%X %X %X",PM_CmdDataH,PM_CmdDataL,arg);     
+      PM_Adlib_OnOff(arg);
+      quiic_4charLCD_enabled=false;    // Stop Qwiic when audio is active
+      pm_audio_start();                // Start Audio if not on
+      PM_Status=STAT_READY;
+     break;
+
+   case CMD_TDYOnOff:        // Tandy Audio : 0 : Off 1: On default or port, return install status
+      arg=((uint16_t)PM_CmdDataH<<8)+(uint16_t)PM_CmdDataL;
+      printf("%X %X %X",PM_CmdDataH,PM_CmdDataL,arg);
+      PM_CmdDataL=PM_TDY_OnOff(arg);
+      quiic_4charLCD_enabled=false;    // Stop Qwiic when audio is active
+      pm_audio_start();                // Start Audio if not on    
+      PM_CmdDataH=0;
+      PM_Status=STAT_READY;      
+     break;
+
+   case CMD_CMSOnOff:        // CMS Audio   : 0 : Off 1: On default or port, return install status
+      arg=(uint16_t)PM_CmdDataH<<8+(uint16_t)PM_CmdDataL;
+//      printf("%X %X %X",PM_CmdDataH,PM_CmdDataL,arg);
+      PM_CmdDataL=PM_CMS_OnOff(((uint16_t)PM_CmdDataH<<8)+(uint16_t)PM_CmdDataL);
+      quiic_4charLCD_enabled=false;    // Stop Qwiic when audio is active
+      pm_audio_start();                // Start Audio if not on     
+      PM_CmdDataH=0;
+      PM_Status=STAT_READY;
+     break;
+
+   case CMD_GUSOnOff:        // CMS Audio   : 0 : Off 1: On default or port
+      
       PM_Status=STAT_READY;
      break;
 
@@ -998,7 +1191,7 @@ if (PM_Command!=0) PM_INFO("CMD %x, > ",PM_Command,PM_CmdDataL);
      break;
        
     case CMD_Int13h :  // Execute Int 13h, registers are passed via the BIOS Memory
-   pm_audio_pause();   // Need to pause audio during uSD Access     
+     pm_audio_pause();   // Need to pause audio during uSD Access     
      pm_led(1);
      if (PM_EnableSD()) 
       {
@@ -1016,8 +1209,28 @@ if (PM_Command!=0) PM_INFO("CMD %x, > ",PM_Command,PM_CmdDataL);
     
      PM_Status=STAT_READY;
 	   Send_PCC_End();     // Tell the PC Command loop to end
-   pm_audio_resume();     
-     break;       
+     pm_audio_resume();     
+     break;
+
+    case CMD_EthDFS_Send :  // EtherDFS packet exchange
+     if (PM_CmdDataL==0)
+       {
+       pm_audio_pause();      // Need to pause audio during uSD Access     
+       pm_led(1);
+
+       //pm_EthDFS_Packet();
+
+       pm_led(0);
+    
+       PM_Status=STAT_READY;
+       pm_audio_resume();  
+       } else
+       {
+        PM_CmdDataL==0xAA;    // Return 0xAA if PM_CmdDataL is <> 0
+        PM_Status=STAT_READY;
+       }
+     break;
+
     default:
      PM_Status=STAT_CMDNOTFOUND;  // Command not supported
      break;
@@ -1042,7 +1255,7 @@ pm_qwiic_scan();
 
 if (quiic_4charLCD_enabled)
  {
-  qwiic_display_4char("LCD-");
+  qwiic_display_4char("LED-");
 
   #if DEV_POST_Enable==1
   dev_post_install(0x80);
@@ -1080,6 +1293,12 @@ if (PM_StartSD())
     BIOS_SetupDisks();        // Clean the Disk Objects
    } else BV_CFGInit=0xFF;    // Disabled (No Config to load)
 
+
+if ((BV_CFGInit!=0)||(PM_BIOSADDRESS=0))
+   {
+    PM_Config->EnableUSB=1;
+   }
+
 // Values sent by the code to the BIOS Initialisation, Just after the Config Load
 PM_Config->B_MAX_PMRAM=MAX_PMRAM;   // Value defined in the makefile.ini
 #if USE_PSRAM
@@ -1099,7 +1318,7 @@ PM_INFO("Start USB\n");
 // ************  USB Init and Test CODE ******************
 
 #if USE_USBHOST
-  if (PM_Config->EnableUSB=1)
+  if ((PM_Config->EnableUSB)==1)
    {
     PM_StartUSB();   // Start USB and update BV_USBInit  
    }
@@ -1172,7 +1391,7 @@ for (;;)  // Core 1 Main Loop (Commands)
 //   {
      if (To_Display32!=0)
      {
-      printf("Id%X ",To_Display32);
+      PM_INFO("Id%X ",To_Display32);
       To_Display32=0;
      }
     TodisplayCnt=0;
@@ -1191,10 +1410,7 @@ if (USB_Host_Enabled)
 //    pm_mouse.yl=0;
     PM_DP_RAM[OFFS_IRQPARAM]=pm_mouse.buttons;
     PM_DP_RAM[OFFS_IRQPARAM+1]=pm_mouse.x;
-    PM_DP_RAM[OFFS_IRQPARAM+2]=pm_mouse.y;
-#if PM_PRINTF
-  printf("IRQ");
-#endif     
+    PM_DP_RAM[OFFS_IRQPARAM+2]=pm_mouse.y; 
     PM_IRQ_Raise(IRQ_USBMouse,0);
     busy_wait_us(100);
     PM_IRQ_Lower();
@@ -1204,6 +1420,25 @@ if (USB_Host_Enabled)
 #if DEV_POST_Enable==1
   dev_post_update();
 #endif
+
+if (absolute_time_diff_us(get_absolute_time(), pm_cmd_1sdelay) < 0)
+     {
+      //printf("CMSD: %d, %d \n",dev_cms_delay,dev_cms_playing);
+      if (dev_adlib_delay++==4)
+         {  // 4 second since last adlib I/O
+          dev_adlib_playing=false;  // disable the adlib mixing
+         }
+      if (dev_cms_delay++==4)
+         {  // 4 second since last cms I/O
+          dev_cms_playing=false;  // disable the cms mixing
+          //printf("CMS Stop\n");
+         }
+      if (dev_tdy_delay++==4)
+         {  // 4 second since last tandy I/O
+          dev_tdy_playing=false;  // disable the cms mixing
+         }
+      pm_cmd_1sdelay = make_timeout_time_us(1000000);  //1000000 is 1 second
+     }
 
 #if PM_PICO_W
 if (BV_WifiInit==0)
@@ -1227,10 +1462,12 @@ if (multicore_fifo_rvalid())
             break;
     case 1 : PM_INFO("IR ");
             break;
+#ifdef RASPBERRYPI_PICO_W
 #if USE_NE2000
     case FIFO_NE2K_SEND:
              ne2000_initiate_send();
              break;
+#endif
 #endif
    }
   }             

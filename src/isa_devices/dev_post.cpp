@@ -19,6 +19,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 #include <stdio.h>
 #include "pico/stdlib.h"
+#include "../pm_debug.h"
 #include "../pm_gvars.h"
 #include "../pm_defines.h"
 #include "dev_picomem_io.h"
@@ -40,11 +41,12 @@ void dev_post_update()
 {
 if (HostIO.Port80h_Updated)
   {
+  
    HostIO.Port80h_Updated=false;
    char poststr[5];
    poststr[4]=0;
    sprintf(&poststr[0],"Bp%X",HostIO.Port80h);
- //  printf("%s",poststr);
+//   PM_INFO("%s",poststr);
    qwiic_display_4char(poststr);    // Send the POST Code to the External LCD
   }
 if (HostIO.Port81h_Updated)
@@ -53,10 +55,10 @@ if (HostIO.Port81h_Updated)
    char poststr[5];
    poststr[4]=0;
    sprintf(&poststr[0],"Pp%X",HostIO.Port80h);
- //  printf("%s",poststr);
+//   PM_INFO("%s",poststr);
    qwiic_display_4char(poststr);    // Send the POST Code to the External LCD
   }  
-}  
+}
 
 void dev_post_iow(uint32_t CTRL_AL8,uint32_t ISAIOW_Data)
 {

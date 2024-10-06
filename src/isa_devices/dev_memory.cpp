@@ -28,22 +28,6 @@ If not, see <https://www.gnu.org/licenses/>.
 
 volatile uint16_t PM_BIOSADDRESS=0;
 
-/*
-void SetMEMType(uint32_t Address,uint8_t Type, uint8_t NbBloc)
-{ 	
-  for (int i=0;i<NbBloc;i++) 
-  { MEM_Type_T[(((Address+i*MEM_BlockSize)^0xF0000)>>MT_Shift)] = Type; }
-}
-
-void SetMEMIndex(uint32_t Address,uint8_t Index, uint8_t NbBloc)
-{ 	
-  for (int i=0;i<NbBloc;i++) 
-  { MEM_Index_T[(((Address+i*MEM_BlockSize)^0xF0000)>>MT_Shift)] = Type; }
-}
-*/
-
-//uint8_t volatile *RAM_Offset_Table[16];
-
 // Debug
 void display_memmap()
 {
@@ -75,7 +59,7 @@ bool found=false;
 uint8_t index;
 uint8_t mem_index;  // Index value to use
 
-printf("dev_memory_install(%d,%x);\n",MEM_Type,Pico_Offset);
+PM_INFO("dev_memory_install(%d,%x);\n",MEM_Type,Pico_Offset);
 
 switch(MEM_Type)
       {
@@ -94,7 +78,7 @@ switch(MEM_Type)
                            {
                             RAM_InitialAddress=i<<14;  // Skip conv memory add if Tandy (Done by BIOS)
                             RAM_Offset_Table[mem_index]=&PM_Memory[-RAM_InitialAddress];
-                            printf("RAM_Offset_Table[mem_index] %x",RAM_Offset_Table[mem_index]);                             
+                            PM_INFO("RAM_Offset_Table[mem_index] %x",RAM_Offset_Table[mem_index]);                             
                             InitialIndex=i;
                            }
                         if ((i-InitialIndex)<MAX_PMRAM)
@@ -130,16 +114,25 @@ return 0;
 }
 
 // Remove all the Emulated RAM (PSRAM, RAM, EMS)
-void dev_memory_remove()
+void dev_memory_remove_ram()
 {
  int Addr=0;
  uint8_t MT;
- do
+// PM_INFO("dev_memory_remove_ram");
+  do
  {
-  if ((BV_Tandy!=0)&&(Addr<640*1024)) continue;  // Skiv Conv memory emulation removal if Tandy
+  busy_wait_ms(5); // Little wait for the display
+//  PM_INFO("@%x, ",Addr);
+  if ((BV_Tandy!=0)&&(Addr<640*1024)) 
+    { 
+//      PM_INFO("Sk ");
+      Addr+=4096;
+      continue;  // Skiv Conv memory emulation removal if Tandy
+    }
   MT=GetMEMType(Addr);
   if ((MT==MEM_PSRAM)||(MT==MEM_RAM)||(MT==MEM_EMS))
      {
+//       PM_INFO("Clean 4Kb");
        SetMEMType(Addr,MEM_NULL,1);
        SetMEMIndex(Addr,0,1);
 //       MEM_Index_T[i]=0;
@@ -147,14 +140,15 @@ void dev_memory_remove()
      } 
   Addr+=4096;
  } while (Addr<1024*1024);
+
 }
 
 // Remove one type of Emulated RAM/ROM
-void dev_memorytype_remove(uint8_t type)
+void dev_memorytype_remove(uint8_t type)  // Used only for BIOS and disk for the moment, so no Tandy Code needed
 {
  for (int i=0;i<MEM_T_Size;i++)
      { 
-       if ((BV_Tandy!=0)&&(i<10*8)) continue;  // Skiv Conv memory emulation removal if Tandy (8k block)
+//       if ((BV_Tandy!=0)&&(i<10*8)) continue;  // Skiv Conv memory emulation removal if Tandy (8k block)
        if (MEM_Type_T[i]==type)
            {
              MEM_Index_T[i]=0;

@@ -27,8 +27,18 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 
 ## Firmwares Revision History : 
 
-### PM_W_Jul16_MD: July 16 Firmware for M24 Mono / LCD Screens
+### PM_W_Oct5: Tandy 1000, CMS and Tandy Audio
 
+- New: Added support for Tandy 1000 (Early ones with Tandy graphic)
+- New: CMS/SAA1099 Sound card Added
+- New: Tandy Sound card Added
+- New: Adlib/Tandy and CMS are working at the same time and can be configured by PMinit
+- New: Added Display of the mounted USB devices
+- New: Adlib/CMS/Tandy and Joystick can be use even if the BIOS Start to fail / is Disabled.
+- ! If the BIOS Start in 40 Column graphic mode, change to 80 Column when starting the setup
+- If the Bootstrap fail to load a sector, display the error code.
+
+### PM_W_Jul16_MD: July 16 Firmware for M24 Mono / LCD Screens
 ### PM_W_Jul16_FR : July 16 Firmware in Fast RAM Mode (No more PSRAM, but faster RAM Access)
 
 ### PM_W_Jul16: This firmware contains mainly bug fix.

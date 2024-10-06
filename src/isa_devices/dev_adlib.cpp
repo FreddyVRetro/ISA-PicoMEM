@@ -32,7 +32,10 @@ extern "C" void OPL_Pico_Shutdown(void);
 extern "C" void OPL_Pico_PortWrite(opl_port_t, unsigned int);
 extern "C" unsigned int OPL_Pico_PortRead(opl_port_t);
 
-bool dev_adlib_active=false;
+bool dev_adlib_active=false;    // True if configured
+volatile bool dev_adlib_playing=false;   // True if playing
+volatile uint8_t dev_adlib_delay=0;      // counter for the Nb of second since last I/O
+uint64_t dev_adlib_lastaccess;  // Last access time (For Audo mute)
 
 uint8_t dev_adlib_install()
 {
@@ -44,15 +47,17 @@ uint8_t dev_adlib_install()
    SetPortType(0x388,DEV_ADLIB,1);   
 
    dev_adlib_active=true;
+   dev_adlib_playing=false;   // It is enabled at the first Adlib IOW
   }
   return 0;
 }
 
 void dev_adlib_remove()
 {
- if (dev_adlib_active)   // Don't stop if not active
+ if (dev_adlib_active)       // Don't stop if not active
   {
    dev_adlib_active=false;
+   dev_adlib_playing=false;
    PM_INFO("Remove OPL2 (0x388)\n");
   
    OPL_Pico_Shutdown();
@@ -89,11 +94,15 @@ void dev_adlib_iow(uint32_t CTRL_AL8,uint32_t ISAIOW_Data)
    case 0:
   //   PM_INFO("OPLR 0,%x-",ISAIOW_Data);
      OPL_Pico_PortWrite(OPL_REGISTER_PORT, (unsigned int) ISAIOW_Data);
+     dev_adlib_playing=true;  // enable mixind, start the timer
+     dev_adlib_delay=0;     
      return;
      break;
    case 1:
    //  PM_INFO("OPLR 1,%x-",ISAIOW_Data);
      OPL_Pico_PortWrite(OPL_DATA_PORT, (unsigned int) ISAIOW_Data);
+     dev_adlib_playing=true;  // enable mixind, start the timer
+     dev_adlib_delay=0;  
      return;
      break;     
   }

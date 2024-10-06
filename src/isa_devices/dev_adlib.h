@@ -1,7 +1,7 @@
 #pragma once
 
-
-extern void play_adlib();
+extern volatile bool dev_adlib_playing;   // True if playing
+extern volatile uint8_t dev_adlib_delay;      // counter for the Nb of second since last I/O
 
 extern uint8_t dev_adlib_install();
 extern void dev_adlib_remove();

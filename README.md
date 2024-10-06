@@ -78,7 +78,9 @@ The PicoMEM exist in 3 Releases : 1.0, 1.1 and 1.11<br />
 - **POST Code** on Rev 1.1 and 1.11 (Port 80 Display in Hexa) through this device : https://www.sparkfun.com/products/16916
 - **ne2000 network card** emulation via Wifi is working on boards with a PicoW.
 - **USB Joystick** for PS4 and Xinput controllers.
-- NEW: **Adlib** using a PCM5102 I2S module.
+- **Adlib** using a PCM5102 I2S module.
+- **NEW: CMS/Game Blaster and Tandy** sound chip are now supported.
+- **NEW: Tandy 1000** (Old models with Tandy Graphic) now supported, even for RAM upgrade.
 
 ## Future Functionality
 
@@ -106,7 +108,7 @@ The PicoMEM is then **more suitable to extend a 512Kb PC to 640K**, Add some UMB
 
 - The PicoMEM BIOS auto detect (At Hardwsare level) the 1st Mb of RAM and Display the RAM MAP with a "Checkit" like Display.
 - You can select to add RAM from the Internal SRAM (128Kb with No Wait State)
-- Emulation from the PSRAM (External RAM) can add RAM to any Address Space.
+- Emulation from the PSRAM (External RAM) can add RAM to any Address Space. (2x slower than SRAM emulated RAM)
 - Then, EMS Emulation emulate a LOTECH Board with Up to 4Mb.
 - Disk access on PM RAM emulated memory are done at the Pico uSD speed. (3Mb/s)
 
@@ -149,24 +151,25 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 
 ## Tested machines :
 - IBM 5150, 5160, 5170
-- IBM PS/2 30 286 (Warning : As its HDD use DMA, does not boot if emulated RAM is added)
+- IBM PS/1, IBM PS/2 30 286 (Warning : As its HDD use DMA, does not boot if emulated RAM is added)
 - Compaq Portable 2 (286): Ok
+- **New : Tandy 1000** : Now tested on a Tandy 1000 SX, EX and HX other to confirm. (October firmware)
 - Amstrad PC1512, PC1640, Sinclair PC200 (It is my DEV Machine)
-- Schneider Euro PC1 (Fast RAM Firmware, EuroPC2, Olivetti M21, Olivetti M24, Sega TeraDrive.
+- Schneider Euro PC1 (Fast RAM Firmware), EuroPC2, Olivetti M21, Olivetti M24, Sega TeraDrive.
+- Commodore PC1, PC10/PC20. (With Fast RAM Firmware)
 - Worked on Various 486, 386, 286 (Has more chance to work with lower ISA Clocks)
 - Tested with some Pentium, Pentium MMX, Pentium 2, AMD K6 ...<br />
 - Amiga 2000 with a A2286/A2386 SX Board. (Use the BIOS in C800)
-- Book8088 (At 4.77MHz and 8MHzwith the latest firmware), The Power need to be connected at 8MHz.
+- Book8088 (At 4.77MHz and 8MHz with the latest firmware), **The Power need to be connected at 8MHz**.
 
 ## Failing Machines :
 - Failed on a 386 with 12MHz ISA Clock
 - Fail on some fast 286 (16MHz)
-- Commodore PC10 / PC20 (Timing issue, fix in progress)
 - Amstrad PPC512 /PPC640 : Problem on some PPC (Can't Boot) Not sure if it depends on the external ISA connectors boards used.
-- Schneider Euro PC 1. (**New:** Working now)
+  > Problem identified on some ISA expantion boards, 100uF Low ESR filtering capacitors may be needed.
 - NuXT / EMM8088 homebrew computers seems to have problem.
 - Amiga 2000 with a A2088.
-- **Tandy 1000** : Does not work yet due to the specific memory map. (SX, EX, HX, TL ...)<br />
+
 
 ## License
 
@@ -181,7 +184,9 @@ If you want to participate, You can ask me access to the source on demand.<br />
 * [Ian Scott](https://github.com/polpo/): Idea to use the Pi Pico instead of the not available Pi 2/4 and Zero plus help on the Hardware design.
 * [PSRAM Code by Ian Scott](https://github.com/polpo/rp2040-psram) : PSRAM PIO Code.
 * [FatFS by Chan](http://elm-chan.org/fsw/ff/00index_e.html) : ExFS Library for microcontrollers.
-* [FatFS by Carl J Kugler III](https://github.com/carlk3/no-OS-FatFS-SD-SPI-RPi-Pico) : FatFS for SD Access in SPI with a Pi Pico
+* [FatFS SD by Carl J Kugler III](https://github.com/carlk3/no-OS-FatFS-SD-SPI-RPi-Pico) : FatFS for SD Access in SPI with a Pi Pico
 * DOSBox (www.dosbox.com): DosBOX BIOS Int13h Code, heavily modified for ExFS support and PicoMEM Interface, with bug correction.
 * ne2000 Emulation code, adapted by yyzkevin.
-* XInput library for the USB Joystick.
+* [XInput library](https://github.com/Ryzee119/tusb_xinput.git) : XInput USB Joystick.
+* [Mitsutaka Okazaki / Graham Sanderson emu8950 v1.1.0] (https://github.com/digital-sound-antiques/emu8950) : Adlib/OPL2 emulation
+* Aaron Giles DREAMM / SCUMM Games emulator : CMS / Tandy emulation

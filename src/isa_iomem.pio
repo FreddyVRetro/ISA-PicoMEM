@@ -47,16 +47,16 @@ restart:
     set pins,0          side 0b01    ; Disable IOCHRDY
 ; 1> Wait for the CPU Go (Control Signal detected)
     out X, 32           side 0b01    
-    in pins, 8          side 0b11    ; Read Address High (A19-18)      (> 0/ADH/ADL) Switch Addr High    
+    in pins, 8          side 0b11    ; Read A0-A7                   > Switch A8-A19
     jmp pin No_DMA [2]  side 0b11    ; Move mux to A8-A19 and jump if No DMA Cycle
 ; If DMA in progress, answer dummy infos and Loop (Pico Core will receive back 0FFFFh that is invalid)
-    in  Y,12            side 0b01    ; Dummy send A0-A19
+    in  Y,12            side 0b01    ; Dummy send A0-A19             > Switch to A0-A7 and Command Signals
     out X,32            side 0b01    ; Dummy get Wait State or Not
     out X,32            side 0b01    ; Dummy Get command
     jmp restart         side 0b01
 No_DMA:
     nop           [2]   side 0b11    ; "Default" 2, 1 Working as well...
-    in pins, 12         side 0b00    ; Read Address High (A19-18)      (> 0/ADH/ADL) Switch Addr High
+    in pins, 12         side 0b00    ; Read Address High (A8-A19)     > Switch to Read/Write Data
 ; Address low was read during the ctrl pin detection
 ; Data is read after by the Pico core (Not PIO)
     out X, 32           side 0b00    ; 2> Put the value sent by the main code to X : Do a Read if <> 0
@@ -89,12 +89,14 @@ static inline void isa_bus_program_init(PIO pio, uint sm, uint offset) {
     sm_config_set_in_shift(&c, true, true, 20);                   // Autopush 20 bits (20 addr) Ctrl and Data read by the CPU
     sm_config_set_out_shift(&c, true, true /* autopull */, 32);    // Autopull 32 bits (condition variables from CPU)
 
-    // Init and Configure AD0/AD8 as In/Out
-    sm_config_set_in_pins(&c, PIN_AD0);                            // Set AD0 is the first Input pin (IN)
-    sm_config_set_out_pins(&c, PIN_AD0, 8);                        // Set AD0 to AD7 as Output pins as well (OUT and PINDIRS)
-    for (int i = PIN_AD0; i <= PIN_AD0 + 8; i++) {
+    // ** Init and Configure AD0/AD8 as In/Out **
+
+    // Initialise the 12 Muxed pin 
+    for (int i = PIN_AD0; i < PIN_AD0 + 12; i++) {
         pio_gpio_init(pio, i);    // Link the PIN to this PIO (All SM !)
     }
+    sm_config_set_in_pins(&c, PIN_AD0);                            // Set AD0 is the first Input pin (IN)
+    sm_config_set_out_pins(&c, PIN_AD0, 8);                        // Set AD0 to AD7 as Output pins as well (OUT and PINDIRS)
     sm_config_set_sideset_pins(&c, PIN_AD); // First pin of the SideSet
 
     // Init and set up IOCHRDY, AD and AS as Output

@@ -11,5 +11,7 @@ target_sources(isa_devices INTERFACE
     ${CMAKE_CURRENT_LIST_DIR}/dev_picomem_io.cpp
     ${CMAKE_CURRENT_LIST_DIR}/dev_post.cpp
     ${CMAKE_CURRENT_LIST_DIR}/dev_adlib.cpp    
+    ${CMAKE_CURRENT_LIST_DIR}/dev_cms.cpp     
+    ${CMAKE_CURRENT_LIST_DIR}/dev_tandy.cpp     
     ${CMAKE_CURRENT_LIST_DIR}/dev_joystick.cpp
 )

@@ -17,7 +17,7 @@ If not, see <https://www.gnu.org/licenses/>.
  */
 #pragma once
 
-// Devices 0 to 3 generate no IOCHRDY (Read only)
+// Devices 0 to 3 generate no IOCHRDY (Write only)
 #define DEV_NULL   0   // No devide use this port
 #define DEV_POST   1   // POST Code port
 #define DEV_IRQ    2   // ! NoWS IRQ Controller IOW > Out 20h counter and Port 21h register
@@ -51,7 +51,7 @@ If not, see <https://www.gnu.org/licenses/>.
 #define CMDERR_MOUTFAIL    0x09  // Disk image mount fail
 
 
-// 0x Basic Config Commands
+// 0x 1x General / Configuration Commands
 #define CMD_Reset         0x00   // Put back the status to 0, after an error
 #define CMD_GetBasePort   0x01
 #define CMD_SetBasePort   0x02
@@ -77,10 +77,9 @@ If not, see <https://www.gnu.org/licenses/>.
 //
 #define CMD_SendIRQ       0x30  // Enable the IRQ
 #define CMD_IRQAck        0x31  // Acknowledge IRQ
-
 #define CMD_LockPort      0x37
 
-// Commands sent to the PicoMEM to send display to the Serial port
+// Commands sent to the PicoMEM to send display to the Serial port (Not used / finished)
 // https://github.com/nottwo/BasicTerm/blob/master/BasicTerm.cpp
 #define CMD_S_Init        0x40  // Serial Output Init (Resolution) and clear Screen
 #define CMD_S_PrintStr    0x41  // Print a Null terminated string from xxx
@@ -93,15 +92,25 @@ If not, see <https://www.gnu.org/licenses/>.
 #define CMD_S_SetAtt      0x48
 #define CMD_S_SetColor    0x49
 
-#define CMD_USB_Enable    0x50
+#define CMD_USB_Enable    0x50	// To replace by OnOff with parameter
 #define CMD_USB_Disable   0x51
 #define CMD_Mouse_Enable  0x52
 #define CMD_Mouse_Disable 0x53
-#define CMD_Keyb_Enable   0x54
-#define CMD_Keyb_Disable  0x55
-#define CMD_Joy_Enable    0x56
-#define CMD_Joy_Disable   0x57
+#define CMD_Joy_OnOff     0x54
+#define CMD_Keyb_OnOff    0x55
+
 #define CMD_Wifi_Infos    0x60   // Get the Wifi Status, retry to connect if not connected
+#define CMD_USB_Status    0x61   // Get the USB Status
+
+// 7x Audio commands
+#define CMD_AudioOnOff    0x70  // Full audio rendering 0: Off 1:On
+
+#define CMD_AdlibOnOff    0x73  // Tandy Audio : 0 : Off 1: On default
+#define CMD_TDYOnOff      0x74  // Tandy Audio : 0 : Off 1: On default or port
+#define CMD_CMSOnOff      0x75  // CMS Audio   : 0 : Off 1: On default or port
+#define CMD_CovoxOnOff    0x76  // Covox Audio : 0 : Off 1: On default or port
+#define CMD_SBOnOff       0x77  // Sound Blaster Audio : 0 : Off 1: On default or port
+#define CMD_GUSOnOff      0x78  // GUS Audio : 0 : Off 1: On default or port
 
 // 8x Disk Commands
 #define CMD_HDD_Getlist    0x80  // Write the list of hdd images into the Disk memory buffer
@@ -113,7 +122,7 @@ If not, see <https://www.gnu.org/licenses/>.
 #define CMD_HDD_NewImage   0x86  // Create a new HDD Image
 
 #define CMD_Int13h         0x88  // Emulate the BIOS Int13h
-//#define CMD_HDD_Create   0x89  // Create an empty disk image
+#define CMD_EthDFS_Send    0x89  // Send a packet to EthDFS server emulator and wait answer
 
 #define INIT_SKIPPED       0xFC  // Skipped or Error to initialize  ! Hardcoded in the ASM BIOS
 #define INIT_INPROGRESS    0xFE
@@ -328,11 +337,11 @@ struct PMCFG_t {
 	uint8_t  BIOSBOOT;
 
 	uint8_t  AudioOut;
-	uint8_t  AudioBuff;
+	uint8_t  AudioBuff;  // Not used for the moment to define the Nb of audio Buffer
 	uint8_t  Audio1;
 	uint8_t  Audio2;
 	uint8_t  Audio3;
-	uint8_t  Adlib;
+	uint8_t  Adlib;		// Adlin On / Off (Port 0x388)
 	uint16_t TDYPort;
 	uint16_t CMSPort;
 	uint16_t SBPort;

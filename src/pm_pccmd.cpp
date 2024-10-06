@@ -124,3 +124,66 @@ void Send_PCC_MemCopyW_512b(uint32_t Src, uint32_t Dest)
   PM_DP_RAM[OFFS_PCCMDPARAM+7]=(uint8_t)(Dest>>12);
   Send_PCC_CMD(PCC_MemCopyW_512b);
 }
+
+uint8_t CopyBuffer_MemType[128];
+uint8_t DPRAMBuffer_Busy[8];
+
+// Copy Data from the PC Memory to the PicoMEM, via PC Commands
+// Source, Size, Block size
+void memcp_PC_to_PM()
+{
+
+}
+
+// Create the Memory type table, 512Kb Block (64Kb max > 128 Block)
+// MEM_NULL : From/to the PC RAM (Via Disk Buffer)
+// MEM_RAM  : From/to the SRAM emulated RAM (Internal)
+// MEM_PSRAM: From/to the PSRAM emulated RAM (External)
+// MEM_EMS  : From/to the PSRAM emulated EMS (External)
+// 0xFF     : Mix of different RAM with PSRAM > Via Disk Buffer and PSRAM Enabled (No uSD transfer)
+void memcp_initBuffMemType()
+{
+	uint16_t mt_beg;
+	uint16_t mt_end;
+	uint32_t PCBuffer_Start;
+	uint32_t PCBuffer_End;
+  uint8_t bn_nb;
+  
+  bn_nb=20;          // To do
+  PCBuffer_Start=0;  // To do
+
+  PCBuffer_End=PCBuffer_Start+512-1; //Current 512b PC Buffer End (-1 as we need the end, not the @ just after the end)
+/*
+  for(uint8_t bn=0;bn<bn_nb;bn++) 
+  
+  {
+  mt_beg = GetMEMType(PCBuffer_Start);
+  mt_end = GetMEMType(PCBuffer_End);
+	if (mt_beg!=mt_end)
+		  { 
+			 PM_ERROR("! Diff Mem Type %d %d > ",mt_beg,mt_end);
+			if ((mt_beg<=MEM_RAM) && (mt_end<=MEM_RAM))
+			   {						          // MEM Begining and End not in PSRAM
+			        mt_beg=MEM_NULL;  // Force Standard BIOS Copy
+				 }
+				 else
+			   {					// MEM Begining or End in PSRAM/EMS
+			        mt_beg=0xFF;    // Force Slow MEM Copy with uSD Disable
+				 }
+#if PM_PRINTF				
+			  printf("%d > ",mt_beg);
+#endif				  
+			 }
+  }
+
+   CopyBuffer_MemType[bn]=mt_beg;
+   PCBuffer_Start+=512;
+	 PCBuffer_End+=512;
+
+*/   
+}
+
+void memcp_PM_to_PC()
+{
+
+}
