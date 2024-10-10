@@ -37,6 +37,7 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 - New: Adlib/CMS/Tandy and Joystick can be use even if the BIOS Start to fail / is Disabled.
 - ! If the BIOS Start in 40 Column graphic mode, change to 80 Column when starting the setup
 - If the Bootstrap fail to load a sector, display the error code.
+- Removed : It does support only SDHC (No more small capacity MicroSD)
 
 ### PM_W_Jul16_MD: July 16 Firmware for M24 Mono / LCD Screens
 ### PM_W_Jul16_FR : July 16 Firmware in Fast RAM Mode (No more PSRAM, but faster RAM Access)
