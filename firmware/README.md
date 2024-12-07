@@ -27,6 +27,12 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 
 ## Firmwares Revision History : 
 
+### Next firmware :
+- 
+- + Improved BIOS RAM Test, to detect Address conflict.
+- + Added detection of cache enabled in the BIOS Address space.
+- ! Was not working with more than 2 Floppy drive.
+
 ### PM_W_Oct5: Tandy 1000, CMS and Tandy Audio
 
 - New: Added support for Tandy 1000 (Early ones with Tandy graphic)

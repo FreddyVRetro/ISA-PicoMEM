@@ -151,7 +151,7 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 
 ## Tested machines :
 - IBM 5150, 5160, 5170
-- IBM PS/1, IBM PS/2 30 286 (Warning : As its HDD use DMA, does not boot if emulated RAM is added)
+- IBM PS/1, IBM PS/2 30 286, PS2 8535 (Warning : As its HDD use DMA, does not boot if emulated RAM is added)
 - Compaq Portable 2 (286): Ok
 - **New : Tandy 1000** : Now tested on a Tandy 1000 SX, EX and HX other to confirm. (October firmware)
 - Amstrad PC1512, PC1640, Sinclair PC200 (It is my DEV Machine)
@@ -165,6 +165,7 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 ## Failing Machines :
 - Failed on a 386 with 12MHz ISA Clock
 - Fail on some fast 286 (16MHz)
+- IBM PS/2 M25
 - Amstrad PPC512 /PPC640 : Problem on some PPC (Can't Boot) Not sure if it depends on the external ISA connectors boards used.
   > Problem identified on some ISA expantion boards, 100uF Low ESR filtering capacitors may be needed.
 - NuXT / EMM8088 homebrew computers seems to have problem.
