@@ -68,7 +68,7 @@ bool pm_audio_init_i2s(uint32_t sample_freq) {
     struct audio_i2s_config config = {
             .data_pin = PICO_AUDIO_I2S_DATA_PIN,
             .clock_pin_base = PICO_AUDIO_I2S_CLOCK_PIN_BASE,
-            .dma_channel = 6,                /// No more hardcoded
+//            .dma_channel = 6,                /// No more hardcoded
             .pio_sm = PICO_AUDIO_I2S_SM,     /// Hardcoded !!!
     };
  

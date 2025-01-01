@@ -98,7 +98,7 @@ void pm_qwiic_scan()
 
 if (quiic_4charLCD_enabled) 
    {
-    printf("Qwiic : 4 Digit LCD Found \n");
+    //printf("Qwiic : 4 Digit LCD Found \n");
     ht16k33_init();
    }
 

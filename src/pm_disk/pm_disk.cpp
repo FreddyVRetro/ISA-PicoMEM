@@ -14,6 +14,7 @@ You should have received a copy of the GNU General Public License along with thi
 If not, see <https://www.gnu.org/licenses/>.
 */
 /* pm_disk.cpp : PicoMEM Library containing the HDD and Floppy emulation functions
+   Support SDCard "0:" and USB "1:"
  */ 
 
 #include <stdio.h>
@@ -25,23 +26,45 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "diskio.h"		  /* Declarations of disk functions */
 
 //DOSBOX Code
-#include "..\dosbox\bios_disk.h"
+#include "../dosbox/bios_disk.h"
 
-#include "..\pm_debug.h"
-#include "..\pm_gvars.h"
-#include "..\pm_defines.h"
-#include "..\pm_disk\pm_disk.h"   // for PC_DB_Start
+#include "../pm_debug.h"
+#include "../pm_gvars.h"
+#include "../pm_defines.h"
+#include "../pm_disk/pm_disk.h"   // for PC_DB_Start
 #include "dev_memory.h"
 extern volatile uint8_t * PMBIOS;  //
+
+#define FDD_USB 0
+#define HDD_USB 0
 
 #define MAX_DISKIMAGES  32
 #define MAX_DISKNAMELEN 14 // 14+2 > 16
 
-// Disk Files (2 Floppy, 4 HDD) 
-// > To Do :Can be changed to Pointers, as thesee contains a 512b buffer (not used)
+// Disk Files (2 Floppy, 4 HDD)
+// > To Do :Can be changed to Pointers
 FIL FDDfile[2];
 FIL HDDfile[4];
 
+/*
+FIL *FDDfile[2];
+FIL *HDDfile[4];
+*/
+
+const char device_path[2][4]={"0:/", "1:/"};
+
+// Images home directory
+#if HDD_USB
+const char hdd_dir[]="1:/HDD/";
+#else
+const char hdd_dir[]="0:/HDD/";
+#endif    
+#if FDD_USB
+const char fdd_dir[]="1:/FLOPPY/";
+#else
+const char fdd_dir[]="0:/FLOPPY/";
+#endif 
+const char rom_dir[]="0:/ROM/";
 
 //unsigned char mbr[512] = {
 const uint8_t __in_flash() newmbr[512] = {
@@ -136,40 +159,7 @@ const uint8_t __in_flash() NullSect[512] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
-
-uint8_t pm_mountfddimage(char *diskfilename, uint8_t fddnumber)
-{
-  FRESULT fr;
-  FILINFO finfo;
-  Bit32u filesize;
-//	struct partTable mbrData;
-	
-  PM_INFO("pm_mountfddimage : %s FDD%d\n",diskfilename,fddnumber);
-  fr = f_stat (diskfilename, &finfo);					/* Get file status to read file size */
-	if (FR_OK != fr) { return 0x01; }
-
-  PM_INFO("finfo: %s [size=%llu] \n", finfo.fname, finfo.fsize);
-	fr = f_open(&FDDfile[fddnumber], diskfilename, FA_OPEN_EXISTING | FA_READ | FA_WRITE); /* ! If the file is already opened, does not work */
-	    if (FR_OK != fr) 
-        { 
-          PM_INFO("File not opened %d\n",fr);    
-          return 0x02;
-        }
-
- // Mount FDD Image
-  
-     imageDiskList[fddnumber] = new imageDisk(&FDDfile[fddnumber], (Bit8u *)diskfilename, (finfo.fsize/1024), false);
-	    if(!imageDiskList[fddnumber]) {     
-         PM_INFO("Floppy Mount fail\n");   
-		     return 0x03;
-	       }
-
-  // Don't need to set the Geometry (Done in the imageDisk init)
-
-  return 0;
-	}
-
-// Convert file open error to PicoMEM error code
+// Convert file operation error to PicoMEM error code
 uint8_t pm_convert_fopen_error(uint8_t fr)
 {
 if (FR_OK != fr) 
@@ -181,7 +171,10 @@ if (FR_OK != fr)
              return CMDERR_FILEREAD;
       case FR_DISK_ERR:
              PM_INFO("Error: Physical disk failure\n");
-             return CMDERR_DISK;             
+             return CMDERR_DISK;
+      case FR_NO_PATH:                
+             PM_INFO("Error: Folder does not exist\n");
+             return CMDERR_NOHDDDIR;                      
       default:
              PM_INFO("f_open failed %d\n",fr);
              return CMDERR_DISK;
@@ -190,6 +183,40 @@ if (FR_OK != fr)
 return 0;       
 }
 
+// * Mount floppy for Int13h
+// * All the Files must be closed before ( FDDfile[] )
+uint8_t pm_mountfddimage(char *diskfilename, uint8_t fddnumber)
+{
+  int fr;
+  FILINFO finfo;
+  Bit32u filesize;
+//	struct partTable mbrData;
+	
+  PM_INFO("pm_mountfddimage : %s FDD%d\n",diskfilename,fddnumber);
+  fr = f_stat (diskfilename, &finfo);					/* Get file status to read file size */
+
+  fr=pm_convert_fopen_error((uint8_t) fr); // Convert fr to PicoMEM Error code
+  if (fr!=0) return fr;
+
+  PM_INFO("finfo: %s [size=%llu] \n", finfo.fname, finfo.fsize);
+  
+ // Open the FDD image file 
+  //malloc(FDDfile[fddnumber],sizeof(FIL));
+	fr = f_open(&FDDfile[fddnumber], diskfilename, FA_OPEN_EXISTING | FA_READ | FA_WRITE); /* ! If the file is already opened, does not work */
+
+  fr=pm_convert_fopen_error((uint8_t) fr); // Convert fr to PicoMEM Error code
+  if (fr!=0) return fr;
+
+ // Mount FDD image  
+     imageDiskList[fddnumber] = new imageDisk(&FDDfile[fddnumber], (Bit8u *)diskfilename, (finfo.fsize/1024), false);
+	    if(!imageDiskList[fddnumber]) {     
+         PM_INFO("Floppy Mount fail\n");   
+		     return 0x03;
+	       }
+  // Don't need to set the Geometry for Floppy (Done in the imageDisk init)
+
+  return 0;
+	}
 
 // * Mount disks for Int13h
 // * All the Files must be closed before ( HDDfile[] )
@@ -204,15 +231,10 @@ uint8_t pm_mounthddimage(char *diskfilename, uint8_t hddnumber)
   PM_INFO("pm_mountdiskimage : %s Disk: %d\n",diskfilename,hddnumber);
   fr = f_stat (diskfilename, &finfo);					/* Get file status to read file size */
 
-  if (fr==FR_NO_PATH)
-     {
-      PM_INFO("Error: Folder does not exist\n");
-      return CMDERR_NOHDDDIR;
-     }
-
   fr=pm_convert_fopen_error((uint8_t) fr); // Convert fr to PicoMEM Error code
   if (fr!=0) return fr;
 
+// Open the HDD image file 
   PM_INFO("finfo: %s [size=%llu] \n", finfo.fname, finfo.fsize);
 	fr = f_open(&HDDfile[hddnumber-1], diskfilename, FA_OPEN_EXISTING | FA_READ | FA_WRITE);
 
@@ -233,27 +255,27 @@ uint8_t pm_mounthddimage(char *diskfilename, uint8_t hddnumber)
 // !! DOSBOX X Also get the geometry infos from the Boot Sector
 
     //imageDiskList[hddnumber+1]->Read_Sector(0,0,1,&mbrData);
-
 #if PM_PRINTF        
-		//if(mbrData.magic1!= 0x55 ||	mbrData.magic2!= 0xaa) LOG_MSG("Possibly invalid partition table in disk image.");
+		//if(mbrData.magic1!= 0x55 ||	mbrData.magic2!= 0xaa) PM_INFO("Possibly invalid partition table in disk image.");
 #endif
 
 		//startSector = 63;
 		//
+/*
+		for (int i=0,i<4,i++)
+    {
+      printf("MBR #%u: bootflag=%u parttype=0x%02x beginchs=0x%02x%02x%02x endchs=0x%02x%02x%02x start=%llu size=%llu",
+			(unsigned int)i,mbrData.pentry[i].bootflag&0x80,mbrData.pentry[i].parttype,
+			mbrData.pentry[i].beginchs[0],mbrData.pentry[i].beginchs[1],mbrData.pentry[i].beginchs[2],
+			mbrData.pentry[i].endchs[0],mbrData.pentry[i].endchs[1],mbrData.pentry[i].endchs[2],
+			(unsigned long long)mbrData.pentry[i].absSectStart,
+			(unsigned long long)mbrData.pentry[i].partSize);
+    }
+*/
 
-//
-//		for (int i=0,i<4,i++)
-//    {
-//      printf("MBR #%u: bootflag=%u parttype=0x%02x beginchs=0x%02x%02x%02x endchs=0x%02x%02x%02x start=%llu size=%llu",
-//			(unsigned int)i,mbrData.pentry[i].bootflag&0x80,mbrData.pentry[i].parttype,
-//			mbrData.pentry[i].beginchs[0],mbrData.pentry[i].beginchs[1],mbrData.pentry[i].beginchs[2],
-//			mbrData.pentry[i].endchs[0],mbrData.pentry[i].endchs[1],mbrData.pentry[i].endchs[2],
-//			(unsigned long long)mbrData.pentry[i].absSectStart,
-//			(unsigned long long)mbrData.pentry[i].partSize);
-//    }
-    //for(m=0;m<4;m++) {
 			/* Pick the first available partition */
-		//	if(mbrData.pentry[m].partSize != 0x00) {
+//    for(m=0;m<4;m++) {
+//	      if(mbrData.pentry[m].partSize != 0x00) {
 		//		LOG_MSG("Using partition %d on drive; skipping %d sectors", m, mbrData.pentry[m].absSectStart);
 		//		startSector = mbrData.pentry[m].absSectStart;
 		//		break;
@@ -266,10 +288,6 @@ uint8_t pm_mounthddimage(char *diskfilename, uint8_t hddnumber)
 // dtype: 0,Floppy 1,HDD 2, ROM
 uint8_t ListImages(uint8_t dtype,uint8_t *ImageNb)
   {
-//    char cwdbuf[FF_LFN_BUF] = {0};
-    char hdd_dir[]="0:/HDD/";
-    char fdd_dir[]="0:/FLOPPY/";
-    char rom_dir[]="0:/ROM/";    
     uint8_t imagecnt;
     uint16_t IMGSize;
     FRESULT fr; /* Return value */
@@ -360,7 +378,7 @@ uint8_t ListImages(uint8_t dtype,uint8_t *ImageNb)
 
         if (validimg) {
         uint16_t fnamelength=strlen(fno.fname);
-        if (fnamelength>17) // 17 is 13 + 4 for extension
+        if (fnamelength>17)     // 17 is 13 + 4 for extension
            {
             fno.fname[13]=0;    // Filename size error
             *(DSKLIST++)=0xFF;
@@ -381,15 +399,6 @@ uint8_t ListImages(uint8_t dtype,uint8_t *ImageNb)
     }
     f_closedir(&dj);
 
-/*
-    for(int i=0;i<5;i++)
-      for(int j=i+1;j<5;j++)
-        if(strcmp(DSKLIST[i],DSKLIST[j])>0){
-            strcpy(temp,DSKLIST[i]);
-            strcpy(DSKLIST[i],DSKLIST[j]);
-            strcpy(DSKLIST[j],temp);
-        }
-*/
     *ImageNb=imagecnt;
     return imagecnt;
 }
@@ -508,7 +517,7 @@ uint8_t PM_LoadConfig()
   bool BIOS_Changed=false;
   FRESULT fr; /* Return value */
   FIL cfg;
-  uint bw;  
+  uint bw;
 
   uint8_t cfg_result;
 
@@ -577,13 +586,13 @@ PM_INFO("Read 0:/config.txt\n");
                 dev_memorytype_remove(MEM_DISK);
                 // Configure the BIOS ROM Address
                 SetMEMType(res,MEM_BIOS,MEM_S_16k);
-                SetMEMIndex(res,MEM_BIOS_I,MEM_S_16k);
-                RAM_Offset_Table[MEM_BIOS_I]=&PMBIOS[-res];
+                SetMEMIndex(res,MEM_BIOS,MEM_S_16k);
+                RAM_Offset_Table[MEM_BIOS]=&PMBIOS[-res];
                 // Configure the BIOS RAM Address
                 res=res+0x4000;
                 SetMEMType(res,MEM_DISK,1);  // 8kb only
-                SetMEMIndex(res,MEM_DISK_I,1);
-                RAM_Offset_Table[MEM_DISK_I]=&PM_DP_RAM[-res];
+                SetMEMIndex(res,MEM_DISK,1);
+                RAM_Offset_Table[MEM_DISK]=&PM_DP_RAM[-res];
                 PC_DB_Start=res+PM_DB_Offset;
                 PM_INFO(" - Done\n",res);
 
@@ -764,13 +773,13 @@ extern DRESULT sd_disk_read(BYTE *buff, LBA_t sector, UINT count);
 extern DRESULT sd_disk_write(const BYTE *buff, LBA_t sector, UINT count);
 extern DRESULT sd_disk_ioctl(BYTE cmd, void *buff);
 
-/*
+
 extern DSTATUS usb_disk_status();
 extern DSTATUS usb_disk_initialize();
 extern DRESULT usb_disk_read(BYTE *buff, LBA_t sector, UINT count);
 extern DRESULT usb_disk_write(const BYTE *buff, LBA_t sector, UINT count);
 extern DRESULT usb_disk_ioctl(BYTE cmd, void *buff);
-*/
+
 }
 
 extern volatile bool PM_Audio_MixPause;
@@ -788,12 +797,12 @@ DSTATUS disk_status (
 	switch (pdrv) {
 	case DEV_SD :
 //    pm_audio_pause()
-		DSTATUS res=sd_disk_status();
+//		DSTATUS res=sd_disk_status();
 //    pm_audio_resume()
-		return res;    
+		return sd_disk_status();;    
 
-	//case DEV_USB :
-		//return usb_disk_status();
+	case DEV_USB :
+		return usb_disk_status();
 	}
 	return STA_NOINIT;
 }
@@ -810,12 +819,13 @@ DSTATUS disk_initialize (
 
 	case DEV_SD :
 //      pm_audio_pause()
-      DSTATUS res=sd_disk_initialize();
+//      DSTATUS res=sd_disk_initialize();
 //      pm_audio_resume()     
-			return res;
+			return sd_disk_initialize();
+      break;
 
-	//case DEV_USB :
-		//return usb_disk_initialize();
+	case DEV_USB :
+		  return usb_disk_initialize();
 	}
 	return STA_NOINIT;
 }
@@ -834,12 +844,12 @@ DRESULT disk_read (
 	switch (pdrv) {
 	case DEV_SD :
 //    pm_audio_pause()
-    DRESULT res=sd_disk_read(buff, sector, count);
+//    DRESULT res=sd_disk_read(buff, sector, count);
 //    pm_audio_resume()
-		return res;
+		return sd_disk_read(buff, sector, count);;
 
-	//case DEV_USB :
-		//return usb_disk_read(buff, sector, count);
+	case DEV_USB :
+		return usb_disk_read(buff, sector, count);
 	}
 
 	return RES_PARERR;
@@ -863,13 +873,14 @@ DRESULT disk_write (
 
 	switch (pdrv) {
 	case DEV_SD :
-//    pm_audio_pause()
+/*    pm_audio_pause()
     DRESULT res=sd_disk_write(buff, sector, count);
-//    pm_audio_resume()    
-		return res;
+    pm_audio_resume()    
+*/    
+		return sd_disk_write(buff, sector, count);
 
-	//case DEV_USB :
-		//return usb_disk_write(buff, sector, count);
+	case DEV_USB :
+		return usb_disk_write(buff, sector, count);
 	}
 
 	return RES_PARERR;
@@ -891,13 +902,14 @@ DRESULT disk_ioctl (
   printf("disk_ioctl %d",pdrv);
 	switch (pdrv) {
 	case DEV_SD :
-//    pm_audio_pause()
+/*    pm_audio_pause()
     DRESULT res=sd_disk_ioctl(cmd, buff);
-//    pm_audio_resume()    
-		return res;
+    pm_audio_resume()    
+*/    
+		return sd_disk_ioctl(cmd, buff);;
 
-	//case DEV_USB :
-		//return usb_disk_ioctl(cmd, buff);
+	case DEV_USB :
+		return usb_disk_ioctl(cmd, buff);
 	}
 
 	return RES_PARERR;

@@ -12,17 +12,14 @@
 ;along with this program; if not, write to the Free Software
 ;Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-; All these variables defined here are in the PicoMEM BIOS "RAM" (4Kb)
+
+VARS_OFFS Equ 16*1024   ; BIOS is 16KB, Variables are just after (8KB in Total)
+
 ; * Variables set or used by the PicoMEM 
-; * !! Don't move them, or change the PicoMEM Firmware accordingly
-
-; BIOS End Fill
-
-VARS_OFFS Equ 16*1024
-
 ; !! Don't change without modifying the Pico Code
+; Don't try to use it in any DOS Code, as this may change
 TIMES (VARS_OFFS)-($-$$) DB 0xFF
-; BIOS RAM "Header"
+; BIOS RAM "Header" - Variables common with the BIOS and the Pico
 BV_VARID      DB 0x12    ; PicoMEM set the first Byte to 0x12
 BV_MEMTst     DB 0x00    ; Byte used to test if the Shared RAM is OK
 BV_InitCount  DB 0x00    ; Increment at each BIOS Start
@@ -38,21 +35,25 @@ BV_IRQ        DB 3       ; Detected IRQ Number
 BV_IRQSource  DB 0x00    ; Source of the Hardware Interrupt, Data stored in IRQ_Param
 BV_IRQStatus  DB 0x00	 ; Status of the IRQ
 BV_IRQArg     DB 0x00	 ; Argument for the IRQ (Like the SW IRQ number to call)
-BV_Reserved   DB 0x00
+BV_DMAStatus  DB 0x00    ; Status of the emulated DMA code (In the Interrupt)
 ; ** Legacy PC infos, detected by the PM BIOS during the First Boot
 PC_DiskNB     DB 0x00    ; Number of Disk found at the origin
 PC_FloppyNB   DB 0x00    ; Number of Physical Floppy drive
-PC_MEM        DW 0x00	 ; PC RAM Size in Kb
+PC_MEM        DW 0x00	 ; PC RAM Size in Kb   ! Must be Word aligned
 New_DiskNB    DB 0x00    ; Number of Disk in total after HDD Mount
 New_FloppyNB  DB 0x00    ; Number of Floppy in total after FDD Mount
-BV_Tandy      DB 0x00    ; 1 if Tandy mode
-BV_TdyRAM     DB 0x00    ; 
+BV_Tandy      DB 0x01    ; 1 if Tandy mode
+BV_TdyRAM     DB 0x00    ; Number of 16KB RAM Block to add to the conventionnal memory
+BV_BoardID    DB 0x00    ; PicoMEM Board ID (Type)
+BV_PicoID     DB 0x00    ; Pico Board ID (Pico, Pico W, Pimoroni...)
+BV_FW_Rev     DW 0x00    ; PicoMEM Firmware revision
 
 BV_SIZE Equ 32           ; Size of the section above
 
 ; Offset 12Kb + 16
 TIMES (VARS_OFFS+BV_SIZE)-($-$$) DB 0x11
 ; HDD 0 DPT (Updated by the Pi Pico, put a pointer to it in int Vector 41h) (16 Bytes)
+; !! Don't change without modifying the Pico Code
 PM_DPT_0 DW 1024     ; Cylinders
 		 DW 16       ; Heads
 		 DW 0        ; Starts reduced write current cylinder
@@ -100,6 +101,7 @@ PM_DPT_1 DW 1024     ; Cylinders
 
 
 ; ** Variables used to send the Registers to the Pi Pico, for the IRQ **
+; !! Don't change without modifying the Pico Code
 ; Offset 12Kb + 64
 TIMES (VARS_OFFS+BV_SIZE+32)-($-$$) DB 0x22
 REG_AX       DW 0x00
@@ -114,7 +116,7 @@ REG_FLAG     DW 0x00
 
 ; ** PicoMEM Configuration variables: Loaded at Boot time from the CF, then saved
 ; !! Don't change without modifying the Pico Code
-; !! Don't change the order, or Config file is not compatible
+; !! Don't change the order, or config file is no more compatible
 TIMES (VARS_OFFS+BV_SIZE+32+18)-($-$$) DB 0x33 ; 66
 PM_ConfigTable:
 PMCFG_FDD0Size DW 360 			; FDD Image files
@@ -179,7 +181,7 @@ PMCFG_Adlib	     DB 0
 PMCFG_TDYPort	 DW 0
 PMCFG_CMSPort    DW 0
 PMCFG_SBPort     DW 0
-PMCFG_Audio4     DB 0
+PMCFG_SBIrq      DB 0
 PMCFG_ColorPr    DB 0 	      ; Menu Color Profile
 
 ; reserve 256 Bytes for future Config Param
@@ -233,6 +235,10 @@ PCCR_Param   DW 512         ; Parameters (Cont) 512 Bytes : 32 Disk maximum
 			 
 			 DW 0FFFFh
 			 DB 'DiskIMG Err  ',0
+TEST_DL:	 DB 3
+			 DB 'Test',0
+			 DB 'Display',0
+			 DB 'Lines for USB Status or other',0
              DB (512-6*16) DUP (0x55)
 
 ; ** PM BIOS variables, used by the BIOS Only
@@ -246,6 +252,11 @@ OLD_DPT0       DD 0
 OLD_DPT1       DD 0
 Int13h_Flag    DB 0
 Int19h_Counter DB 0 	; Counter to check if called by the BIOS (First time) or from a Boot sector
+
+DMA_OFFSET     DW 0     ; To save the initial DMA controller Offset
+DMA_SIZE       DW 0     ; To save the initial DMA controller Save
+DMA_PAGE       DB 0     ; To save the initial DMA controller Page (Not needed, pas does not move)
+
 ; Variables used to control the different features
 PMCFG_PC_MMAP  DB 64 DUP (0)  ; Memory map of the PC (Detected at the first Boot)
 Seg_D_NotUsed  DB 0      ; 1 if there is nothing (Physically) in the segment D
@@ -277,23 +288,22 @@ L_TotalPage     DB 0
 L_CurrentPage   DB 0
 L_TotalEntry    DB 0  ;
 L_CurrPageEntry DB 0  ; Number of entry in the active Page
-ColorOffset     DW 0
+ColorOffset     DW 0  ; Colore profile list Offset
 
 PM_I         	DW 0x00   ; Generic var
 PM_J         	DW 0x00   ; Generic var
 PM_K         	DW 0x00   ; Generic var
 PM_L         	DW 0x00   ; Generic Var
-;PM_Table     DB 32 DUP (0x66)   ; Not used for the moment
 
 Call_Int     	DB 10 DUP (0)	; Interrupt call, self modified code (Moved here)
 
 PMB_Stack:    ; ! Used to display the Memory table
 
-; Next 4Kb Block is RAM
-;TIMES (VARS_OFFS+4*1024+4*1024)-($-$$) DB 0x66   ; Offset : Next 16Kb Block
-TIMES (VARS_OFFS+4*1024)-($-$$) DB 0x66   ; Offset : Next 16Kb Block
+TIMES (VARS_OFFS+4*1024-60)-($-$$) DB 0x55 ; 60 Bytes before Disk : EtherDFS Send buffer Header (Must not be changed/Used)
 
-; Disk Buffer (16Kb)  ; copied other disk def to test from here
+TIMES (VARS_OFFS+4*1024)-($-$$)    DB 0x66 ; RAM Offset 4Kb : Data Transfer buffer
+
+; Disk Buffer (4Kb)  ; copied other disk def to test from here
 PM_DISKB     DW 512
              DB 'MyDisk1      ',0
              DW 0FFFEh
@@ -318,3 +328,7 @@ PM_DISKB     DW 512
              DB 'Folder1',0,'     ',0
 			 DW 0FFFFh
 			 DB 'DiskIMG Err  ',0
+
+TIMES (VARS_OFFS+6*1024)-($-$$)    DB 0x77 ; RAM Offset 6Kb : DMA Copy Buffer (256Bytes)
+
+E_DMA_BUFFER DB 0

@@ -179,9 +179,11 @@ bool sd_init_driver() {
                      */
                     sd_go_idle_state(sd_card_p);
                     break;
+#if USE_SDIO                    
                 case SD_IF_SDIO:
                     myASSERT(sd_card_p->sdio_if_p);
-                    sd_sdio_ctor(sd_card_p);
+                    sd_sdio_ctor(sd_card_p);                  
+#endif
                     break;
                 default:
                     myASSERT(false);

@@ -15,15 +15,15 @@
 
 // SPI Defines
 #ifdef PM_PROTO
-#define PIN_CS   1 // Chip Select
-#define PIN_SCK  2 // Clock
-#define PIN_MOSI 3 // Output
-#define PIN_MISO 0 // Input
+#define PSRAM_PIN_CS   1 // Chip Select
+#define PSRAM_PIN_SCK  2 // Clock
+#define PSRAM_PIN_MOSI 3 // Output
+#define PSRAM_PIN_MISO 0 // Input
 #else // Shift by 4 pin for the Final Board
-#define PIN_CS   5 // Chip Select (SPI0 CS )
-#define PIN_SCK  6 // Clock       (SPI0 SCK)
+#define PSRAM_PIN_CS   5 // Chip Select (SPI0 CS )
+#define PSRAM_PIN_SCK  6 // Clock       (SPI0 SCK)
 #define PIN_MOSI 7 // Output      (SPI0 TX )
-#define PIN_MISO 4 // Input       (SPI0 RX )
+#define PSRAM_PIN_MISO 4 // Input       (SPI0 RX )
 #endif
 
 // "Hardcoded"
@@ -93,15 +93,15 @@ __force_inline pio_spi_inst_t psram_init(void) {
 
 //    printf("sm is %d\n", spi_sm);
 
-    gpio_set_drive_strength(PIN_CS, GPIO_DRIVE_STRENGTH_4MA);
-    gpio_set_drive_strength(PIN_SCK, GPIO_DRIVE_STRENGTH_8MA);
-    gpio_set_drive_strength(PIN_MOSI, GPIO_DRIVE_STRENGTH_8MA);
-    gpio_set_slew_rate(PIN_CS, GPIO_SLEW_RATE_FAST);
-    gpio_set_slew_rate(PIN_SCK, GPIO_SLEW_RATE_FAST);
-    gpio_set_slew_rate(PIN_MOSI, GPIO_SLEW_RATE_FAST);
+    gpio_set_drive_strength(PSRAM_PIN_CS, GPIO_DRIVE_STRENGTH_4MA);
+    gpio_set_drive_strength(PSRAM_PIN_SCK, GPIO_DRIVE_STRENGTH_8MA);
+    gpio_set_drive_strength(PSRAM_PIN_MOSI, GPIO_DRIVE_STRENGTH_8MA);
+    gpio_set_slew_rate(PSRAM_PIN_CS, GPIO_SLEW_RATE_FAST);
+    gpio_set_slew_rate(PSRAM_PIN_SCK, GPIO_SLEW_RATE_FAST);
+    gpio_set_slew_rate(PSRAM_PIN_MOSI, GPIO_SLEW_RATE_FAST);
 
 //    printf("about to init fudge\n", spi_sm);
-    pio_spi_fudge_cs_init(pio1, spi_sm, spi_offset, 8 /*n_bits*/, 1 /*clkdiv*/, PIN_CS, PIN_MOSI, PIN_MISO);
+    pio_spi_fudge_cs_init(pio1, spi_sm, spi_offset, 8 /*n_bits*/, 1 /*clkdiv*/, PSRAM_PIN_CS, PSRAM_PIN_MOSI, PSRAM_PIN_MISO);
 
     // SPI initialisation.
   //  printf("Inited SPI PIO... at sm %d pio %d\n", spi.sm, spi.pio);

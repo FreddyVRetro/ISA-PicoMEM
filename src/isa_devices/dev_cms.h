@@ -8,4 +8,4 @@ extern void dev_cms_remove();
 extern bool dev_cms_installed();
 extern void dev_cms_update();
 extern bool dev_cms_ior(uint32_t CTRL_AL8,uint8_t *Data );
-extern void dev_cms_iow(uint32_t CTRL_AL8,uint32_t ISAIOW_Data);
+extern void dev_cms_iow(uint32_t CTRL_AL8,uint8_t Data);

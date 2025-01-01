@@ -28,14 +28,13 @@ int64_t __isr __time_critical_func(PIC_HandleEvent)(alarm_id_t id, void *user_da
     int32_t ret = (event->handler)(event->value);
     // printf("called event handler: %x %x, ret %d\n", event->handler, event->value, ret);
 #ifdef USE_ALARM
-    // gpio_xor_mask(1u << PICO_DEFAULT_LED_PIN);
     if (!ret) {
         event->alarm_id = 0;
         return ret;
     }
     // A negative return value re-sets the alarm from the time when it initially triggered
     return -(int64_t)ret;
-    /* return (int64_t)ret; */
+    // return (int64_t)ret;
 #else
     if (ret) {
         event->deadline = time_us_32() + ret;
@@ -66,11 +65,11 @@ void PIC_RemoveEvents(PIC_EventHandler handler) {
 void PIC_Init() {
 #ifdef USE_ALARM
     alarm_pool = alarm_pool_create(2, PICO_TIME_DEFAULT_ALARM_POOL_MAX_TIMERS);
-#ifndef RASPBERRYPI_PICO2
-    irq_set_priority(TIMER_IRQ_2, 0x80 );   // PicoMEM : Must not be highest (for the DMA IRQ)
-#else
+#if defined(RASPBERRYPI_PICO2) || defined(PIMORONI_PICO_PLUS2_RP2350)
     irq_set_priority(TIMER0_IRQ_2, 0x80 );   // PicoMEM : Must not be highest (for the DMA IRQ)
-#endif    
+#else
+    irq_set_priority(TIMER_IRQ_2, 0x80 );   // PicoMEM : Must not be highest (for the DMA IRQ)
+#endif
 
     for (int i = 0; i < MAX_PIC_TIMERS; ++i) {
         timerEvents[i].alarm_id = 0;

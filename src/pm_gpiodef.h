@@ -18,9 +18,10 @@ Define the GPIO not used in PIO
 */
 #pragma once
 
-#define PM_SPI_SCK   6 // SPI Clock
-#define PM_SPI_MOSI  7 // SPI Output
-#define PM_SPI_MISO  4 // SPI Input
+#define SD_SPI_CS    3 // SD SPI Chip select
+#define SD_SPI_SCK   6 // SD SPI Clock  (And PSRAM)
+#define SD_SPI_MOSI  7 // SD SPI Output (And PSRAM)
+#define SD_SPI_MISO  4 // SD SPI Input  (And PSRAM)
 
 #define PIN_GP26  26  // 
 #define PIN_GP27  27  //

@@ -20,7 +20,7 @@ The firmware update is done like for any Pi Pico :
 
 Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button on the Pico at the same time:
 - A Folder is the automatically opened on the PC, you need to copy the file to this “Virtual Disk”, 
-  wait until the folder automatically closes and it is finished.<br />
+  wait until the folder automatically closes and it is finished.<br /><br />
 **WARNING:** For the PicoMEM 1.1 ONLY (Corrected on the 1.11): 
 - The PicoMEM must be plugged into a PC so that the programming work. 
   Power on the PC (The Retro one) and press the button at the same time.
@@ -28,10 +28,18 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 ## Firmwares Revision History : 
 
 ### Next firmware :
-- 
-- + Improved BIOS RAM Test, to detect Address conflict.
+- + PSRAM Code improved (DMA Added): PSRAM based RAM and EMS is 30% faster.
+- + 5ns faster ROM/RAM Read cycles.
+- + Access to BIOS Memory doesn't add delay anymore. (Faster BIOS)
+- + Improved BIOS RAM Test, to detect RAM/ROM conflict.
 - + Added detection of cache enabled in the BIOS Address space.
+- + Disk infos now show the Head/Sector/Cylinder.
+- + Display why the EMS can't be enabled in the BIOS.
+- - Removed the unused BIOS options (To remove confusion)
+-   Moved to PicoSDK 2.0.0
 - ! Was not working with more than 2 Floppy drive.
+- ! Fix the Joystick port initial value, Add Joystick in BIOS Variables : Better Joystick auto detection
+- Various little fix/Changes I don't remember
 
 ### PM_W_Oct5: Tandy 1000, CMS and Tandy Audio
 

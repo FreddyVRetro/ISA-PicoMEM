@@ -45,8 +45,8 @@ CPU 186
 %define DISPLAY_MAXCONV	      0
 %define ENABLE_IRQ 	          1
 %define DISPLAY_IRQNb		  0
-
 %define ADD_Debug 0
+; Debug mode end
 
 %if DOS_COM=1
 %define FORCE_INT19h          0
@@ -68,13 +68,13 @@ DB 0x20
 
     JMP PM_START
 
-DB 'PMBIOS'
+    DB 'PMBIOS'
 
 STR_PICOMEM   DB 'PicoMEM',0
 STR_Init      DB ' BIOS (Date ',__DATE__,')',0
 STR_SPACECRLF DB ' '
 STR_CRLF      DB 0x0D,0x0A,0
-STR_TESTOK    DB ' - Init: ',0
+STR_Init2     DB ' - Init: ',0
 STR_InitEnd   DB ' End',0x0D,0x0A,0
 
 STR_PICOMEMSTART DB ' BIOS by FreddyV ',__DATE__,0
@@ -85,43 +85,44 @@ STR_SPACE     DB ' ',0
 STR_DDOTNS    DB ':',0
 STR_BOOTCOUNT DB ' - Boot Count : ',0
 STR_PSRAM     DB ' ',254,' Memory : ',0
-STR_SD        DB ' - MicroSD : ',0
-STR_USB       DB ' - USB : ',0
-STR_CONFIG    DB ' - Config : ',0
+STR_SD        DB '- MicroSD : ',0
+STR_USB       DB '- USB : ',0
+STR_CONFIG    DB '- Config : ',0
 %if POST_DisplayPCRAMSize=1
 STR_MEM       DB ' ',254,' PC Memory : ',0
 %endif
 STR_Wifi      DB ' ',254,' Wifi : ',0
-;STR_MAC       DB ' - MAC : ',0
+;STR_MAC      DB ' - MAC : ',0
 STR_SSID      DB ' - SSID : ',0
 STR_IRQNB	  DB ' - IRQ : ',0
-;STR_MAXMEM    DB ' ',254,' Max Conventional Mem : ',0
+;STR_MAXMEM   DB ' ',254,' Max Conventional Mem : ',0
 
-STR_WAITCOM  DB 0x0D,0x0A,'USB DEBUG Mode: Connect a terminal to the USB Serial Port.',0x0D,0x0A,0
+STR_WAITCOM   DB 0x0D,0x0A,'USB DEBUG Mode: Connect a terminal to the USB Serial Port.',0x0D,0x0A,0
 
 STR_SUP       DB ' > ',0
 STR_KB        DB 'kB',0
 
 STR_OK        DB 'Ok ',0
 STR_FAILURE   DB 'Fail ',0
-STR_DISABLED  DB 'Disabled',0
-STR_SKIP      DB 'Skipped',0
+STR_DISABLED  DB 'Disabled ',0
+STR_SKIP      DB 'Skipped ',0
 STR_FATAL     DB 0x0D,0x0A,' Fatal '
 STR_ERROR     DB 'Error: ',0
 STR_DONE      DB 'Done',0
 
-STR_EmulStart DB 'PicoMEM Emulation : ',0
+;STR_EmulStart DB 'PicoMEM Emulation : ',0
 
 STR_PMNOTDETECTED DB 'IO Port Error',0x0D,0x0A,0
 STR_PMROMRAMERR   DB 'BIOS Memory Error',0x0D,0x0A,0
-STR_PMDISKBERR    DB 'DISK Buffer Error',0x0D,0x0A,0
+STR_PMRAMCMDERR   DB 'Memory Error: PC Cache enabled or Command error',0x0D,0x0A,0
+;STR_PMDISKBERR    DB 'DISK Buffer Error',0x0D,0x0A,0
 ;STR_OLDBIOS       DB ' ',254,' Old BIOS > Start the setup later',0x0D,0x0A,0
 
 STR_PressAny DB 'Press Any Key',0
 STR_PressS   DB '> Press S for Setup, Other to continue ',0
 
-STR_HDD DB ' ',254,' HDD',0
-STR_FDD DB ' ',254,' FDD',0
+STR_HDD  DB ' ',254,' HDD',0
+STR_FDD  DB ' ',254,' FDD',0
 
 ; BV_IRQSource Values defines (Interrupt Source/Command)
 
@@ -138,10 +139,11 @@ STR_FDD DB ' ',254,' FDD',0
 %define IRQ_IRQ7     	10
 %define IRQ_IRQ9     	11
 %define IRQ_IRQ10     	12
+%define IRQ_DMA         13
 
 %define IRQ_NE2000      20
 
-%define IRQ_Total       11
+%define IRQ_Total       14
 
 IRQ_Table DW IRQCMD_None           ;0
           DW IRQCMD_RedirectHW     ;1
@@ -149,11 +151,15 @@ IRQ_Table DW IRQCMD_None           ;0
           DW IRQCMD_StartPCCMD	   ;3
 		  DW IRQCMD_USBMouse	   ;4
 		  DW IRQCMD_Keyboard	   ;5
-		  DW IRQCMD_IRQ3
-		  DW IRQCMD_IRQ4
-		  DW IRQCMD_IRQ5
-		  DW IRQCMD_IRQ6
-		  DW IRQCMD_IRQ7		  
+		  DW IRQCMD_IRQ3           ;6
+		  DW IRQCMD_IRQ4           ;7
+		  DW IRQCMD_IRQ5           ;8
+		  DW IRQCMD_IRQ6           ;9
+		  DW IRQCMD_IRQ7		   ;10
+		  DW IRQCMD_IRQ9		   ;11
+		  DW IRQCMD_IRQ10		   ;12
+		  DW IRQCMD_DMA			   ;13
+		  DW IRQCMD_None
 
 ; Various/Test messages
 
@@ -163,10 +169,9 @@ STR_InstInt19h DB 'Install Int19h',0x0D,0x0A,0
 STR_DiskMount  DB 'Mount Disks',0x0D,0x0A,0
 %endif
 
-STR_STATUS   DB 'Status : ',0
+STR_STATUS     DB 'Status : ',0
 
-
-STR_Tandy DB 'Tandy',0x0D,0x0A,0
+;STR_Tandy DB 'Tandy',0x0D,0x0A,0
 ;STR_DISKTEST DB 'HDD Test : ',0x0D,0x0A,0
 ;STR_HDDLIST  DB 'CMD_HDD_Getlist',0x0D,0x0A,0
 ;STR_CMDINT13 DB 'CMD_Int13h',0x0D,0x0A,0
@@ -303,12 +308,52 @@ PM_START:
 %if DOS_COM=1
 ; Code test Zone, in COM Version only
 
+;jmp Skip_test
+
 ;jmp WordInputTest
 ;jmp StrInputTest
 ;CALL BM_ChangeFDD0Image
 ;JMP BIOS_Exit
 
-jmp Skip_test
+; DMA copy test code
+
+        PUSH CS
+		POP DX
+		MOV AX,DX
+		MOV CL,12
+		SHR AX,CL
+		MOV CL,4
+		SHL DX,CL
+		MOV BX,PM_DISKB
+		ADD BX,DX
+		ADC AX,0
+;		AX:BX Page:Offset
+
+		MOV BYTE CS:[BV_IRQParam],1		; DMA Nb
+ 		MOV BYTE CS:[BV_IRQParam+1],AL	; Save the DMA page (from emulated DMA registers)
+		MOV BYTE CS:[BV_IRQParam+2],1   ; 1 if it is the first Address of the transfer (Sent by the Pico)
+		MOV BYTE CS:[BV_IRQParam+3],8	; Read the Data copy size (Must be <256)
+		
+
+		XOR AX,AX
+		OUT 0Ch,AL          ; clear DMA flipflop (To read the values in the correct order)
+; Update the DMA offset
+		MOV AX,BX
+        OUT 02h,AL	; LSB
+		XCHG AH,AL
+		OUT 02h,AL	; MSB
+
+; Setup the length
+		MOV AX,16 ; Test length (DMA controller)
+		DEC AX
+		OUT 03h,AL
+		XCHG AH,AL
+		OUT 03h,AL
+
+		CALL IRQCMD_DMA
+		CALL IRQCMD_DMA
+
+        jmp Skip_test
 
     MOV byte [BV_IRQ],3
 %if ENABLE_IRQ=1
@@ -354,101 +399,18 @@ Int_SelfMod:
 	
 	JMP BIOS_Exit
 
-WordInputTest:
-
-; CX : Number of Digit needed (Max 5)
-; ES:DI Pointer to a Memory zone, to store the string
-; DX : Screen Position
-; BL : Text Attribute
-    PUSH DS
-	POP ES
-	MOV DI,PCCR_Param
-	MOV BL,7
-	MOV DX,10
-	MOV CX,3
-	CALL BIOS_WordInput
-	
-	CALL BIOS_PrintAX_Dec	
-	JMP BIOS_Exit
-
-StrInputTest:
-; CX : Number of Digit needed (Max 5)
-; ES:DI Pointer to a Memory zone, to store the string
-; DX : Screen Position
-; BL : Text Attribute
-    PUSH DS
-	POP ES
-	MOV DI,PCCR_Param
-	MOV BL,7
-	MOV DX,10
-	MOV CX,13
-	CALL BIOS_StringInput
-	
-	CALL BIOS_Printstr
-	JMP BIOS_Exit
-
 Skip_test:
 %endif  ; DOS_COM=1
 
 ; *****  PicoMEM Board initial test sequence *****
-
+	BIOSPOST 0x00
+	
 	printstr_w STR_PICOMEM
 	printstr_w STR_Init
 
-; *** PicoMEM Test : BIOS RAM Test (16x AA/55)
-    MOV CX,16
-	MOV SI,BV_MEMTst
-ROMRAM_TestLoop:
-	MOV AL,0AAh
-	MOV byte [SI],AL
-	CMP AL,byte [SI]
-	JNE ROMRAM_Error
-	MOV AL,055h
-	MOV byte [SI],AL
-	CMP AL,byte [SI]
-	JNE ROMRAM_Error
-	LOOP ROMRAM_TestLoop
-    JMP ROMRAM_Ok
-	
-ROMRAM_Error:
-	BIOSPOST 0x80
-    MOV AX,STR_PMROMRAMERR
-	CALL PM_FatalError	; Fatal Error
-	JMP BIOS_Exit	
-ROMRAM_Ok:
-	BIOSPOST 0x00
-
-; *** PicoMEM Test : Disk Buffer RAM Test  (16x AA55/55AA)
-    MOV CX,16
-	MOV SI,PM_DISKB
-DISKRAM_TestLoop:
-    MOV BX,[SI]		; Save the Value
-	MOV AX,0AA55h
-	MOV [SI],AX
-	CMP AX,[SI]
-	JNE DBuffer_Error
-	MOV AX,055AAh
-	MOV [SI],AX
-	CMP AX,[SI]
-	JNE DBuffer_Error	
-    MOV [SI],BX		; Restore the Value
-	INC SI
-	LOOP DISKRAM_TestLoop
-    JMP DBuffer_Ok
-	
-DBuffer_Error:	
-	BIOSPOST 0x81
-    MOV AX,STR_PMDISKBERR
-	CALL PM_FatalError	; Fatal Error
-	JMP BIOS_Exit
-DBuffer_Ok:	
-	BIOSPOST 0x01
-
-; Now we can start using the RAM
-
 ; *** PicoMEM Test : Port Test 
 ; I/O Port test and Display (Currently test one Hardcoded port)
-    MOV DX,PM_BasePort
+    MOV DX,PM_BasePort	; Test the Base Port
 	CALL PM_TestReadPort
 %if DOS_COM=1
     MOV AL,1
@@ -459,43 +421,67 @@ DBuffer_Ok:
 	MOV AX,STR_PMNOTDETECTED
 	CALL PM_FatalError	; Fatal Error
 	JMP BIOS_Exit
-.PM_Detected:	
+.PM_Detected:
+
+	BIOSPOST 0x01
+	
+; *** PicoMEM Test : BIOS RAM Test (16x AA/55)
+
+    MOV SI,VARS_OFFS	; Test Offset (Segment DS)
+	MOV CX,8			; Test 8KB
+	CALL TestRAMSlow
+	JNC ROMRAM_Ok
+
+;   MOV CX,16
+; 	MOV SI,BV_MEMTst
+;ROMRAM_TestLoop:
+; 	MOV AL,0AAh
+;	MOV byte [SI],AL
+;	CMP AL,byte [SI]
+;	JNE ROMRAM_Error
+;	MOV AL,055h
+;	MOV byte [SI],AL
+;	CMP AL,byte [SI]
+;	JNE ROMRAM_Error
+;	LOOP ROMRAM_TestLoop
+;   JMP ROMRAM_Ok
+
+ROMRAM_Error:
+	BIOSPOST 0x80
+    MOV AX,STR_PMROMRAMERR
+	CALL PM_FatalError	; Fatal Error
+	JMP BIOS_Exit	
+ROMRAM_Ok:
+
+; Now we can start using the RAM
 	BIOSPOST 0x02
 
-	printstr_w STR_TESTOK
+	printstr_w STR_Init2
 	
 ; ** As the BIOS RAM is Ok, increment the Init Counter
 	INC byte [BV_InitCount]
 
 ; *** POST: Initialize the BIOS Vars (Default values)
     MOV byte [PM_NeedReboot],0
+	MOV byte [Int19h_SkipSetup],0		; Ask to not start in the Boot Strap Int19h
 	MOV byte [ListLoaded],0	
-    MOV byte [FDD0_Attribute],0
-    MOV byte [FDD1_Attribute],0
-    MOV byte [HDD0_Attribute],0
-    MOV byte [HDD1_Attribute],0
-    MOV byte [HDD2_Attribute],0
-    MOV byte [HDD3_Attribute],0
-	
 	MOV byte [Int13h_Flag],0
 	MOV byte [BOOT_FDDFirst],0
 	
 	MOV byte [PMCFG_SD_Speed],24
 	MOV byte [PMCFG_RAM_Speed],100
-	MOV byte [Int19h_SkipSetup],0		; Ask to not start in the Boot Strap Int19h
 	
 ; *** POST : Wait the end of the PicoMEM Initialisazion ***
 
 ; Read Command Status, then :
-; 1) Check if in Wait COM Mode
+; 1) Check if in Wait COM Mode (Status Port)
 
 	printchar_w '.'    ; Check if in Debug mode (Wait COM)
 	
 %if DOS_COM=1
 	MOV AH,0
 %else
-	MOV DX,PM_BasePort
-    IN AL,DX 
+    CALL PM_ReadStatus
 %endif ; DOS_COM=1
     CMP AL,STAT_WAITCOM
 	JNE POST_NoWaitCOM
@@ -503,8 +489,7 @@ DBuffer_Ok:
 	printstr_w STR_WAITCOM
     
 POST_WaitCOMLoop:
-    MOV DX,PM_BasePort
-    IN AL,DX 
+    CALL PM_ReadStatus 
     CMP AL,STAT_WAITCOM
 	JE POST_WaitCOMLoop
 
@@ -512,18 +497,17 @@ POST_NoWaitCOM:
 
 	BIOSPOST 0x03
 
-; 2) If in Init mode, wait for the end
+; 2) If in Init mode (Status Port), wait for the end
 
     CMP AL,STAT_INIT
 	JNE POST_InitCompleted
 	
 POST_WaitInitLoop:
-    MOV DX,PM_BasePort
-    IN AL,DX 
+    CALL PM_ReadStatus 
     CMP AL,STAT_INIT
 	JE POST_WaitInitLoop	; If the Init never finish, the PC is crashed !!
 
-POST_InitCompleted:	
+POST_InitCompleted:
 
 %if DOS_COM=1
 	JMP StatusAtBootOk
@@ -534,8 +518,7 @@ POST_InitCompleted:
 	BIOSPOST 0x10
 	printchar_w '.'    ; Check Command Port Status (Must be 0)
 
-    MOV DX,PM_BasePort
-    IN AL,DX
+    CALL PM_ReadStatus
     CMP AL,STAT_READY
     JE StatusAtBootOk
 	
@@ -549,6 +532,39 @@ POST_InitCompleted:
     CALL PM_Reset
 StatusAtBootOk:
 
+; Now we can use RAM and commands, verify if the command to write to RAM is Ok
+; Write from port, Read from memory and compare : Detect if PC Cache is active
+
+    MOV CX,4
+
+	XOR BX,BX
+RAM_CMD_TestLoop:
+    ADD BL,11h
+	PUSH BX
+	PUSH CX
+
+    MOV AH,CMD_Test_RAM	     	; Write BL to [BV_MEMTst]
+	CALL PM_SendCMD
+	CALL PM_WaitCMDEnd
+
+	POP CX
+	POP BX
+
+    CMP BL,byte [BV_MEMTst]		; If BV_MEMTst
+	JNE RAM_CMD_TestError
+
+	LOOP RAM_CMD_TestLoop
+	JMP RAM_CMD_TestOk
+	
+RAM_CMD_TestError:
+
+	BIOSPOST 0x80
+    MOV AX,STR_PMRAMCMDERR
+	CALL PM_FatalError	; Fatal Error
+	JMP BIOS_Exit
+
+RAM_CMD_TestOk:
+	
 ; *** Tandy RAM Mode : Perform the RAM Scan, then initialise Conventionnal RAM and Reboot ***
 
     CMP byte CS:[BV_TdyRAM],0
@@ -557,8 +573,10 @@ StatusAtBootOk:
     CMP byte CS:[BV_InitCount],1
 	JNE POST_TandyRAMTest2
 	
-; Detect the RAM confir before the PMRAM is used
+; Detect the RAM config before the PMRAM is used
 	CALL PM_Memory_FirstBoot     
+
+    MOV byte [PMCFG_PMRAM_Ext],0  ; Disable the PMRAM Extention just in case
 
 ; Ask the PicoMEM to add the RAM
 
@@ -567,6 +585,19 @@ StatusAtBootOk:
 	MOV AH,CMD_TDY_Init
 	CALL PM_SendCMD
 	CALL PM_WaitCMDEnd
+
+; Copy what the PicoMEM wrote in the PMCFG_PM_MMAP to the PMCFG_PC_MMAP
+	PUSH CS
+	POP ES
+	MOV SI,PMCFG_PM_MMAP
+	MOV DI,PMCFG_PC_MMAP
+	MOV CX,40
+	REP MOVSB
+	
+;	MOV SI,PMCFG_PM_MMAP
+;	MOV CX,4
+;	MOV AL,MEM_PSRAM
+;	REP STOSB
 	
     JMP PM_Reboot
 
@@ -608,9 +639,7 @@ PM_NoPreBootSetup:
 	
 	CMP byte CS:[PMCFG_PREBOOT],1
 	JE PM_Skipdot
-	
 	printchar_w '.'   		    ; Install IRQ19h
-
 PM_Skipdot:
 
     CALL PM_InstallIRQ19		; Install the Boot Strap IRQ
@@ -619,7 +648,6 @@ PM_Skipdot:
 
 	CMP byte CS:[PMCFG_PREBOOT],1
 	JE BIOS_Exit
-	
 	printstr_w STR_InitEnd
 
 BIOS_Exit:						; The BIOS Jump here after a Fatal Error (Board not working)
@@ -699,6 +727,15 @@ NotUpdateBIOSRAMSize:
     MOV AH,CMD_DEV_Init
 	CALL PM_SendCMD           ; Do CMD_DEV_Init Command
 	CALL PM_WaitCMDEnd        ; Wait for the command End
+
+; Add Joystick in the BIOS Variable if added by the PicoMEM
+    CMP BYTE CS:[PMCFG_EnableJOY],1
+	JNE Not_Add_Joystick
+	
+    MOV AX,040h
+	MOV ES,AX
+    OR BYTE ES:[BIOSVAR_EQUIPH],10h		; Needed for some games (Alley Cat)
+Not_Add_Joystick:
 
 %if ENABLE_IRQ=1
     CALL PM_InstallIRQ3_5_7
@@ -811,11 +848,26 @@ DiskInit_NoHDD3:
 	CALL BIOS_HookIRQ
 
 ;printstr_w STR_Skip
- 	
+
     RET  ; PM_InstallIRQ13 End
 
 ; ******  Display the emulated Disk list (FDD and HDD) ******
 Display_DisksList:
+
+; Get the Disk Status (String List)
+    MOV AH,CMD_DISK_Status
+	CALL PM_SendCMD         ; Get the Wifi Status Infos
+	CALL PM_WaitCMDEnd      ; !! WARNING, Crash if the Pico command does not end
+	
+%if DOS_COM=1
+    MOV SI,TEST_DL
+%else
+	MOV SI,PCCR_Param
+%endif	
+	CALL Display_String_List
+	RET
+
+%if 0
 ; ** Display the FDD Images list **
     XOR BX,BX
 DisplayMountedFDDList_Loop:
@@ -902,7 +954,7 @@ No_Display_ImageName:
     CMP BX,4 ; 4 HDD Images max
     JNE DisplayMountedHDDList_Loop
 	RET ; Display_DisksList End
-
+%endif
 
 ;STR_DetIRQ DB 'IRQ ',0
 ;STR_Detected DB 'Detected:',0
@@ -1331,15 +1383,19 @@ WaitKey_xs_Counter_End:
 %define  IRQ_Stat_REQUESTED     1   ; Set by the Pico, IRQ Request in progress
 %define  IRQ_Stat_INPROGRESS 	2   ; Set by the BIOS, IRQ In progress
 
-%define  IRQ_Stat_COMPLETED		0x10 ; Set by the BIOS, IRQ Completed Ok
-%define  IRQ_Stat_WRONGSOURCE   0x11 ; Set by the BIOS, IRQ Completed, Wrong Source
-%define  IRQ_Stat_DISABLED      0x12 ; Ths interrupt is disabled in the PIC
-%define  IRQ_Stat_INVALIDARG    0x13 ; Invalid Argument Error
-%define  IRQ_Stat_SameIRQ       0x14 ; Asked to call the same IRQ
+%define  IRQ_Stat_COMPLETED		0x10 ; 16 Set by the BIOS, IRQ Completed Ok
+%define  IRQ_Stat_WRONGSOURCE   0x11 ; 17 Set by the BIOS, IRQ Completed, Wrong Source
+%define  IRQ_Stat_DISABLED      0x12 ; 18 Ths interrupt is disabled in the PIC
+%define  IRQ_Stat_INVALIDARG    0x13 ; 19 Invalid Argument Error
+%define  IRQ_Stat_SameIRQ       0x14 ; 20 Asked to call the same IRQ
+%define  IRQ_Stat_ALREADY_INP   0x15 ; 21 IRQ was already in progress
 
 IRQ_Mouse_InProgress DB 0
 
 PM_Int:
+;        CMP byte CS:[BV_IRQStatus],IRQ_Stat_INPROGRESS
+;		JE 
+		MOV byte CS:[BV_IRQStatus],IRQ_Stat_INPROGRESS ; Change State to Command in progress
 		PUSH BX
 
 %if DISPLAY_IRQNb=1
@@ -1353,7 +1409,6 @@ PM_Int:
 		pop_all_exceptbx	
 %endif
 
-		MOV byte CS:[BV_IRQStatus],IRQ_Stat_INPROGRESS ; Change State to Command in progress
 		XOR BX,BX
 		MOV BL,CS:[BV_IRQSource]    ; Read the next command
 		CMP BL,IRQ_Total
@@ -1389,7 +1444,7 @@ PM_Int_End_NoAck:
 IRQCMD_None:
 %if DISPLAY_IRQNb=1
         push_all_exceptbx
-		MOV AL,'i'
+		MOV AL,'x'
 		MOV BL,7
 		CALL BIOS_Printchar
 		pop_all_exceptbx
@@ -1433,9 +1488,6 @@ IRQCMD_RedirectHWHigh_Ok:
 		CALL Call_Int			; Call the BL SW interrupt
 
 IRQCMD_RedirectHW_Ignore:
-;		MOV AL,'e'
-;		MOV BL,2
-;		CALL BIOS_Printchar
 		
 		JMP PM_Int_End_Ok
 
@@ -1462,7 +1514,6 @@ IRQCMD_StartPCCMD:
 		CALL BIOS_Printchar			
 
 		JMP PM_Int_End_Ok		
-
 
 ; Mouse IRQ Event > Send the Data to the Mouse Interrupt Driver
 IRQCMD_USBMouse:
@@ -1503,7 +1554,7 @@ IRQCMD_IRQ3:
 		IN AL,21h
 		AND AL,00001000b
 		JNZ SkipInt
-		CMP byte CS:[BV_IRQ],3
+		CMP byte CS:[BV_IRQ],3	; Compare with the Hardware IRQ number
 		JE SameInt
 
 		Int 3+8
@@ -1530,10 +1581,7 @@ IRQCMD_IRQ4:
 		POP BX
 		IRET
 		
-SkipInt:
-;		IN AL,21h
-;		AND AL,11110111b
-;		OUT 21h,AL
+SkipInt: ; Skip > Return Disabled IRQ code
 		MOV AL,20h
 		OUT 20h,AL
 		MOV byte CS:[BV_IRQStatus],IRQ_Stat_DISABLED  ; The Interrupt was not executed (PIC Mask)
@@ -1554,7 +1602,7 @@ IRQCMD_IRQ5:
 		IN AL,21h
 		AND AL,00100000b
 		JNZ SkipInt
-		CMP byte CS:[BV_IRQ],5
+		CMP byte CS:[BV_IRQ],5	; Compare with the Hardware IRQ number
 		JE SameInt
 
 		Int 5+8
@@ -1586,7 +1634,7 @@ IRQCMD_IRQ7:
 		IN AL,21h
 		AND AL,10000000b
 		JNZ SkipInt
-		CMP byte CS:[BV_IRQ],7
+		CMP byte CS:[BV_IRQ],7	; Compare with the Hardware IRQ number
 		JE SameInt		
 
 		Int 7+8
@@ -1597,6 +1645,229 @@ IRQCMD_IRQ7:
 		POP AX
 		POP BX		
 		IRET
+
+IRQCMD_IRQ9:
+IRQCMD_IRQ10:
+
+       JMP IRQCMD_RedirectHW_Err
+
+;--------------------------------------------------------------
+; - Emulated DMA Code
+
+IRQCMD_DMA:
+		MOV Byte CS:[BV_DMAStatus],2
+	
+;		POP SI
+;		POP DS
+;		POP CX
+;		POP AX
+
+;		POP BX
+;		MOV byte CS:[BV_IRQStatus],IRQ_Stat_COMPLETED ; Change State to Command Completed		
+;		MOV Byte CS:[BV_DMAStatus],3
+;		IRET
+		
+        PUSH AX
+		PUSH CX
+		PUSH DS
+		PUSH SI
+
+; Get the DMA number
+		XOR AX,AX
+        CLI
+		OUT 0Ch,AL          ; clear DMA flipflop (To read the values in the correct order)
+		CMP BYTE CS:[BV_IRQParam],1		 ; Read the DMA number
+		JNE IRQ_CMD_READ_DMA3
+
+; Read the DMA Values (Address and Transfer size)
+
+; DMA 1
+; Read the DMA page
+ 		MOV AL,BYTE CS:[BV_IRQParam+1]	; Read the DMA page (from emulated DMA registers)
+		MOV CL,12
+		SHL AX,CL
+;       IN AL,83h
+		MOV DS,AX			; DS is the current page number
+; Read the DMA offset
+        IN AL,02h	; LSB
+		XCHG AH,AL
+		IN AL,02h	; MSB
+		XCHG AH,AL
+		MOV SI,AX			; SI is the current DMA offset
+; Read the length
+		IN AL,03h
+		XCHG AH,AL
+		IN AL,03h
+		XCHG AH,AL
+		INC AX
+		MOV DX,AX
+
+		JMP IRQ_READ_DMA_END
+
+IRQ_CMD_READ_DMA3:
+; DMA 3
+; Read the DMA page
+ 		MOV AL,BYTE CS:[BV_IRQParam+1]	; Read the DMA page (from emulated DMA registers)
+		MOV CL,12
+		SHL AX,CL
+;		IN AL,82h
+		MOV DS,AX			; DS is the current page number
+		
+; Read the DMA offset
+        IN AL,06h	; LSB
+		XCHG AH,AL
+		IN AL,06h	; MSB
+		XCHG AH,AL
+		MOV SI,AX			; SI is the current DMA offset
+; Read the length
+		IN AL,07h
+		XCHG AH,AL
+		IN AL,07h
+		XCHG AH,AL
+		INC AX
+		MOV DX,AX			; DX : DMA transfer size
+
+IRQ_READ_DMA_END:
+        STI
+
+;DS:SI : DMA Buffer Address
+;DX    : Remaining bytes to copy  (From DMA registers)
+
+		CMP BYTE CS:[BV_IRQParam+2],1   ; 1 if it is the first Address of the transfer (Sent by the Pico)
+		JNE IRQCMD_DMA_NOT_FIRST
+
+		MOV AX,DS
+		MOV CL,12
+		SHR AX,CL		; Page is the last 4 Bit of the segment
+		MOV CS:[DMA_PAGE],AL	; Save the Page
+		MOV AX,SI
+		MOV CS:[DMA_OFFSET],AX  ; Save the PC DMA Buffer Offset
+		MOV CS:[DMA_SIZE],DX	; Save the DMA Buffer Size (DMA Controller side)
+
+IRQCMD_DMA_NOT_FIRST:
+
+%if DISPLAY_IRQNb=1
+		push_all_exceptbx
+		MOV AL,'d'
+		MOV BL,R_BK
+		CALL BIOS_Printchar
+		MOV BL,7
+		MOV AL,CS:[DMA_PAGE]	
+		CALL BIOS_PrintAL_Hex
+		MOV AX,CS:[DMA_OFFSET]
+		CALL BIOS_PrintAX_Hex
+		pop_all_exceptbx	
+%endif
+; Get the Nb of bytes to copy
+
+		XOR BX,BX
+		MOV BL,CS:[BV_IRQParam+3]	; Read the Data copy size (Must be <256)
+; DS:SI to ES:DI, BX bytes to copy, DX bytes in DMA Controller
+
+; Set the target 
+		PUSH CS
+		POP ES
+		MOV AX,E_DMA_BUFFER
+		MOV DI,AX
+
+        CMP Byte CS:[BV_IRQArg],0
+		JNE E_DMA_Autoinit
+
+;Perform the Data copy
+
+        MOV CX,BX	; Copy the Nb of bytes 
+		CMP BX,DX
+		JB E_DMA_LastCopy_Single
+	    MOV CX,DX	; More to copy than available from the DMA controller > Adjust
+E_DMA_LastCopy_Single:
+        OR CX,CX
+		JZ E_DMA_UPDATE_REGS
+		SUB DX,CX
+		DEC DX		; Update the remaining byted to copy value (DMA Register)
+		
+		CLD
+		SHR CX,1
+		REP MOVSW
+		JNC E_DMA_UPDATE_REGS
+		MOVSB
+
+        JMP E_DMA_UPDATE_REGS
+E_DMA_Autoinit:
+
+E_DMA_DataCopyLoop:
+
+;Update the DMA controller registers (Only for Auto Init)
+;Now SI contains the current location Current remaining size in ??
+E_DMA_UPDATE_REGS:
+
+        CLI
+		XOR AX,AX
+		OUT 0Ch,AL          ; clear DMA flipflop (To read the values in the correct order)
+		CMP BYTE CS:[BV_IRQParam],1		 ; Read the DMA number
+		JNE IRQ_CMD_WRITE_DMA3
+
+; DMA 1
+; Don't update the  DMA page
+; Update the DMA offset (SI)
+        PUSH SI
+		POP AX
+        OUT 02h,AL	; LSB
+		XCHG AH,AL
+		OUT 02h,AL	; MSB
+		XCHG AH,AL
+; Update the length (DX)
+		MOV AX,DX
+		OUT 03h,AL
+		XCHG AH,AL
+		OUT 03h,AL
+
+		JMP IRQ_WRITE_DMA_END
+
+IRQ_CMD_WRITE_DMA3:
+; DMA 3
+; Don't update the  DMA page
+; Update the DMA offset
+        PUSH SI
+		POP AX
+        OUT 06h,AL	; LSB
+		XCHG AH,AL
+		OUT 06h,AL	; MSB
+		XCHG AH,AL
+; Update the length
+		MOV AX,DX
+		OUT 07h,AL
+		XCHG AH,AL
+		OUT 07h,AL
+
+IRQ_WRITE_DMA_END:
+
+		STI
+
+; FOR TEST ! TO REMOVE
+		POP SI
+		POP DS
+		POP CX
+		POP AX
+		MOV Byte CS:[BV_DMAStatus],3
+
+		RET
+		
+		
+
+		MOV AL,20h
+		OUT 20h,AL
+		MOV byte CS:[BV_IRQStatus],IRQ_Stat_COMPLETED ; Change State to Command Completed		
+		
+		POP SI
+		POP DS
+		POP CX
+		POP AX
+
+		POP BX
+		MOV Byte CS:[BV_DMAStatus],3
+		IRET
+; Emulated DMA IRQ End
+
 
 ;***********************************************************************************************
 ;*                           IRQ 9h Redirect the Keyboard IRQ   (Hardware IRQ 1)               *
@@ -1727,9 +1998,12 @@ Int9_end:
 ;***********************************************************************************************
 
 PM_BIOS:
+    PUSH DS   		; Preserve DS
 	CMP AL,0
 	JNE PMB_Check1
 ;PM BIOS Function 0 : Detect the PicoMEM BIOS and return config  > To use by PMEMM, PMMOUSE ...
+; Input : AH=60h AL=00h
+;         DX=1234h
 ; Return AX : Base Port
 ;        BX : BIOS Segment
 ;        CX : Available devices Bit Mask
@@ -1768,7 +2042,7 @@ PMB_NoWifi:
 	
 	MOV AX,PM_BasePort	; Return the Base Port
 	PUSH CS
-	POP  BX
+	POP  BX				; Return the BIOS Segment
 
 	MOV DX,0AA55h 		; Return the PicoMEM BIOS Signature
 
@@ -1793,28 +2067,49 @@ PMB_Check1:
 	MOV BL,CS:[PMCFG_EMS_Addr]
 	SHL BX,1
 	MOV DX,CS:[EMS_Addr_List+2+BX]
+	MOV BX,0FFFFh
 
 	JMP PMB_End
 PMB_Check2:
 	CMP AL,2
-	JNE PMB_Check10
+	JNE PMB_Check3
 ;PM BIOS Function 2 : Return the NE2000 / Wifi Connection Status
 ; Return AL : Connection Status
 ;        AH : IRQ
 ;        BX : Base Port (0 if not Present)
-
+;        Connection status string returned in PCCR_Param
 	CALL PM_GetWifiInfos
 
 	MOV AH,byte CS:[PMCFG_WifiIRQ]
 	MOV AL,byte CS:[BV_WifiInit]
     MOV BX,word CS:[PMCFG_ne2000Port]
+	XOR CX,CX
 	
 	JMP PMB_End
+
+PMB_Check3:
+	CMP AL,3
+	JNE PMB_Check10
+;PM BIOS Function 3 : Return the PicoMEM Board ID and BIOS RAM Offset
+; Added in Sept 2024
+; Return AH : Pi Pico Board / chip ID
+;        AL : PicoMEM Board ID
+;        BX : Firmware Revision
+;        CX : PCCR_Param (Offset of commands response)
+;        DX : Reserved for the future
+
+; Info : To detect if implemented, just check if BX is not changed after calling it.
+
+    MOV AX,CS:[BV_BoardID]
+	MOV BX,CS:[BV_FW_Rev]
+	MOV CX,PCCR_Param
+	MOV DX,0FFFFh
+	JMP PMB_End	
 
 PMB_Check10:
 	CMP AL,10h
 	JNE PMB_Check11
-	
+
 ;PM BIOS Function 10h : Enable the Mouse
 ; Return AL : 0 Success or Error
 	MOV AH,CMD_Mouse_Enable		; Ask to enable the Mouse
@@ -1843,8 +2138,6 @@ PMB_Check12:
 	CMP AL,012h
 	JNE PMB_Check13
 ;PM BIOS Function 12h : Reinstall the Keyboard interrupt
-;    printchar_w 'i'
-;    printchar_w '9'
 
 	CALL PM_InstallIRQ9
 
@@ -1852,10 +2145,13 @@ PMB_Check12:
 
 PMB_Check13:
 
+; Fonction is not implemented
+
 PMB_End:
 	DEC byte CS:[Int13h_Flag]
-	POPF	; Return from the interrupt
+	POP DS
 	IRET
+;	RETF	2 			      ; return from int with current flags
 
 ;***********************************************************************************************
 ;*                            IRQ 13h DISK BIOS Emulation and PicoMEM IRQ                      *
@@ -1885,6 +2181,7 @@ PM_Int13h:
 	CMP DX,1234h
 	JNE Int13_CallPrevIRQ
 
+    POPF
 	JMP PM_BIOS
 	
 Not_PMBIOS_Call:	
@@ -1921,8 +2218,6 @@ Not_PMBIOS_Call:
 ;	CALL BIOS_PrintAL_Hex
 ;pop_all
 
-
-
     JMP Int13_Device_Notenabled			  ; No emulated Floppy, JMP to legacy BIOS
 Int13_CheckHDDNb:     
 	CMP BL,83h
@@ -1952,6 +2247,7 @@ PM_Int13_MyDisk:
     PUSH CS
 	POP DS
 
+    STI
     CMP byte [PMCFG_PSRAM_Ext],0
 	JE Int13_NoCLI		; If no RAM is emulated in PSRAM, no conflict possible (PSRAM/MicroSD)
     CLI    ; Test to avoid PSRAM Conflict
@@ -1996,6 +2292,7 @@ STR_Legacy   DB 'Start Legacy Boot Strap',0x0D,0x0A,0
 STR_PressA_B DB 'Press A to Boot from Floppy , B for Basic/ROM ',0
 STR_InsertDisk DB 0x0D,0x0A,'> No Boot Disk found - Insert a Floppy and Press any Key.',0
 STR_BAD_MBR DB ': Incorrect MBR ',0
+STR_Int13hError DB ': Int13h Error ',0 
 STR_BOOT    DB ': Boot... ',0x0D,0x0A,0
 STR_Int19_NotFirst DB 'Boot failed : Select another image or disable the PicoMEM Boot Code.',0x0D,0x0A,0
 
@@ -2110,11 +2407,6 @@ PM_Reboot:
 	
 PM_Int19h_Start:
 	
-;	xor	ax, ax
-;	mov	ds, ax
-;	mov	[word ds:78h], offset int_1E	; Get disk parameter table
-;	mov	[ds:7Ah], cs		; save segment
-
 	CMP byte CS:[BOOT_FDDFirst],0
 	JE Int19h_HDD_First
 
@@ -2124,16 +2416,16 @@ Int19h_FDD_First:
 	MOV CX,2
 	CALL BOOT_Drives	; Try to boot on 2 FDD
 
-	MOV DL,80h			; Try to boot on 4 HDD
-	MOV CX,4	
+	MOV DL,80h			; Try to boot on 2 HDD (Was 4 Before)
+	MOV CX,2	
 	CALL BOOT_Drives
 
 	JMP Int19h_DisplayInsertDisk
 Int19h_HDD_First:
 ;    printstr_w STR_FDDFist
 
-	MOV DL,80h			; Try to boot on 4 HDD
-	MOV CX,4	
+	MOV DL,80h			; Try to boot on 2 HDD
+	MOV CX,2	
 	CALL BOOT_Drives
 
 Int19h_RetryFloppy:
@@ -2150,18 +2442,21 @@ Int19h_DisplayInsertDisk:
 	
 	JMP Int19h_RetryFloppy
 
+; Input  DL : First drive number
+;        DX : The number of drive to test
+
 BOOT_Drives:
 
 Int19_BootLoop:
 	PUSH CX				; Save drives counter
-	PUSH DX				; Save drive number
 
+	PUSH DX				; Save drive number
 	XOR AX,AX
 	INT	13h				; Reset drive
-
 	POP DX				; Restore drive number
-	JB	Int19_NextDrive
+	JC	Int19_Error
 
+    PUSH DX
 	XOR	AX,AX
 	MOV	ES,AX				; Segment 07C0h
 	MOV	AX,0201h			; AH=2 (read)  AL=1 sector
@@ -2169,8 +2464,10 @@ Int19_BootLoop:
 	MOV	CX,0001h			; CH=Cyl 0  CL=Sec 1
 	XOR DH,DH				; DH=head 0 DL=Drive number
 	INT	13h
-	JB	Int19_NextDrive
+	POP DX
+	JC Int19_Error     ; CF=0 Error
 
+Boot_ReadSectorOk:			; Jump to the BOOT Code
     PUSH DX
 
     CALL Display_DriveNumber
@@ -2201,6 +2498,23 @@ Int19_NextDrive:
 
 	RET
 
+Int19_Error:
+
+; Error : Display the disk number and error code
+    PUSH CX
+	PUSH DX
+	PUSH AX
+    CALL Display_DriveNumber
+	printstr_w STR_Int13hError
+	POP AX
+	MOV AL,AH
+	CALL BIOS_PrintAL_Hex
+	printstr_w STR_CRLF
+	POP DX
+	POP CX
+
+    JMP Int19_NextDrive
+
 ;***********************************************************************************************
 ;*                       PM_DoSetup : Full HW Detection and Setup code                         *
 ;*                                                                                             *
@@ -2210,29 +2524,27 @@ Int19_NextDrive:
 
 PM_Do_Setup:
 
-;!!!! Now do the memory config Detection is in the Boot Strap, to bypass the case when the BIOS or a board change the RAM layout.
 	INC byte [BV_BootCount]
 
 ; *** POST: Read/Detect the PC Configuration informations, only during the First BOOT
     CMP byte [BV_BootCount],1
-	JNE POST_Skip_PCConfigRead
+	JNE POST_Skip_PC_Config_Detect
 
+; - Read the initial BIOS Disk infos
     CALL BIOS_GetPCDriveInfos
 	
-; Read the PC Memory configuration
+; - Read the PC Memory configuration
+; ! Now do the memory config Detection is in the Boot Strap, to bypass the case when the BIOS or a board change the RAM layout.
 ; ! Need the PicoMEM commands to work to not crash
     CALL PM_Memory_FirstBoot
 
-POST_Skip_PCConfigRead:
+POST_Skip_PC_Config_Detect:
 
 ; *** POST : Check if the Memory changed (PM config file VS Physical)
 ;            If Changed, disable all the Memory settings
-
 ; Can change between reboot due to CF Swap or PC Shutdown with the PicoMEM still powered on
 	CALL MEM_Check_MEM_Changed
-
-; Re initialize the Memory allocation table (If the settings has been changed)
-    CALL MEM_Init
+    CALL MEM_Init 		; Re initialize the Memory allocation table (If the settings has been changed)
 
 ; *** First Display ***
 
@@ -2283,6 +2595,7 @@ BIOS_Final_Init:
     CALL DisplayMEMConfig		; Display the Memory configuration after Final config
 
     CALL PM_InstallIRQ13		; Mount the Disks and Install the IRQ 13h
+
 	CALL Display_DisksList
 
 	RET
@@ -2385,6 +2698,8 @@ PM_Display_Insof_NoHeader:
     CALL PM_Display_Perif_Status
 	
 	CALL PM_Display_Wifi
+	
+	CALL PM_Display_USB
 
 %if POST_DisplayPCRAMSize=1
 ; *** Print PC Memory Size Informations
@@ -2432,12 +2747,12 @@ PM_Display_Config:
 	CALL BIOS_PrintAX_Hex
 
 	printstr_w STR_IOPORT
-	MOV AX,PM_BasePort
+	MOV AX,PM_BasePort	; Display the Base Port
     MOV BL,7    ; Light Grey
 	CALL BIOS_PrintAX_Hex3	
 
     printstr_w STR_IRQNB
-	MOV BL,7
+    MOV BL,7    ; Light Grey
 	XOR AX,AX
 	MOV AL,[BV_IRQ]
 	CALL BIOS_PrintAX_Dec
@@ -2458,6 +2773,7 @@ PM_Display_Wifi:
 	
 No_Wifi_Continue_Display1:
 
+; Read the Wifi Status object, not simple string display
     CALL PM_GetWifiInfos
 
 	printstr_w STR_Wifi
@@ -2509,6 +2825,43 @@ Wifi_Display_End:
 
 	RET	;PM_Display_Wifi
 
+PM_Display_USB:
+
+; Get the USB connection status (String List)
+    MOV AH,CMD_USB_Status
+	CALL PM_SendCMD         ; Get the Wifi Status Infos
+	CALL PM_WaitCMDEnd      ; !! WARNING, Crash if the Pico command does not end
+	
+%if DOS_COM=1
+    MOV SI,TEST_DL
+%else
+	MOV SI,PCCR_Param
+%endif	
+	CALL Display_String_List
+
+	RET ;PM_Display_USB
+
+; Display a list of Null terminated string, with the Nb of line in the first byte.
+Display_String_List:
+    XOR CX,CX
+	LODSB     ; Load the Nb of string to display
+	CMP AL,0
+	JE Display_String_List_End	; Display nothing if no line
+
+	MOV CL,AL
+Display_String_List_Loop:
+	PUSH CX
+    MOV BL,7
+	CALL BIOS_Printstrc
+	PUSH SI
+    printstr_w STR_CRLF    ; Go to the next line
+	POP SI
+	POP CX
+	LOOP Display_String_List_Loop
+Display_String_List_End:
+	RET
+
+
 ; * PM_FatalError *
 PM_FatalError:
     PUSH CS
@@ -2522,7 +2875,7 @@ PM_FatalError:
 	CALL BIOS_Printstrc
 
 	printstr_w STR_PressAny
-    printstr_w STR_CRLF	
+    printstr_w STR_CRLF
 
 	CALL WaitKey_Loop
 
@@ -2532,9 +2885,8 @@ PM_FatalError:
 DISPLAY_StatusReg:
 	printstr_w STR_STATUS	
 DISPLAY_StatusReg2:	
-    MOV DX,PM_BasePort
-	IN AL,DX
-    MOV BL,7    ; Light Grey	
+	CALL PM_ReadStatus
+    MOV BL,7    ; Light Grey
 	CALL BIOS_PrintAL_Hex
     printstr_w STR_CRLF 
     RET
@@ -2599,7 +2951,7 @@ PM_Display_Y:
 STR_RDY  DB "Ready",0
 STR_BSY  DB "Busy",0
 STR_ERR  DB "Error",0
-STR_CNF  dB "CMD Not supported",0
+STR_CNF  DB "Unknown CMD",0
 STR_INIT DB "Init",0
 STR_UNK  DB "Unkn Stat:",0
 

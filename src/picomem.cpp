@@ -17,6 +17,8 @@ If not, see <https://www.gnu.org/licenses/>.
  * picomem.cpp : Contains the Main initialisazion, ISA Bus Cycles management and commands executed by the Pi Pico
  */ 
 
+extern void sbdsp_test();
+
 #define ISA_DBG_IO 0
 
 #include <stdio.h>
@@ -29,7 +31,7 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "hardware/pio.h"
 #include "hardware/irq.h"
 #include "hardware/vreg.h"
-#ifndef RASPBERRYPI_PICO2
+#if !(defined(RASPBERRYPI_PICO2) || defined(PIMORONI_PICO_PLUS2_RP2350))
 #include "hardware/regs/vreg_and_chip_reset.h"
 #endif
 
@@ -44,25 +46,25 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "pm_libs.h"
 #include "pm_gpiodef.h"     // Various PicoMEM GPIO Definitions
 #include "ff.h"
-#include "pm_disk\pm_disk.h"
+#include "pm_disk/pm_disk.h"
 #include "pm_pccmd.h"
 #include "qwiic.h"
-
-//SDCARD and File system definitions
-//#include "hw_config.h"  /* The SDCARD and SPI definitions */	
-//#include "f_util.h"
-//#include "sd_card.h"
 
 // PicoMEM emulated devices include
 #include "dev_post.h"
 #include "dev_joystick.h"
-
 #if USE_AUDIO
-#include "audio_devices.h"
 #include "dev_adlib.h"
 #include "dev_cms.h"
 #include "dev_tandy.h"
+#include "dev_sbdsp.h"
+#include "dev_dma.h"
 #endif
+
+extern "C" const uint8_t _binary_pmbios_bin_start[];
+extern "C" const uint8_t _binary_pmbios_bin_size[];
+uint8_t  __in_flash() *PMBIOS=(uint8_t *)_binary_pmbios_bin_start;
+
 
 // Memory and IO Tables in the core stack RAM (Must be before PM_defines)
 
@@ -72,17 +74,14 @@ volatile uint8_t MEM_Type_T[MEM_T_Size];     // Memory type list
 
 // Return a memory Index based on the PC Address >>13 (8Kb)
 __scratch_x("MemDevTable") volatile uint8_t MEM_Index_T[MEM_T_Size]; // Memory @ Table for fast decoding
-//volatile uint8_t MEM_Index_T[MEM_T_Size]; // Memory @ Table for fast decoding
 
 // Pointer to the "Memory index" table in the RP2040 Address Space
 // = RP2040 Memory Address - PC Memory Base Address
-__scratch_x("MemBaseTable") volatile uint8_t *RAM_Offset_Table[16];
-//volatile uint8_t *RAM_Offset_Table[16];
+__scratch_x("MemBaseTable") volatile uint8_t *RAM_Offset_Table[21];  // 16 + 4 for EMS (RP2350)
 
 //Devices emulation tables
 // Port table for fast decoding (IO Port >>3 then 8 Bytes precision)
 __scratch_x("IODevTable") volatile uint8_t PORT_Table[256];  // Now size=256, set the upper 128 to 0 (DMA Detection)
-//volatile uint8_t PORT_Table[256];  // Now size=256, set the upper 128 to 0 (DMA Detection)
 
 // MEM / IO fonctions defines
 #include "dev_memory.h"
@@ -91,7 +90,7 @@ __scratch_x("IODevTable") volatile uint8_t PORT_Table[256];  // Now size=256, se
 #ifdef RASPBERRYPI_PICO_W
 #if USE_NE2000
 extern "C" {
-#include "dev_ne2000.h"
+#include "ne2000/dev_ne2000.h"
 extern wifi_infos_t PM_Wifi;
 }
 #endif
@@ -102,14 +101,24 @@ extern wifi_infos_t PM_Wifi;
 #if USE_PSRAM_DMA
 #include "psram_spi.h"
 psram_spi_inst_t psram_spi;
+psram_spi_inst_t* async_spi_inst;
 #else
 #include "psram_spi2.h"
 pio_spi_inst_t psram_spi;
 #endif
 #endif
 
+#if ISA_NOAEN
+#include "isa_iomem_noaen.pio.h"
+#else
+#if MUX_V2
+//#include "isa_iomem_test_addr_v2.pio.h"
+#include "isa_iomem_v2.pio.h"
+#else
 #include "isa_iomem.pio.h"
-#include "pm_test.pio.h"
+#endif
+#endif
+//#include "pm_test.pio.h"
 
 // Define the UART values for debug (On the Free GPIO 28)
 #if ASYNC_UART
@@ -127,10 +136,18 @@ pio_spi_inst_t psram_spi;
 #define LED_PIN 25
 
 // ** State Machines ** Order should not be changed, "Hardcoded" (For ISA)
+//
+// ISA    : 27  (5)
+// PSRAM  : 11  
+// I2S    : 8   (32-8-11:13)
+// Cyw43  :
+
+// SD : No PIO
 // pio0 / sm0 : isa_bus_sm : ISA bus communication
 //
-// pio1 / sm0              : SD or PSRAM
-// pio1 / sm1              : SD or PSRAM
+// pio1 / sm0              : PSRAM, Wifi or Audio
+// pio1 / sm1              : PSRAM, Wifi or Audio
+// pio1 / sm2              : PSRAM, Wifi or Audio
 //
 // DMA Channels :
 // SD  : DMA0 & 1 (If claimed first)
@@ -164,6 +181,8 @@ static uint sd_spi_sm;          // State machine number for SD
 
 #define DEV_POST_Enable 1
 
+uint32_t PM_Version_Detect;
+
 uint8_t PM_BasePort;  // Real port >>3
 
 bool     ISA_WasRead;
@@ -173,10 +192,6 @@ uint8_t  EMS_Bank[4]={0,1,2,3};
 uint32_t EMS_Base[4]={0,1*16*1024,2*16*1024,3*16*1024};
 
 // RAM/ROM Emulation tables
-extern "C" const uint8_t _binary_pmbios_bin_start[];
-extern "C" const uint8_t _binary_pmbios_bin_size[];
-
-uint8_t  __in_flash() *PMBIOS=(uint8_t *)_binary_pmbios_bin_start;
 
 //uint8_t PM_Memory[128*1024];           // Table used to emulate RAM from the Pico SRAM
 uint8_t PM_Memory[16*1024*MAX_PMRAM];    // Table used to emulate RAM from the Pico SRAM
@@ -192,7 +207,14 @@ volatile uint8_t *PM_PTR_DISKBUFFER;
 
 
 // ** ISA Debug Infos
+#if DISP32
 volatile uint32_t To_Display32;
+volatile uint32_t To_Display32_2;
+
+volatile uint32_t To_Display32_mask;
+volatile uint32_t To_Display32_2_mask;
+
+#endif
 volatile uint32_t PSRC_Hit;   // PSRAM Cache Hit nb
 volatile uint32_t PSRC_Miss;  // PSRAM Cache Miss nb
 
@@ -207,46 +229,56 @@ gpio_set_slew_rate(PIN_AS, GPIO_SLEW_RATE_FAST);
 gpio_set_slew_rate(PIN_IORDY, GPIO_SLEW_RATE_FAST);
 
 // Start the ISA PIO State Machine
-
 uint isa_bus_offset = pio_add_program(isa_pio, &isa_bus_program);
 //printf("ISA_Offset: %d SM: %d\n",isa_bus_offset,isa_bus_sm); 
 if (pio_claim_unused_sm(isa_pio, true)!=isa_bus_sm) printf("PIO SM For ISA Error");
 isa_bus_program_init(isa_pio, isa_bus_sm, isa_bus_offset);
 
 // Invert the A16_MR to A11_IW pin, for signal detect speed up !! If placed before the SM init, does not work
+#if MUX_V2
+gpio_set_inover (PIN_A8_MR,GPIO_OVERRIDE_INVERT);
+gpio_set_inover (PIN_A9_MW,GPIO_OVERRIDE_INVERT);
+gpio_set_inover (PIN_A10_IR,GPIO_OVERRIDE_INVERT);
+gpio_set_inover (PIN_A11_IW,GPIO_OVERRIDE_INVERT);
+#else
 gpio_set_inover (PIN_A16_MR,GPIO_OVERRIDE_INVERT);
 gpio_set_inover (PIN_A17_MW,GPIO_OVERRIDE_INVERT);
 gpio_set_inover (PIN_A18_IR,GPIO_OVERRIDE_INVERT);
 gpio_set_inover (PIN_A19_IW,GPIO_OVERRIDE_INVERT);
+#endif
 
 PM_BasePort=PM_IOBASEPORT>>3;
 SetPortType(PM_IOBASEPORT,DEV_PM,1);
 
 // Default MEMORY Blocks configuration
 
+dev_memory_init(0);
+
 #ifdef ROM_BIOS
 PM_BIOSADDRESS=ROM_BIOS>>4;
+PC_DB_Start=ROM_BIOS+0x4000+PM_DB_Offset;
+//dev_memory_init(ROM_BIOS);
+
 SetMEMType(ROM_BIOS,MEM_BIOS,MEM_S_16k);
-SetMEMIndex(ROM_BIOS,MEM_BIOS_I,MEM_S_16k);
-RAM_Offset_Table[MEM_BIOS_I]=&PMBIOS[-ROM_BIOS];
+SetMEMIndex(ROM_BIOS,MEM_BIOS,MEM_S_16k);
+RAM_Offset_Table[MEM_BIOS]=&PMBIOS[-ROM_BIOS];
 
-SetMEMType(ROM_DISK,MEM_DISK,1);  // 8kb only
-SetMEMIndex(ROM_DISK,MEM_DISK_I,1);
-RAM_Offset_Table[MEM_DISK_I]=&PM_DP_RAM[-ROM_DISK];
+SetMEMType(ROM_BIOS+0x4000,MEM_DISK,1);  // 8kb only
+SetMEMIndex(ROM_BIOS+0x4000,MEM_DISK,1);
+RAM_Offset_Table[MEM_DISK]=&PM_DP_RAM[-(ROM_BIOS+0x4000)];
 
-PC_DB_Start=ROM_DISK+PM_DB_Offset;
 #endif
 
 PM_DP_RAM[0] = 0x12; //ID of The PicoMEM BIOS RAM  (Magic ID)
 
 } //Init_ISAIOVars
 
-#define DO_MEMR 0x3010u  // PIO instruction for (wait 0 gpio PIN_A16_MR) 
-#define DO_IOR  0x3012u  // PIO instruction for (wait 0 gpio PIN_A18_IR) 
+//#define DO_MEMR 0x3010u  // PIO instruction for (wait 0 gpio PIN_A16_MR) 
+//#define DO_IOR  0x3012u  // PIO instruction for (wait 0 gpio PIN_A18_IR) 
 
-__force_inline void pm_do_wait(void)
-{
-}
+#define DO_MEMR 2 
+#define DO_IOR  1 
+
 
 __force_inline void pm_do_ior(void)
 {
@@ -254,17 +286,11 @@ __force_inline void pm_do_ior(void)
  pio_sm_put(isa_pio, isa_bus_sm, DO_IOR); // Do IOR (wait 0 gpio PIN_A18_IR)
 }
 
-__force_inline void pm_do_iornows(void)
-{
- ISA_WasRead=true;
- pio_sm_put(isa_pio, isa_bus_sm, DO_IOR); // Do IOR (wait 0 gpio PIN_A18_IR)
-}
-
 // Start of a Memory Read with Wait States added
 __force_inline void pm_do_memr(uint32_t ISA_Data)
 {
 // ISA_WasRead=true;
- pio_sm_put(isa_pio, isa_bus_sm, DO_MEMR);                  // 2nd Write : Do MEMR (wait 0 gpio PIN_A16_MR)  
+ pio_sm_put(isa_pio, isa_bus_sm, DO_MEMR);                  // 2nd Write : Do MEMR (wait 0 gpio PIN_A16_MR)
  pio_sm_put(isa_pio, isa_bus_sm, 0x00ffff00u | ISA_Data);   // 3nd Write : Send the Data to the CPU (Read Cycle)
  asm volatile ("nop");                                      // Force the compiler to not prepare the next instruction in advanced : One Cycle less
  // Added to wait until the PIO Send the Data
@@ -283,7 +309,21 @@ __force_inline void pm_do_memr(uint32_t ISA_Data)
 #if ISA_DBG_IO
 #include "pm_isa_test.h"
 #else
+#if defined(RASPBERRYPI_PICO2) || defined(PIMORONI_PICO_PLUS2_RP2350)
+#if MUX_V2
+#include "pm_isa_rp2350_v2_dev.h"
+#else
+#include "pm_isa_rp2350.h"
+#endif
+#else
+#if MUX_V2
+//#include "pm_isa_rp2040_V2.h"
+//#include "pm_isa_rp2040_test_addr_V2.h"
+#include "pm_isa_rp2040_V2_dev.h"
+#else
 #include "pm_isa_rp2040.h"
+#endif
+#endif
 #endif
 
 //***********************************************************************************************//
@@ -298,9 +338,17 @@ int main(void)
 // Voltage : 280 VREG_VOLTAGE_1_20
 //           300 VREG_VOLTAGE_1_25
 
+// Pico2 Overclocking : https://forums.raspberrypi.com/viewtopic.php?t=375975
+
 // Overclock!
+#ifdef PIMORONI_PICO_PLUS2_RP2350
 vreg_set_voltage(VREG_VOLTAGE_1_20);
-set_sys_clock_khz(PM_SYS_CLK*1000, true); 
+set_sys_clock_khz(280*1000, true); 
+//set_sys_clock_khz(PM_SYS_CLK*1000, true); 
+#else
+vreg_set_voltage(VREG_VOLTAGE_1_20);
+set_sys_clock_khz(PM_SYS_CLK*1000, true);
+#endif
 
 // TinyUSB Test
 // https://forums.raspberrypi.com/viewtopic.php?t=346802
@@ -325,6 +373,8 @@ set_sys_clock_khz(PM_SYS_CLK*1000, true);
   //  hid_app_task();
   }
 #endif
+gpio_init(PIN_IRQ);
+PM_Version_Detect=gpio_get_all();
 
 // ************ Pico I/O Pin Initialisation ****************
 // * Put the I/O in a correct state to avoid PC Crash      *
@@ -343,21 +393,21 @@ gpio_put(PIN_AS, SEL_ADL);        // Low part of the @ and I/O Mem Signals
 
 // * Init the SDCard CS to 1 to not disturb the PSRAM init
 
-#define PIN_SD_CS   3
+//#define PIN_SD_CS   3
 
-gpio_init(PIN_SD_CS);
-gpio_set_dir(PIN_SD_CS, GPIO_OUT);
-gpio_put(PIN_SD_CS, 1);
+gpio_init(SD_SPI_CS);
+gpio_set_dir(SD_SPI_CS, GPIO_OUT);
+gpio_put(SD_SPI_CS, 1);
 
 // Same with PSRAM CS
 #if USE_PSRAM
-#define PIN_CS   5 // Chip Select (SPI0 CS )
+#define PSRAM_PIN_CS   5 // Chip Select (SPI0 CS )
 #else
-#define PIN_CS   5 // Chip Select (SPI0 CS )
+#define PSRAM_PIN_CS   5 // Chip Select (SPI0 CS )
 #endif
-gpio_init(PIN_CS);
-gpio_set_dir(PIN_CS, GPIO_OUT);
-gpio_put(PIN_CS, 1);
+gpio_init(PSRAM_PIN_CS);
+gpio_set_dir(PSRAM_PIN_CS, GPIO_OUT);
+gpio_put(PSRAM_PIN_CS, 1);
 
 // * Set input pins direction (Not needed normally, GPIO In are always available to the CPU)
 for (int i=PIN_AEN; i<(PIN_AEN + 13); ++i) {
@@ -464,17 +514,34 @@ multicore_launch_core1(main_core1);
 PM_INFO("PicoMEM is alive\n");
 
 pm_timefrominit();
-
+/*
 PM_INFO("CFG BIOS Addr: %x\n",ROM_BIOS);
 PM_INFO("CFG SYS Clk: %d\n",PM_SYS_CLK);
 PM_INFO("CFG USE_USBHOST: %d\n",USE_USBHOST);
+*/
+
+// 1.3a   : Pull Up on GPIO 0,1,2        PM_Version_Detect 100007
+// 1.14   : Pull Up on GPIO 0, 1,2 Input PM_Version_Detect 100003
+// LP 1.0 : Pull Up and Down on GPIO0 ! Error
+PM_INFO("PM_Version_Detect %x",PM_Version_Detect);
 
 /*
-PM_INFO("PM BIOS Start  : %x \n",(uint32_t) _binary_pmbios_bin_start);
-PM_INFO("BIOS Signature : %x %x \n",PMBIOS[0],PMBIOS[1]);
-PM_INFO("PM_Memory Start  : %x \n",&PM_Memory);
-PM_INFO("PM_DP_RAM Start  : %x \n",&PM_DP_RAM);
+PM_INFO("Mem Index: ");
+for (int i=0;i<MEM_T_Size;i++)
+    { if (i==10*8) PM_INFO("- "); 
+          PM_INFO("%d ",GetMEMIndex(i*8*1024));
+    }
+PM_INFO("\n");
 */
+
+/*
+PM_INFO("PM BIOS Start  : %x %x\n",(uint32_t) _binary_pmbios_bin_start,&PMBIOS[0]);
+PM_INFO("BIOS Signature : %x %x\n",PMBIOS[0],PMBIOS[1]);
+PM_INFO("PM_Memory Start : %x\n",&PM_Memory);
+PM_INFO("PM_DP_RAM Start : %x\n",&PM_DP_RAM);
+*/
+
+//sbdsp_test();
 
 #endif
 

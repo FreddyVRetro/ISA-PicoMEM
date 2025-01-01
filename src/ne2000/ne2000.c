@@ -71,7 +71,7 @@ void ne2000_rx_frame(void *p, const void *buf, int io_len);
 void ne2000_tx_done(void *p);
 
 bool NE2000_Enabled=false;
-ne2000_t *nic;
+ne2000_t *nic=NULL;
 wifi_infos_t PM_Wifi;   // Wifi Info Structure for PicoMEM
 
 static volatile bool link_up = false;
@@ -145,7 +145,7 @@ void PM_RetryWifi()
 
 //https://github.com/czietz/picowifi/blob/master/picowifi.c#L83
 
-uint8_t PM_EnableWifi() 
+uint8_t PM_ConnectWifi() 
 {
   FIL WifiConfigFile;
   FRESULT fr;
@@ -240,8 +240,12 @@ for (;;)
 #if PM_PRINTF                
  PM_INFO("ne2000_init\n");
 #endif 
-
- nic = ne2000_init();           // DOS ne2000 driver crash if not init
+ if (nic==NULL) nic = ne2000_init();  // DOS ne2000 driver crash if not init
+ if (nic==NULL) 
+              {
+               sprintf(PM_Wifi.StatusStr,"NE2000 failed to initialized");
+               return 5;
+              }
 
  return 0;
 }
@@ -281,7 +285,7 @@ Base Address: Range Used
 0x360 : 0x360 - 0x37F
 */
 
-uint8_t PM_NE2000_Read(uint8_t Addr) {    
+uint8_t dev_ne2000_ior(uint8_t Addr) {    
     if(Addr <= 0xF) {
         return ne2000_read(Addr,nic);
     }
@@ -293,7 +297,7 @@ uint8_t PM_NE2000_Read(uint8_t Addr) {
     }        
 }
 
-void PM_NE2000_Write(uint8_t Addr,uint8_t Data) {      
+void dev_ne2000_iow(uint8_t Addr,uint8_t Data) {      
         if(Addr <= 0xF) {
                 ne2000_write(Addr,Data,nic);
         }
@@ -1143,7 +1147,7 @@ void ne2000_tx_done(void *p) {
 
 void *ne2000_common_init() {        
         int rc;
-        unsigned int macint[6];
+//        unsigned int macint[6];
 
         PM_INFO("NE2000: malloc : %d \n",sizeof(ne2000_t));
 //        busy_wait_ms(1000);
@@ -1151,7 +1155,7 @@ void *ne2000_common_init() {
         ne2000_t *ne2000 = malloc(sizeof(ne2000_t));
         if (ne2000==NULL) 
           {
-           PM_INFO("NE2000: Out of RAM : %d \n",sizeof(ne2000_t));
+           PM_ERROR("NE2000: Out of RAM : %d \n",sizeof(ne2000_t));
 //           busy_wait_ms(1000);
           }
         memset(ne2000, 0, sizeof(ne2000_t));

@@ -18,7 +18,7 @@ The IRQ can be changed in the BIOS Menu (Default is IRQ 3)
 Same driver as NE2000 for the PicoMEM : IRQ and Port are Auto detected.
 Does not start if the PicoMEM is not detected
 
-09/04/2024 : Not loaded in the ne2000 emulation is not enabled. Parameters were displayed 2 times.
+09/04/2024 : Not loaded if the ne2000 emulation is not enabled. Parameters were displayed 2 times.
 03/03/2024 : Removed part of the Copyright text to reduce the display length
 
 ## PMMOUSE.COM
@@ -44,10 +44,17 @@ I will regularly update the tools to add init fonctions when DOS is Booted.<br /
 To enable the Key Shortcut: (Left Shift + Ctrl + F1 for information and F2 For A: Floppy change)<br />
 PMINIT /k
 
-Rev 0.2 : Added CMS, Adlib and Tandy initialisation (October 2024 Firmware)<br />
-
 /adlib x  - Enable/Disable the Adlib output (0:Off 1:On)<br />
 /cms x    - Enable/Disable the CMS output   (0:Off 1:220 x:Port)<br />
 /tdy x    - Enable/Disable the Tandy output (0:Off 1:2C0 x:Port)<br />
-/ x       - Enable/Disable the Joystick     (0:Off 1:On)<br />
+/j x      - Enable/Disable the Joystick     (0:Off 1:On)<br />
+/diag     - Start in Diagnostic Mode <br />
+
+### Rev 0.3 <br /> (December 2024)
+- ! Corrected the Tandy initialisation : Was not implemented
+- + Added some test in the Diagnostic Mode
+
+### Rev 0.2 : Added CMS, Adlib and Tandy initialisation (October 2024 Firmware)<br />
+
+
 

@@ -1,8 +1,7 @@
 ; PIO Code for ISA Signals, Pico MEM Board
 ; By Freddy VETELE
 ; This use one SM, and don't use ALE for pre address read.
-; Control signals activation detection and date/Addres Low read done by the CPU
-; To Optimize the overall speed
+; Control signals activation detection done by the CPU to Optimize the overall speed
 
 ; Values for the Proto Board :
 ;.define public PIN_IRQ    5
@@ -55,24 +54,28 @@ restart:
     out X,32            side 0b01    ; Dummy Get command
     jmp restart         side 0b01
 No_DMA:
-    nop           [2]   side 0b11    ; "Default" 2, 1 Working as well...
+    nop           [2]   side 0b11    ; Delay, 3 clock tick ("Default" 2, 1 Working as well...)
     in pins, 12         side 0b00    ; Read Address High (A8-A19)     > Switch to Read/Write Data
-; Address low was read during the ctrl pin detection
 ; Data is read after by the Pico core (Not PIO)
     out X, 32           side 0b00    ; 2> Put the value sent by the main code to X : Do a Read if <> 0
     jmp !X NoWaitState  side 0b00    ; If we read 0 from the tx fifo, Don't add Wait State
     set pins,1          side 0b00    ; Enable IOCHRDY    
 NoWaitState:
-    out X, 32           side 0b00   ; 3> Read 0, or PIN_A18_IR or PIN_A16_MR Wait instruction
-    jmp !x restart      side 0b00   ; X=0 >  IOR/MEMR or nothing
+    out X, 32           side 0b00    ; 3> Read 0, or PIN_A18_IR or PIN_A16_MR Wait instruction
+;    jmp !x restart      side 0b00   ; X=0 >  IOR/MEMR or nothing
+    jmp x-- Do_IO_MEM_Read
+    jmp restart
+Do_IO_MEM_Read:
 ; Perform an IO or Memory Read
     out pins, 8         side 0b00   ; Output data to be written
     out pindirs, 8      side 0b00   ; Next 8 in pindirs is FF - set pindirs as output
     set pins,0          side 0b00   ; Disable IOCHRDY (If active)  > Try to put it before ?
-; X is one of these 2 instructions : 
-;    wait 0 gpio PIN_A18_IR  side 0b00 ; Wait for IOR lowering edge  *Ok
-;    wait 0 gpio PIN_A16_MR  side 0b00 ; Wait for MEMR lowering edge *Ok
-    mov exec,x  
+    jmp x-- IsMEMR
+    wait 0 gpio PIN_A18_IR  side 0b00 ; Wait for IOR lowering edge  *Ok
+    jmp IO_MEM_Read_End
+IsMEMR:
+    wait 0 gpio PIN_A16_MR  side 0b00 ; Wait for MEMR lowering edge *Ok 
+IO_MEM_Read_End: 
     in  null, 20         side 0b01  ; Tell the CPU that the Read is complete and Move back the Mux to Control / A0-A7
     out pins, 8          side 0b01  ; next 8 in pindirs is FF - reset data pins back to high
     out pindirs, 8       side 0b01  ; next 8 in pindirs is 00 - set pindirs back as input
@@ -82,7 +85,9 @@ NoWaitState:
 static inline void isa_bus_program_init(PIO pio, uint sm, uint offset) {
     pio_sm_config c = isa_bus_program_get_default_config(offset);
 
-// Default 133MHz with 4 Wait ([3]) 180MHz with 4 Wait ok, 240MHz and 270MHz with 6 (3+2) Wait Ok
+// 133MHz: 4 Wait ([3]) 
+// 180MHz: 4 Wait 
+// 240MHz and 270MHz with 6 (3+2) Wait
     float div = (float)clock_get_hz(clk_sys) / (280 * 1000000);  //100 MHz > 133 ?
     sm_config_set_clkdiv(&c, div);
 

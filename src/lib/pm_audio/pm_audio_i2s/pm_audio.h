@@ -9,6 +9,7 @@
 #define PM_SAMPLES_PER_BUFFER 64
 #define PM_AUDIO_BUFFERS  8
 #define PM_SAMPLES_STRIDE 4        // (Nb of byte per sample 16Bit X 2)
+// 8*64*4 buffer (16Bit Stereo) is 2KB
 
 #define PM_AUDIO_POOLSIZE PM_AUDIO_BUFFERS*PM_SAMPLES_PER_BUFFER*PM_SAMPLES_STRIDE
 #define PM_AUDIO_BUFFERSIZE PM_SAMPLES_PER_BUFFER*PM_SAMPLES_STRIDE
@@ -18,7 +19,7 @@
 typedef struct audio_format {
     uint32_t sample_freq;      ///< Sample frequency in Hz
     uint16_t format;           ///< Audio format \ref audio_formats
-    uint16_t channel_count;    ///< Number of channels
+    uint16_t channel_count;    ///< Number of channels  (Not used in this code, default is 2)
 } audio_format_t;
 
 typedef struct pm_audio

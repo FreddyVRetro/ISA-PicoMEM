@@ -10,9 +10,10 @@ It is currently a mix of PicoGUS Code, Rumbledethumps and tusb_xinput by Ryzee11
 
 From PicoGUS      : PS4 Joystick
 From rumblethumps : Detection logic and connection Status update
-From tusb_xinput  : Full tinyUSB driver integrated as a lib
+From tusb_xinput  : Full tinyUSB driver integarted as a lib
 
 https://github.com/picocomputer/rp6502
+
 
 The goal is to manage HID devices mount, events and update in real time one data structure per device type.
 The data on these structures are then used by the ISA devices code to send the data to the PC / emulate devices

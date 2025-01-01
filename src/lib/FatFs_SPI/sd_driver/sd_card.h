@@ -62,6 +62,7 @@ typedef struct sd_spi_if_t {
     sd_spi_if_state_t state;
 } sd_spi_if_t;
 
+#if USE_SDIO
 typedef struct sd_sdio_if_t {
     // See sd_driver\SDIO\rp2040_sdio.pio for SDIO_CLK_PIN_D0_OFFSET
     uint CLK_gpio;  // Must be (D0_gpio + SDIO_CLK_PIN_D0_OFFSET) % 32
@@ -87,10 +88,11 @@ typedef struct sd_sdio_if_t {
     enum gpio_drive_strength D2_gpio_drive_strength;
     enum gpio_drive_strength D3_gpio_drive_strength;
 
-    /* The following fields are not part of the configuration.
-    They are state variables, and are dynamically assigned. */
+    //The following fields are not part of the configuration.
+    //They are state variables, and are dynamically assigned.
     sd_sdio_if_state_t state;
 } sd_sdio_if_t;
+#endif
 
 typedef struct sd_card_state_t {
     DSTATUS m_Status;       // Card status
@@ -114,10 +116,10 @@ typedef struct sd_card_t sd_card_t;
 // "Class" representing SD Cards
 struct sd_card_t {
     sd_if_t type;  // Interface type
-    union {
+ //   union {
         sd_spi_if_t *spi_if_p;
-        sd_sdio_if_t *sdio_if_p;
-    };
+//        sd_sdio_if_t *sdio_if_p;
+//    };
     bool use_card_detect;
     uint card_detect_gpio;    // Card detect; ignored if !use_card_detect
     uint card_detected_true;  // Varies with card socket; ignored if !use_card_detect

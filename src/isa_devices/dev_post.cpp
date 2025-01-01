@@ -60,16 +60,16 @@ if (HostIO.Port81h_Updated)
   }  
 }
 
-void dev_post_iow(uint32_t CTRL_AL8,uint32_t ISAIOW_Data)
+void dev_post_iow(uint32_t Addr,uint8_t Data)
 {
- 	if ((CTRL_AL8 & 0x07)==0)
+ 	if ((Addr & 0x07)==0)
 			{
-			   HostIO.Port80h=ISAIOW_Data;
+			   HostIO.Port80h=Data;
 			   HostIO.Port80h_Updated=true;
 			}
-  if ((CTRL_AL8 & 0x07)==1)
+  if ((Addr & 0x07)==1)
      {
-			   HostIO.Port81h=ISAIOW_Data;
+			   HostIO.Port81h=Data;
 			   HostIO.Port81h_Updated=true;      
      }
 }

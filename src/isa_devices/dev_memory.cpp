@@ -17,7 +17,6 @@ If not, see <https://www.gnu.org/licenses/>.
 /* pm_memory.cpp : RAM/ROM emulation Code
  */ 
 
-
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "../pm_debug.h"
@@ -25,6 +24,18 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "../pm_defines.h"
 #include "../pm_cmd.h"    //PM_Config Definition 
 #include "dev_memory.h"
+#include "dev_picomem_io.h"
+
+#ifdef PIMORONI_PICO_PLUS2_RP2350
+#include "pico_psram.h"
+
+uint32_t EMS_PCBaseAddress;   // 0xD0000 or 0XE0000 (For QSPI PSRAM EMS)
+#define PSRAM_EMS_START __psram_start__              // First 4Mb
+#define PSRAM_RAM_START __psram_start__+4*1024*1024  // PSRAM extention in the first 1Mb 
+#endif
+
+extern uint8_t  EMS_Bank[4];
+extern uint32_t EMS_Base[4];
 
 volatile uint16_t PM_BIOSADDRESS=0;
 
@@ -44,9 +55,23 @@ for (int i=0;i<128;i++) PM_INFO("%d ",GetMEMType(i<<13));
 PM_INFO("\n");
 }
 
-void dev_memory_init()
+void dev_memory_init(uint32_t biosaddr)
 {
 
+for (int i=0;i<MEM_T_Size;i++) 
+    {
+      MEM_Index_T[i]=MEM_I_NULL;
+      MEM_Type_T[i]=MEM_NULL;
+    }
+/*
+SetMEMType(biosaddr,MEM_BIOS,MEM_S_16k);
+SetMEMIndex(biosaddr,MEM_BIOS,MEM_S_16k);
+RAM_Offset_Table[MEM_BIOS]=&PMBIOS[-biosaddr];
+
+SetMEMType(biosaddr+0x4000,MEM_DISK,1);  // 8kb only
+SetMEMIndex(biosaddr+0x4000,MEM_DISK,1);
+RAM_Offset_Table[MEM_DISK]=&PM_DP_RAM[-(biosaddr+0x4000)];
+*/
 }
 
 // To use for MEM_RAM and MEM_DISK MI_Type is ignored
@@ -70,10 +95,10 @@ switch(MEM_Type)
                 if (BV_TdyRAM==0)   // IF Tandy RAM <>0 PMRAM is already used
                  for (int i=0;i<64;i++)  
                    { 
-                    if ((BV_Tandy!=0)&&(i<10*4)) continue;  
+                    if ((BV_Tandy!=0)&&(i<0x0A*4)) continue;  
                     uint32_t MEM_Addr=i<<14;  // Shift 14 for 16Kb Block         
                     if (PM_Config->MEM_Map[i]==MEM_RAM)
-                       { 
+                       {
                         if (RAM_InitialAddress==0) 
                            {
                             RAM_InitialAddress=i<<14;  // Skip conv memory add if Tandy (Done by BIOS)
@@ -83,25 +108,28 @@ switch(MEM_Type)
                            }
                         if ((i-InitialIndex)<MAX_PMRAM)
                            {
-                            SetMEMType(MEM_Addr,MEM_RAM,MEM_S_16k);     // Define a 16Kb RAM Block
-                            SetMEMIndex(MEM_Addr,mem_index,MEM_S_16k);  // Define a 16Kb RAM Block                            
+                            SetMEMType(MEM_Addr,MEM_RAM,MEM_S_16k);     // Define a 16Kb RAM Block Type
+                            SetMEMIndex(MEM_Addr,mem_index,MEM_S_16k);  // Define a 16Kb RAM Block Index
                            }
                        }
-                   }                 
+                   }
                break;
-       case MEM_DISK:          //  RAM No Wait State, 16Kb
+       case MEM_DISK:               //  RAM No Wait State, 16Kb
                mem_index=MEM_DISK;  // Already defined somewhere else
                break;
-       case MEM_PSRAM:          // RAM With Wait State any address possible (1Mb)
-               mem_index=MEM_PSRAM;
+       case MEM_PSRAM:              // RAM With Wait State any address possible (1Mb)
+            //   mem_index=MEM_PSRAM;
+#ifdef PIMORONI_PICO_PLUS2_RP2350   // Define also the memory Address for this Index
+               RAM_Offset_Table[MEM_PSRAM]=(uint8_t *) (PSRAM_RAM_START);
+#endif                
                for (int i=0;i<64;i++)  
                         { 
-                        if ((BV_Tandy!=0)&&(i<10*4)) continue;  // Skip conv memory add if Tandy (Done by BIOS)
+                        if ((BV_Tandy!=0)&&(i<0x0A*4)) continue;  // Skip conv memory add if Tandy (Done by BIOS)
                         uint32_t MEM_Addr=i<<14;  // Shift 14 for 16Kb Block         
                         if ((PM_Config->MEM_Map[i]==MEM_PSRAM)) 
                          {
-                          SetMEMType(MEM_Addr,MEM_PSRAM,MEM_S_16k);  // Define a 16Kb RAM Block
-                          SetMEMIndex(MEM_Addr,mem_index,MEM_S_16k);  // Define a 16Kb RAM Block
+                          SetMEMType(MEM_Addr,MEM_PSRAM,MEM_S_16k);   // Define a 16Kb RAM Block Type
+                          SetMEMIndex(MEM_Addr,MEM_PSRAM,MEM_S_16k);  // Define a 16Kb RAM Block Index                     
                          }
                         }
                break;
@@ -113,6 +141,51 @@ switch(MEM_Type)
 return 0;
 }
 
+bool dev_ems_install(uint16_t port, uint32_t base_addr)
+{
+#ifdef PIMORONI_PICO_PLUS2_RP2350
+  if (port!=0)
+      {
+        PM_INFO("dev_ems_install (Pimoroni): EMS Port:%d",PM_Config->EMS_Port,port);
+
+        SetPortType(port,DEV_LTEMS,1); // Set the EMS device IO Port
+        EMS_PCBaseAddress=base_addr;
+
+        // Set the EMS @ decoding
+        SetMEMType (base_addr          ,MEM_EMS,MEM_S_16k*4);    //64Kb (16Kx4) Memory Type
+
+        SetMEMIndex(base_addr          ,MEM_I_EMS0,MEM_S_16k);   //16Kb Index (for the Offset table)
+        SetMEMIndex(base_addr+16*1024  ,MEM_I_EMS1,MEM_S_16k);   //16Kb
+        SetMEMIndex(base_addr+2*16*1024,MEM_I_EMS2,MEM_S_16k);   //16Kb
+        SetMEMIndex(base_addr+3*16*1024,MEM_I_EMS3,MEM_S_16k);   //16Kb
+
+        RAM_Offset_Table[MEM_I_EMS0]=(uint8_t *) (PSRAM_EMS_START-base_addr);
+        RAM_Offset_Table[MEM_I_EMS1]=(uint8_t *) (PSRAM_EMS_START-base_addr);
+        RAM_Offset_Table[MEM_I_EMS2]=(uint8_t *) (PSRAM_EMS_START-base_addr);
+        RAM_Offset_Table[MEM_I_EMS3]=(uint8_t *) (PSRAM_EMS_START-base_addr);
+
+        EMS_Bank[0]=EMS_Bank[1]=EMS_Bank[2]=EMS_Bank[3]=0;
+        PM_INFO(" @:%x RAM_Offset %x\n",base_addr,RAM_Offset_Table[MEM_I_EMS0]);
+      } else return false;
+#else 
+#if USE_PSRAM
+  if (port!=0)
+      { 
+        PM_INFO("EMS Port:%d %x ",PM_Config->EMS_Port,port);
+         
+        SetPortType(port,DEV_LTEMS,1); // Set the EMS device IO Port
+        // Set the EMS @ decoding
+        SetMEMType(base_addr,MEM_EMS,MEM_S_16k*4);     //64Kb (126Kx4)
+        SetMEMIndex(base_addr,MEM_EMS,MEM_S_16k*4);    //64Kb (126Kx4)         
+
+        PM_INFO(" @:%x\n",base_addr);
+      } else return false;
+#endif  
+
+#endif
+return true;
+}
+
 // Remove all the Emulated RAM (PSRAM, RAM, EMS)
 void dev_memory_remove_ram()
 {
@@ -121,7 +194,7 @@ void dev_memory_remove_ram()
 // PM_INFO("dev_memory_remove_ram");
   do
  {
-  busy_wait_ms(5); // Little wait for the display
+//  busy_wait_ms(5); // Little wait for the display
 //  PM_INFO("@%x, ",Addr);
   if ((BV_Tandy!=0)&&(Addr<640*1024)) 
     { 
@@ -134,10 +207,8 @@ void dev_memory_remove_ram()
      {
 //       PM_INFO("Clean 4Kb");
        SetMEMType(Addr,MEM_NULL,1);
-       SetMEMIndex(Addr,0,1);
-//       MEM_Index_T[i]=0;
-//       MEM_Type_T[i]=MEM_NULL;
-     } 
+       SetMEMIndex(Addr,MEM_I_NULL,1);
+     }
   Addr+=4096;
  } while (Addr<1024*1024);
 
@@ -151,8 +222,32 @@ void dev_memorytype_remove(uint8_t type)  // Used only for BIOS and disk for the
 //       if ((BV_Tandy!=0)&&(i<10*8)) continue;  // Skiv Conv memory emulation removal if Tandy (8k block)
        if (MEM_Type_T[i]==type)
            {
-             MEM_Index_T[i]=0;
+             MEM_Index_T[i]=MEM_I_NULL;
              MEM_Type_T[i]=MEM_NULL;
             }
       }
+}
+
+bool dev_ems_ior(uint32_t CTRL_AL8,uint8_t *Data )
+{
+
+*Data=EMS_Bank[(uint8_t) CTRL_AL8 & 0x03];  // Read the Bank Register
+
+return true;
+}
+
+void dev_ems_iow(uint32_t CTRL_AL8,uint8_t Data)
+{
+ if ((CTRL_AL8 & 0x07)<4)
+  {
+#ifdef PIMORONI_PICO_PLUS2_RP2350
+   uint8_t bank=CTRL_AL8 & 0x03;
+   EMS_Bank[(uint8_t) CTRL_AL8 & 0x03]=Data;   // Write the Bank Register
+   RAM_Offset_Table[MEM_I_EMS0+bank]=(uint8_t *) (PSRAM_EMS_START-EMS_PCBaseAddress+(Data-bank)*16*1024);  // Address is EMS Start + Parameter*16KB
+//   printf("B %d Addr %x\n",bank,RAM_Offset_Table[MEM_I_EMS0+bank]);
+#else
+   EMS_Bank[(uint8_t) CTRL_AL8 & 0x03]=Data;   // Write the Bank Register
+   EMS_Base[(uint8_t) CTRL_AL8 & 0x03]=((uint32_t) Data*16*1024)+1024*1024; // EMS Bank base Address : 1Mb + Bank number *16Kb (in SPI RAM)
+#endif
+  }
 }

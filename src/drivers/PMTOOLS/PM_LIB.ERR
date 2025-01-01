@@ -1,0 +1,2 @@
+pm_lib.c(404): Warning! W107: Missing return value for function 'test_print_result'
+pm_lib.c(452): Warning! W138: No newline at end of file

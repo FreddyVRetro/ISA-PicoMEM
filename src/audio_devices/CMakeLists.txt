@@ -13,4 +13,5 @@ target_sources(audio_devices INTERFACE
 #    ${CMAKE_CURRENT_LIST_DIR}/adlibplay.cpp 
     ${CMAKE_CURRENT_LIST_DIR}/dev_pmaudio.cpp
     ${CMAKE_CURRENT_LIST_DIR}/square/square.cpp    
+    ${CMAKE_CURRENT_LIST_DIR}/sbdsp/sbdsp.cpp
 )

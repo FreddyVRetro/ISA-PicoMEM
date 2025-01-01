@@ -40,6 +40,7 @@
 %assign CMD_SaveCfg       0x08   ;// Save the Configuration to the file
 %assign CMD_DEV_Init      0x09   ;// Initialize the devices (Run at the BIOS Setup end)
 %assign CMD_TDY_Init      0x0A   ;// Initialize the Tandy RAM emulation
+%define CMD_Test_RAM      0x0B   ;// Write the sent value to the BIOS RAM Test Address, Return the value that was present
 
 ;// 2x Debug/Test CMD
 %assign CMD_SetMEM        0x22   ;// Set the First 64Kb of RAM to the SetRAMVal
@@ -55,12 +56,12 @@
 %assign CMD_USB_Disable   0x51
 %assign CMD_Mouse_Enable  0x52
 %assign CMD_Mouse_Disable 0x53
-%assign CMD_Keyb_Enable   0x54
-%assign CMD_Keyb_Disable  0x55
-%assign CMD_Joy_Enable    0x56
-%assign CMD_Joy_Disable   0x57
+%assign CMD_Joy_OnOff     0x54
+%assign CMD_Keyb_OnOff    0x55
 
 %assign CMD_Wifi_Infos    0x60
+%define CMD_USB_Status    0x61   ;// Get the USB Status
+%define CMD_DISK_Status   0x62   ;// Get the Disk emulation status screen.
 
 ;// 8x Disk Commands
 %assign CMD_HDD_Getlist   0x80  ;// Write the list of hdd images into the Disk memory buffer
@@ -108,13 +109,13 @@ STR_RESET  DB 'Fatal: Reset Failed ',0
     MOV DX,PM_BasePort
     INC DX
 	INC DX
-    IN AL,DX		; Read the Data L Register
+    IN AL,DX		; Read the Data H Register
 %endmacro
 
 %macro PM_Read_DataW 0
     MOV DX,PM_BasePort
     INC DX
-    IN AX,DX		; Read the Data L Register
+    IN AX,DX		; Read the Data Registers
 %endmacro
 
 ; Read in Loop the test port and check if the next value is the value +1
@@ -320,7 +321,22 @@ Display_StatusErr_SendCMD:
 	STC
 	RET
 
-;STR_ResetEnd DB 'Reset End',0
+;	Return AL: Status Port value
+PM_ReadStatus:
+    PUSH DX
+    MOV DX,PM_BasePort
+	IN AL,DX
+	POP DX
+	RET
+
+;	Return AL: DataH+DataL	
+PM_ReadPortData:
+	PUSH DX
+	MOV DX,PM_BasePort
+	INC DX
+	IN AX,DX
+	POP DX
+	RET
 
 ; **** PM_Reset
 ; Try to Reset/stop a blocked commands or just clean the Error status.
@@ -504,7 +520,7 @@ BMEMLoop2:
     PUSH CX
 
 ; Test BIOS MEM (W/R) Loop
-    MOV DX,PM_BasePort+3
+    MOV DX,PM_BasePort+PORT_TEST
 	MOV BX,0
     MOV CX,50000
 	PUSH CS
@@ -549,7 +565,7 @@ DMEMLoop2:
    PUSH CX
 
 ; Test BIOS MEM (W/R) Loop
-    MOV DX,PM_BasePort+3
+    MOV DX,PM_BasePort+PORT_TEST
 	MOV BX,0
     MOV CX,50000
 	PUSH CS

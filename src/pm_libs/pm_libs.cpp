@@ -19,24 +19,25 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include <stdarg.h>
-#include "..\..\pm_debug.h"
+#include "../../pm_debug.h"
 
 #if PM_PICO_W
-#include "pico/cyw43_arch.h"
+#include "pico/cyw43_arch.h"    // Needed to blink the LED for Pico W
 #endif
 
-//#include "dosbox/bios_disk.h"
 //#include "ff.h"
 
 #define DISPLAY_TIME 1
 //constexpr uint LED_PIN = PICO_DEFAULT_LED_PIN;
 #define LED_PIN 25
 
+uint8_t pm_led_state;
+
 struct BlinkCode_T
  {
   bool    blinking;
   bool    led_off;
-  uint8_t l_cnt;
+  uint8_t l_cnt;        // Current Blink code
   uint8_t s_cnt;
   uint8_t loop_cnt;
   uint8_t n_l_total;    // Next Blink code
@@ -78,12 +79,14 @@ void pm_timefromlast()
   #endif  
 }
 
+// input : 0 Off, 1 On
 void pm_led(uint8_t onoff)
 {
+ pm_led_state=onoff;
 #if PM_PICO_W
 cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, onoff);
 #else
-gpio_put(LED_PIN, 1);
+gpio_put(LED_PIN, onoff);
 #endif
 }
 

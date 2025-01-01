@@ -29,7 +29,6 @@ extern bool pm_detect();
 #define CMDERR_FILEREAD    0x08  // Can't open/Read file (image)
 #define CMDERR_MOUTFAIL    0x09  // Disk image mount fail
 
-
 // 0x 1x General / Configuration Commands
 #define CMD_Reset         0x00   // Put back the status to 0, after an error
 #define CMD_GetBasePort   0x01
@@ -42,9 +41,10 @@ extern bool pm_detect();
 #define CMD_SaveCfg       0x08   // Save the Configuration to the file
 #define CMD_DEV_Init      0x09   // Initialize the devices (Run at the BIOS Setup end)
 #define CMD_TDY_Init      0x0A   // Initialize the Tandy RAM emulation
+#define CMD_Test_RAM      0x0B   // Write the sent value to the BIOS RAM Test Address, Return the value that was present
+#define CMD_TESTIO        0x0C   // Test Data transfer via IO > To remove when done
 
 #define CMD_GetPMString   0x10   // Read the PicoMEM Firmware string
-#define CMD_Stop_IORW     0x11   // Stop the in progress I/O r/w command
 #define CMD_ReadConfig    0x12   // Read the Config variables from I/O
 #define CMD_WriteConfig   0x13   // Read the Config variables from I/O
 
@@ -81,6 +81,7 @@ extern bool pm_detect();
 
 #define CMD_Wifi_Infos    0x60   // Get the Wifi Status, retry to connect if not connected
 #define CMD_USB_Status    0x61   // Get the USB Status
+#define CMD_DISK_Status   0x62   // Get the Disk emulation status screen.
 
 // 7x Audio commands
 #define CMD_AudioOnOff    0x70  // Full audio rendering 0: Off 1:On
@@ -89,8 +90,10 @@ extern bool pm_detect();
 #define CMD_TDYOnOff      0x74  // Tandy Audio : 0 : Off 1: On default or port
 #define CMD_CMSOnOff      0x75  // CMS Audio   : 0 : Off 1: On default or port
 #define CMD_CovoxOnOff    0x76  // Covox Audio : 0 : Off 1: On default or port
-#define CMD_SBOnOff       0x77  // Sound Blaster Audio : 0 : Off 1: On default or port
-#define CMD_GUSOnOff      0x78  // GUS Audio : 0 : Off 1: On default or port
+#define CMD_SetSBIRQ      0x77  // Set Sound Blaster IRQ
+#define CMD_SBOnOff       0x78  // Sound Blaster Audio : 0 : Off 1: On default or port
+#define CMD_SetGUSIRQ     0x79  // Set GUS IRQ
+#define CMD_GUSOnOff      0x7A  // GUS Audio : 0 : Off 1: On default or port
 
 // 8x Disk Commands
 #define CMD_HDD_Getlist    0x80  // Write the list of hdd images into the Disk memory buffer

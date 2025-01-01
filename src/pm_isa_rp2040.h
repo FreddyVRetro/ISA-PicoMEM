@@ -12,6 +12,8 @@
 void __scratch_x("core1_ISA_code") (main_core1)(void)
 {
 
+PM_INFO("Core1: pm_isa_rp2040\n");
+
 // PSRAM 4 Bytes cache
 uint32_t  PSRC_Addr;
 uint8_t   PSRC_Data[4];
@@ -30,8 +32,8 @@ for (;;) {
  ISA_WasRead = false;
 
 // 2 Values returned by the Assembly code
-  static uint32_t Ctrl_m=0x0F0000;
-  uint32_t IO_CTRL_MDIndex;          // Control for IO, Dev Type for MEM, No need for uint8_t
+  static uint32_t Ctrl_m=0x0F0000;   // Ctrl signals at Bit 16 to 19 are active high (after invertion)
+  uint32_t IO_CTRL_MDIndex;          // Control for IO or Dev Type for MEM, No need for uint8_t
 
  // ** Wait until a Control signal is detected **
  // ** Then, jump to MEMR / MEMW / IO and decode the Memory Address and Device Index
@@ -57,7 +59,7 @@ for (;;) {
      "cmp %[DEV_T],#1                \n\t"  // Is it a MEM Read ?
      "beq  ISA_Do_MEMR               \n\t"  // Jump must be <200 bytes
 
-     "cmp %[DEV_T],#2                \n\t"  // Is it a MEM Read ?
+     "cmp %[DEV_T],#2                \n\t"  // Is it a MEM Write ?
      "beq  ISA_Do_MEMW               \n\t"  // Jump must be <200 bytes
 
 //** > ISA IOR / IOW   **
@@ -77,7 +79,7 @@ for (;;) {
      "ldr %[ADDR],[%[PIOB],%[PIOR]]      \n\t"   // ISA_Addr<<12 = pio->rxf[sm]; Read ISA_Addr from the PIO (Address with Mask)
      "lsr %[DEV_T], %[ADDR], #25         \n\t"   // ISA_Addr>>20+4 (16kb Block) >>20+5 for 8Kb Block
      "ldrb %[DEV_T], [%[MIT], %[DEV_T]]  \n\t"   // IO_CTRL_MDIndex = MEM_Index_T[(ISAM_AH12>>x)] (TMP=MTA)
-     "lsr %[MIT], %[DEV_T], #3           \n\t"   // TMP = IO_CTRL_MDIndex>>3 (0-7 : No Wait State)
+     "lsr %[MIT], %[DEV_T], #4           \n\t"   // TMP = IO_CTRL_MDIndex>>4 (0-15 : No Wait State)
      "str %[MIT], [%[PIOB], %[PIOT]]     \n\t"   // pio->txf[sm] = TMP;  > Command the IOCHRDY Move if !=0
 // complete the ISA_Addr Address calculation for Memory Read
      "lsr %[ADDR], %[ADDR], #12          \n\t"   // ISA_Addr=ISA_Addr>>12
@@ -100,10 +102,10 @@ for (;;) {
 // Directly read the RX pipe : Be carefull about the timing
      "ldr %[ADDR],[%[PIOB],%[PIOR]]      \n\t"   // ISA_Addr<<12 = pio->rxf[sm]; Read ISA_Addr from the PIO (Address with Mask) 
      "lsr %[DEV_T], %[ADDR], #25         \n\t"   // ISA_Addr>>20+4 (16kb Block) >>20+5 for 8Kb Block
-     "ldrb %[DEV_T], [%[MIT], %[DEV_T]]  \n\t"   // IO_CTRL_MDIndex = MEM_Index_T[(ISAM_AH12>>x)] (TMP=MTA)
+     "ldrb %[DEV_T], [%[MIT], %[DEV_T]]  \n\t"   // IO_CTRL_MDIndex = MEM_Index_T[(ISA_Addr>>25)]
 #if DO_FAST_RAM    // Fast RAM : Only 0 or a no PSRAM Memory
 #else
-     "lsr %[MIT], %[DEV_T], #3           \n\t"   // TMP = IO_CTRL_MDIndex>>3 (3, 0-7 : No Wait State) (3, 0-7)
+     "lsr %[MIT], %[DEV_T], #4           \n\t"   // TMP = IO_CTRL_MDIndex>>4 (4, 0-15 : No Wait State) (3, 0-7)
      "str %[MIT], [%[PIOB], %[PIOT]]     \n\t"   // pio->txf[sm] = TMP;  > Command the IOCHRDY Move if !=0
 #endif
 // complete the ISA_Addr Address calculation for Memory Read
@@ -134,14 +136,15 @@ for (;;) {
 //To_Display32=ISA_Addr;
 #endif
 
-// ********** ISA_Cycle= Memory Read ********** (1110b)
+// ********** ISA_Cycle= Memory Read  (0001b) **********
 
 // ** Read from the Pico Memory or ROM
 #if DO_FAST_RAM    // Fast RAM : Only 0 or a no PSRAM Memory
    if (IO_CTRL_MDIndex!=0) 
 #else
-   if ((IO_CTRL_MDIndex>0)&&(IO_CTRL_MDIndex<16))  
-#endif     
+   if ((IO_CTRL_MDIndex>0)&&(IO_CTRL_MDIndex<MI_R_WS_END))    // 0<Index<MI_R_WS_END : "Fast RAM"  
+//   if (IO_CTRL_MDIndex<MI_R_WS_END)    // 0<Index<MI_R_WS_END : "Fast RAM"  
+#endif
         {
         pm_do_memr(RAM_Offset_Table[IO_CTRL_MDIndex][ISA_Addr]);
         continue;  // Go back to the main loop begining
@@ -153,7 +156,7 @@ for (;;) {
         continue;  // Go back to the main loop begining
        }
 #else
-   if (IO_CTRL_MDIndex==0) {
+   if (IO_CTRL_MDIndex==MEM_I_NULL) {
         pio_sm_put(isa_pio, isa_bus_sm, 0x00u);  // 2nd Write : Directly Loop (Write Cycle or nothing)
         continue;  // Go back to the main loop begining
        }
@@ -175,9 +178,10 @@ for (;;) {
        continue;  // Go back to the main loop begining
 #endif
 
+
+// ********** ISA_Cycle=Memory Write (0010b) **********
 ISA_Do_MEMW:
 
-// ********** ISA_Cycle=Memory Write (1101b) **********
    uint32_t ISAMW_Data;
    ISAMW_Data=((uint32_t)gpio_get_all()>>PIN_AD0);   
 
@@ -185,12 +189,12 @@ ISA_Do_MEMW:
 #if DO_FAST_RAM    // Fast RAM : Only 0 or a no PSRAM Memory
    if (IO_CTRL_MDIndex!=0) 
 #else
-   if ((IO_CTRL_MDIndex>0)&&(IO_CTRL_MDIndex<MI_RW_NOWS_END))  // Memory in the Pico Memory or ROM
+   if ((IO_CTRL_MDIndex>0)&&(IO_CTRL_MDIndex<MI_W_NOWS_END))  // Memory in the Pico Memory or ROM
+// if (IO_CTRL_MDIndex<MI_W_NOWS_END)  // Memory in the Pico Memory or ROM
 #endif
              {
               RAM_Offset_Table[IO_CTRL_MDIndex][ISA_Addr]=(uint8_t) ISAMW_Data;
               pio_sm_put(isa_pio, isa_bus_sm, 0x00u);  // 2nd Write : Directly Loop (Write Cycle or nothing)
-      //        To_Display32=IO_CTRL_MDIndex+1<<8;
               continue;  // Go back to the main loop begining              
              }
 #if DO_FAST_RAM   // Fast RAM : Only 0 or a no PSRAM Memory
@@ -200,7 +204,7 @@ ISA_Do_MEMW:
         continue;  // Go back to the main loop begining
        }
 #else
-   if (IO_CTRL_MDIndex==0) {
+   if (IO_CTRL_MDIndex==MEM_I_NULL) {
           pio_sm_put(isa_pio, isa_bus_sm, 0x00u);  // 2nd Write : Directly Loop (Write Cycle or nothing)
           continue;  // Go back to the main loop begining
          }
@@ -209,8 +213,12 @@ ISA_Do_MEMW:
    if (IO_CTRL_MDIndex==MEM_EMS) {  // EMS
          ISA_Addr=EMS_Base[(ISA_Addr>>14)&0x03u]+(ISA_Addr & 0x3FFFu);  // Compute the base PSRAM Address           
         }
-   psram_write8(&psram_spi, ISA_Addr, (uint8_t) ISAMW_Data);
-
+#if USE_PSRAM_DMA
+      psram_write8_async(&psram_spi, ISA_Addr, (uint8_t) ISAMW_Data);
+#else
+      psram_write8(&psram_spi, ISA_Addr, (uint8_t) ISAMW_Data);
+#endif        
+   
    pio_sm_put(isa_pio, isa_bus_sm, 0x00u);  // 2nd Write : Directly Loop (Write Cycle or nothing)
    continue;  // Go back to the main loop begining
 #endif
@@ -225,9 +233,6 @@ ISA_Do_IO:  // Goto, from the assembly code
   uint32_t IO_Device;
 
   ISA_Addr = pio_sm_get_blocking(isa_pio, isa_bus_sm); // Read (A19-A0)<<12
-// Initial : 11
-//  ISA_IO_Addr = (ISA_Addr>>12) & 0x3FF;
-//  IO_Device = PORT_Table[ISA_IO_Addr>>3];
 
   IO_Device = PORT_Table[(ISA_Addr<<9)>>24];  // <<9 to keep the Bit 13 as well, for DMA Detection
   pio_sm_put(isa_pio, isa_bus_sm, IO_Device); // First pio put : No Wait State if 0
@@ -235,19 +240,6 @@ ISA_Do_IO:  // Goto, from the assembly code
   asm volatile ("nop");
 
   ISA_IO_Addr = (ISA_Addr<<10)>>22;           // Same as (ISA_Addr>>12) & 0x3FF
-
-/*  ISA_Addr=(ISA_Addr^0xF0000000)>>12;
-  if (ISA_Addr>=0x3FF) 
-     {
-      //To_Display32=ISA_Addr;
-      IO_Device=0;
-     }
-*/
-
-//if (IO_Device) To_Display32=ISA_Addr;
-//if (IO_Device!=4) IO_Device=0;
-//IO_Device=0;
-//To_Display32=ISA_Addr;
 
   switch(IO_CTRL_MDIndex)
       {
@@ -261,13 +253,14 @@ ISA_Do_IO:  // Goto, from the assembly code
            dev_pmio_iow(ISA_IO_Addr,ISAIOW_Data);
           break;
         case DEV_LTEMS :  // LTEMS : Write to the Bank Registers
-           EMS_Bank[(uint8_t) ISA_IO_Addr & 0x03]=ISAIOW_Data;   // Write the Bank Register
-	         EMS_Base[(uint8_t) ISA_IO_Addr & 0x03]=((uint32_t) ISAIOW_Data*16*1024)+1024*1024; // EMS Bank base Address : 1Mb + Bank number *16Kb (in SPI RAM)
-	      break;  //DEV_LTEMS
+           dev_ems_iow(ISA_IO_Addr,ISAIOW_Data);
+        //    EMS_Bank[(uint8_t) ISA_IO_Addr & 0x03]=ISAIOW_Data;   // Write the Bank Register
+	     //    EMS_Base[(uint8_t) ISA_IO_Addr & 0x03]=((uint32_t) ISAIOW_Data*16*1024)+1024*1024; // EMS Bank base Address : 1Mb + Bank number *16Kb (in SPI RAM)
+	       break;  //DEV_LTEMS
 #ifdef RASPBERRYPI_PICO_W
 #if USE_NE2000
         case DEV_NE2000:
-           PM_NE2000_Write((ISA_IO_Addr-PM_Config->ne2000Port) & 0x1F,ISAIOW_Data);
+           dev_ne2000_iow((ISA_IO_Addr-PM_Config->ne2000Port) & 0x1F,ISAIOW_Data);
           break;
 #endif
 #endif
@@ -291,29 +284,36 @@ ISA_Do_IO:  // Goto, from the assembly code
         case DEV_TANDY :
            dev_tdy_iow(ISA_IO_Addr,ISAIOW_Data);
           break;          
+        case DEV_SBDSP :
+           dev_sbdsp_iow(ISA_IO_Addr,ISAIOW_Data);
+          break;
+        case DEV_DMA :
+           dev_dma_iow(ISA_IO_Addr,ISAIOW_Data);
+          break;           
 #endif
 
 // *** Add Other device IOW here ***         
 
         }          // switch(IO_Device) (Write)
-        break;     // End ISA_Cycle=IOW
+       break;     // End ISA_Cycle=IOW
 
 // ********** PicoMEM IOR ********** 
        case CTRL_IOR : // ISA_Cycle=IOR (1011b)
        switch(IO_Device)
         {
-        case DEV_PM : 
+        case DEV_PM :
            dev_pmio_ior(ISA_IO_Addr,&ISA_Data);
            pm_do_ior();
           break; //DEV_PM    
         case DEV_LTEMS :
-           ISA_Data=EMS_Bank[(uint8_t) ISA_IO_Addr & 0x03];  // Read the Bank Register
+           dev_ems_ior(ISA_IO_Addr,&ISA_Data);
+           //ISA_Data=EMS_Bank[(uint8_t) ISA_IO_Addr & 0x03];  // Read the Bank Register
            pm_do_ior();
           break;  //DEV_LTEMS  
 #if PM_PICO_W
-#if USE_NE2000             
+#if USE_NE2000
         case DEV_NE2000:        
-           ISA_Data = PM_NE2000_Read((ISA_IO_Addr-PM_Config->ne2000Port) & 0x1F);
+           ISA_Data = dev_ne2000_ior((ISA_IO_Addr-PM_Config->ne2000Port) & 0x1F);
            pm_do_ior();
           break;          
 #endif          
@@ -326,13 +326,14 @@ ISA_Do_IO:  // Goto, from the assembly code
 #endif
 #if USE_AUDIO
         case DEV_ADLIB:
-           dev_adlib_ior(ISA_IO_Addr,&ISA_Data);
-           pm_do_ior();           
+           if (dev_adlib_ior(ISA_IO_Addr,&ISA_Data)) pm_do_ior();          
           break;
         case DEV_CMS:
-           dev_cms_ior(ISA_IO_Addr,&ISA_Data);
-           pm_do_ior();           
-          break;          
+           if (dev_cms_ior(ISA_IO_Addr,&ISA_Data)) pm_do_ior();
+          break;
+        case DEV_SBDSP:
+           if (dev_sbdsp_ior(ISA_IO_Addr,&ISA_Data)) pm_do_ior();        
+          break;
 #endif          
 
    // *** Add Other device IOR here ***

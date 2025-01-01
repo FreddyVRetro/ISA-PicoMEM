@@ -118,18 +118,19 @@ bool dev_cms_ior(uint32_t CTRL_AL8,uint8_t *Data )
     switch (CTRL_AL8&0x0F) {
     case 0x4:
         *Data=0x7F;
-        break;
+        return true;
     case 0xa:
     case 0xb:
         *Data=cms_detect;
-        break;
+        return true;
     }
 
 //   PM_INFO("CMSR %x,%x-",CTRL_AL8,*Data);
-   return true;
+  *Data=0xFF;
+  return false;  // Nothing read
 }
 
-void dev_cms_iow(uint32_t CTRL_AL8,uint32_t ISAIOW_Data)
+void dev_cms_iow(uint32_t CTRL_AL8,uint8_t Data)
 {
   uint8_t addr=CTRL_AL8&0x07;
 
@@ -137,28 +138,28 @@ void dev_cms_iow(uint32_t CTRL_AL8,uint32_t ISAIOW_Data)
   switch (addr) 
   {
    case 0:
-     PM_INFO("CMSW 0,%x-",ISAIOW_Data);
+     PM_INFO("CMSW 0,%x-",Data);
      saa0->data_w(cmd.data);
      break;
    case 1:
-     PM_INFO("CMSW 1,%x-",ISAIOW_Data);
+     PM_INFO("CMSW 1,%x-",Data);
      saa0->control_w(cmd.data);
      break; 
    case 2:
-     PM_INFO("CMSW 2,%x-",ISAIOW_Data);
+     PM_INFO("CMSW 2,%x-",Data);
      saa1->data_w(cmd.data);
      break; 
    case 3:
-     PM_INFO("CMSW 3,%x-",ISAIOW_Data);
+     PM_INFO("CMSW 3,%x-",Data);
      saa1->control_w(cmd.data);
      break;
     case 0x6:
     case 0x7:
-             cms_detect = ISAIOW_Data & 0xFF;
+             cms_detect = Data & 0xFF;
              break;     
   }
 #else // MAME_CMS
-//  PM_INFO("CMSW %x,%x-",CTRL_AL8,ISAIOW_Data);
+//  PM_INFO("CMSW %x,%x-",CTRL_AL8,Data);
   switch (addr) 
   {
     case 0x0:
@@ -166,16 +167,16 @@ void dev_cms_iow(uint32_t CTRL_AL8,uint32_t ISAIOW_Data)
     case 0x2:
     case 0x3:
              if (addr & 1) {
-              cms->write_addr(addr, ISAIOW_Data);
+              cms->write_addr(addr, Data);
               } else {
-              cms->write_data(addr, ISAIOW_Data);
+              cms->write_data(addr, Data);
               }
              dev_cms_playing=true;  // enable mixind, start the timer
              dev_cms_delay=0;
              break;
     case 0x6:
     case 0x7:
-             cms_detect = ISAIOW_Data & 0xFF;
+             cms_detect = Data & 0xFF;
              break;
   }
 #endif // MAME_CMS

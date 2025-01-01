@@ -78,29 +78,30 @@ void dev_adlib_update()
 
 bool dev_adlib_ior(uint32_t CTRL_AL8,uint8_t *Data )
 {
-   if ((CTRL_AL8&0x07)==0) 
+  if ((CTRL_AL8&0x07)==0) 
    {
     *Data = (uint8_t) OPL_Pico_PortRead(OPL_REGISTER_PORT); 
   //  printf("OPLR %x-",*Data);
+    return true;
    }
-   else *Data=0xFF;
-   return true;
+  *Data=0xFF;
+  return false;
 }
 
-void dev_adlib_iow(uint32_t CTRL_AL8,uint32_t ISAIOW_Data)
+void dev_adlib_iow(uint32_t CTRL_AL8,uint8_t Data)
 {
   switch (CTRL_AL8&0x07) 
   {
    case 0:
-  //   PM_INFO("OPLR 0,%x-",ISAIOW_Data);
-     OPL_Pico_PortWrite(OPL_REGISTER_PORT, (unsigned int) ISAIOW_Data);
+  //   PM_INFO("OPLR 0,%x-",Data);
+     OPL_Pico_PortWrite(OPL_REGISTER_PORT, (unsigned int) Data);
      dev_adlib_playing=true;  // enable mixind, start the timer
      dev_adlib_delay=0;     
      return;
      break;
    case 1:
-   //  PM_INFO("OPLR 1,%x-",ISAIOW_Data);
-     OPL_Pico_PortWrite(OPL_DATA_PORT, (unsigned int) ISAIOW_Data);
+   //  PM_INFO("OPLR 1,%x-",Data);
+     OPL_Pico_PortWrite(OPL_DATA_PORT, (unsigned int) Data);
      dev_adlib_playing=true;  // enable mixind, start the timer
      dev_adlib_delay=0;  
      return;

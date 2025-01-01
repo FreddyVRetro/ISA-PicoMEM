@@ -1,3 +1,45 @@
+# == DO NOT EDIT THE FOLLOWING LINES for the Raspberry Pi Pico VS Code Extension to work ==
+if(WIN32)
+    set(USERHOME $ENV{USERPROFILE})
+else()
+    set(USERHOME $ENV{HOME})
+endif()
+set(sdkVersion 2.1.0)
+set(toolchainVersion 13_3_Rel1)
+set(picotoolVersion 2.1.0)
+set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
+if (EXISTS ${picoVscode})
+    include(${picoVscode})
+endif()
+# ====================================================================================
+# == DO NOT EDIT THE FOLLOWING LINES for the Raspberry Pi Pico VS Code Extension to work ==
+if(WIN32)
+    set(USERHOME $ENV{USERPROFILE})
+else()
+    set(USERHOME $ENV{HOME})
+endif()
+set(sdkVersion 2.0.0)
+set(toolchainVersion 13_2_Rel1)
+set(picotoolVersion 2.0.0)
+set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
+if (EXISTS ${picoVscode})
+    include(${picoVscode})
+endif()
+# ====================================================================================
+# == DO NOT EDIT THE FOLLOWING LINES for the Raspberry Pi Pico VS Code Extension to work ==
+if(WIN32)
+    set(USERHOME $ENV{USERPROFILE})
+else()
+    set(USERHOME $ENV{HOME})
+endif()
+set(sdkVersion 2.0.0)
+set(toolchainVersion 13_2_Rel1)
+set(picotoolVersion 2.0.0)
+set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
+if (EXISTS ${picoVscode})
+    include(${picoVscode})
+endif()
+# ====================================================================================
 # PicoMEM CMake file
 
 # https://github.com/bgni/minimal-pico-tinyusb-pio-project
@@ -6,8 +48,6 @@
 # (note this can come from environment, CMake cache etc)
 #set(PICO_SDK_PATH "${CMAKE_SOURCE_DIR}/../pico-sdk")
 #set(TINYUSB_PATH "${CMAKE_SOURCE_DIR}/../pico-sdk/lib/tinyusb")
-#set(PICO_SDK_PATH "${CMAKE_SOURCE_DIR}/../Pico SDK v1.5.0/pico-sdk")
-#set(TINYUSB_PATH "${CMAKE_SOURCE_DIR}/../Pico SDK v1.5.0/pico-sdk/lib/tinyusb")
 
 cmake_minimum_required(VERSION 3.13)
 
@@ -19,19 +59,20 @@ set(CMAKE_CXX_STANDARD 17)
 #set(BOARD pico_sdk)
 
 # Declare the Pi Pico Board used
-set(PICO_BOARD PICO_W)
+set(PICO_BOARD pico_w CACHE STRING "Board type")
 #set(PICO_BOARD PICO)
 #set(PICO_BOARD PICO2)
+#set(PICO_BOARD PIMORONI_PICO_PLUS2_RP2350)
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include(pico_sdk_import.cmake)
 #include(pico_extras_import.cmake)
 
  # ** UART (Debug) and USB Host definition **
- set(STDIO_UART 0)
+ set(STDIO_UART 1)
  set(USB_UART 0)
  set(ASYNC_UART 0)
-  set(DO_USBHOST 1)
+ set(DO_USBHOST 1)
  
 project(picomem C CXX ASM)
   
@@ -49,8 +90,6 @@ pico_sdk_init()
 # Add the Sub directories containing libraries
 
 add_subdirectory(lib/FatFs_SPI)
-#add_subdirectory(lib/rp2040-psram)
-#add_subdirectory(dosbox)
 add_subdirectory(rom)                       # PicoMEM BIOS binary
 add_subdirectory(isa_devices)               # all ISA devices IO and MEM code
 add_subdirectory(qwiic)
@@ -58,7 +97,13 @@ add_subdirectory(audio_devices)
 add_subdirectory(audio_devices/opl)
 add_subdirectory(lib/pm_audio/pm_audio_i2s)
 
-if (PICO_BOARD STREQUAL "PICO_W")
+add_subdirectory(lib/rp2040-psram)          # rp2040 PSRAM with DMA
+
+if (PICO_BOARD STREQUAL "pimoroni_pico_plus2_rp2350")
+    add_subdirectory(lib/pico_psram)            # rp2350 PSRAM
+endif()
+
+if (PICO_BOARD STREQUAL "pico_w")
     add_subdirectory(ne2000)
 endif()
 if (DO_USBHOST)
@@ -119,52 +164,38 @@ if (PROJECT_TYPE STREQUAL "TEST")
   
 # 270 Min for the 5150
     PM_SYS_CLK=280    # Possible values : 130,133,160,170,...,240,260,270,280
-    CYW43_PIO_CLOCK_DIV_INT=4  # For the Wifi Chip PIO clock : 2 for 133MHz
 
 # Define the BIOS default base address
 # Don't use C000 Segment (0xC0000u) if the PC is configured to use an external video BIOS
 # To Configure the ROM, Be carefull that the XTIDE ROM is 32Kb, even if only 16Kb is used
     USEROM0=1
-    MAX_PMRAM=8         # Maximum Nb of 16Kb RAM for the Pico emulated RAM (Reduce to allow all, for test) (8 for 128Kb maximum)
-
-    #1800 6Kb 2000 8Kb 3000 12Kb 400
-#    ROM_BIOS=0x0C8000u     # @ of the PM BIOS           12Kb
-#    ROM_DISK=0xCC000u      # Disk RAM in ROM (PM_DISKB) 16Kb
-
     ROM_BIOS=0x0D0000u     # @ of the PM BIOS           12Kb
-    ROM_DISK=0x0D4000u      # BIOS and Disk RAM (PM_DPRAM) 8Kb
 
-#    ROM_BIOS=0x0D8000u     # @ of the PM BIOS           12Kb
-#    ROM_DISK=0xDC000u      # Disk RAM in ROM (PM_DISKB) 16Kb
-   
+    MAX_PMRAM=8             # Maximum Nb of 16Kb RAM for the Pico emulated RAM (Reduce to allow all, for test) (8 for 128Kb maximum)
+
+    MUX_V2=0
+    
     USE_SDCARD=1            # 1 To enable SD Support   
+    USE_SDIO=0              # To remove SDIO form the SD Code (Save space and RAM)
     SD_SPI_PIO=0            # 1 To use the uSD driver with PIO
     SD_CRC_ENABLED=0        # Disable CRC checking for SPI-attached cards.
 
     DO_FAST_RAM=0           # Fast RAM disable all the RAM emulation based on PSRAM
-    USE_PSRAM=1             # 1 To enable PSRAM Support ! (Put to 0 if Fast RAM)
-    USE_PSRAM_DMA=0
 
+    USE_PSRAM=1             # 1 To enable PSRAM Support ! (Put to 0 if Fast RAM)  0 for Pimoroni pico plus 2
+    USE_PSRAM_DMA=1
+
+    # defines for the rp2040 psram library (ian scott)
     PSRAM_ASYNC=1
-    PSRAM_SPINLOCK=1
+   # PSRAM_SPINLOCK=1
     PSRAM_PIN_CS=5          # Chip Select (SPI0 CS )
     PSRAM_PIN_SCK=6         # Clock       (SPI0 SCK)
     PSRAM_PIN_MOSI=7        # Output      (SPI0 TX )
     PSRAM_PIN_MISO=4        # Input       (SPI0 RX )    
 
-
-# - NETWORK Defines -
-    USE_NE2000=1
-
-# CYW43 resources : One State Machine
-# 2 DMA (Automatic claim) for tx, rx
-
-    CYW43_SPI_PIO_PREFERRED_PIO=0
-    DNS_TABLE_SIZE=2        # reduce the RAM taken by the DNS Table (Usefull ?)
-
 # - Audio Defines -    
     USE_AUDIO=1
-
+ 
 # Adlib defs  
     USE_EMU8950_OPL=1
     EMU8950_ASM=1
@@ -180,11 +211,11 @@ if (PROJECT_TYPE STREQUAL "TEST")
     PM_ENABLE_STDIO=0      # Enable the Serial Display to the defined serial device (ASYNC_UART)
     UART_PIN0=0            # Use PIN0 (IRQ) instead of Pin 28
 
-    CFG_TUSB_DEBUG=0       # TinyUSB: 0 :Off / 1:Error / 2:Warning / 3:Info
-    SD_DEBUG=0             # 1 To enable the DBG_PRINTF in the SD/FatFs spi
+    CFG_TUSB_DEBUG=0      # TinyUSB: 0 :Off / 1:Error / 2:Warning / 3:Info
+    SD_DEBUG=0            # 1 To enable the DBG_PRINTF in the SD/FatFs spi
     USE_PRINTF=0          # Remove for no SD Debug Printf
     USE_DBG_PRINTF=0      # Remove for no SD Debug Printf
-    PM_PRINTF=0            # 1 To enable the Debug Printf
+    PM_PRINTF=0           # 1 To enable the Debug Printf
     DISP32=0
     
     # Test Code activation
@@ -194,19 +225,26 @@ if (PROJECT_TYPE STREQUAL "TEST")
  
     )
    
-# "Compile" the PIO Code    
-    pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/psram_spi2.pio)
-    pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/isa_iomem.pio)
-    pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/pm_test.pio)    
-
-    if( PICO_BOARD STREQUAL "PICO_W") 
+    if( PICO_BOARD STREQUAL "pico_w") 
         add_compile_definitions( 
             PM_PICO_W=1 
+# - NETWORK Defines -
+            USE_NE2000=1
+
+# CYW43 resources : One State Machine (Moved to PIO1, ISA too big)
+# 2 DMA (Automatic claim) for tx, rx
+
+            CYW43_PIO_CLOCK_DIV_INT=4  # For the Wifi Chip PIO clock : 2 for 133MHz
+            CYW43_SPI_PIO_PREFERRED_PIO=1
+            DNS_TABLE_SIZE=2        # reduce the RAM taken by the DNS Table (Usefull ?)            
+
         ) 
     else( 
         add_compile_definitions( 
             PM_PICO_W=0
-        )        
+# - NETWORK Defines -
+            USE_NE2000=0
+         )        
         )        
     endif()
 
@@ -257,6 +295,12 @@ endif()  #(PROJECT_TYPE STREQUAL "TEST")
 pico_set_program_name(picomem "picomem")
 pico_set_program_version(picomem "0.1")
 
+# "Compile" the PIO Code    
+pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/psram_spi2.pio)      # Old PSRAM code (Without DMA)
+pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/isa_iomem.pio)
+pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/isa_iomem_v2.pio)    # PicoMEM With Multiplexer V2 
+pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/pm_test.pio)
+
 # BUILD Library list
 
 # Add the standard library to the build
@@ -272,7 +316,7 @@ target_link_libraries( picomem
 
     # ** Other lib
     no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
-#    rp2040-psram
+    rp2040-psram
 
     # ** PicoMEM libs
     pmbios
@@ -283,13 +327,17 @@ target_link_libraries( picomem
     pm_audio_i2s
     audio_devices
     opl  
-#    pico_audio_i2s
-
 ) 
  
 # Add other libraries based on the needs
 
-if( PICO_BOARD STREQUAL "PICO_W")
+if( PICO_BOARD STREQUAL "pimoroni_pico_plus2_rp2350")
+    target_link_libraries( picomem
+    pico_psram
+)
+endif()
+
+if( PICO_BOARD STREQUAL "pico_w")
     target_link_libraries( picomem
        ne2000
 )

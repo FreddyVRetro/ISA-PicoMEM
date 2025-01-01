@@ -25,6 +25,7 @@ extern volatile uint8_t PM_Command;    // Write at port 0 > Command to send to t
 extern volatile uint8_t PM_Status;     // Read at Port 0  > Command and Pico Status
 extern volatile uint8_t PM_CmdDataH;
 extern volatile uint8_t PM_CmdDataL;
+extern volatile bool PM_CmdReset;      // Is set to true when trying to reset a "locked" command
 
 extern volatile bool PM_DoSectorCount; // Increment the read/Written sector count in Disk function
 
@@ -41,4 +42,9 @@ extern volatile uint32_t RAM_InitialAddress;  // Initial Address of the Pico Int
 extern uint8_t *PM_PTR_DISKBUFFER;
 
 // Debug var 
+#if DISP32
 extern volatile uint32_t To_Display32;
+extern volatile uint32_t To_Display32_2;
+extern volatile uint32_t To_Display32_mask;
+extern volatile uint32_t To_Display32_2_mask;
+#endif

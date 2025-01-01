@@ -30,6 +30,7 @@
 ;         |       1	- IPL : Floppy drive(s) installed (always 1 on 5160)
 ;----------------------------------------------------------------------------;
 %define BIOSVAR_EQUIP  010h  ; Equipment flag to read the number of Floppy
+%define BIOSVAR_EQUIPH 011h  ; Equipment flag to read the number of Floppy
 %define BIOSVAR_DISKNB 075h  ; Nb of HDD
 %define BIOSVAR_MEMORY 013h  ; Word : Conventionnal Memory size in Kb (Supposed to be <=640)
 

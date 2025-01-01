@@ -11,16 +11,20 @@ static void dma_irq_handler(const uint DMA_IRQ_num, io_rw_32 *dma_hw_ints_p) {
         if (!sd_card_p)
             continue;
         uint irq_num = 0, channel = 0;
+#if USE_SDIO        
         if (SD_IF_SDIO == sd_card_p->type) {
             irq_num = sd_card_p->sdio_if_p->DMA_IRQ_num;
             channel = sd_card_p->sdio_if_p->state.SDIO_DMA_CHB;
         }
+#endif        
         // Is this channel requesting interrupt?
         if (irq_num == DMA_IRQ_num && (*dma_hw_ints_p & (1 << channel))) {
             *dma_hw_ints_p = 1 << channel;  // Clear it.
+#if USE_SDIO              
             if (SD_IF_SDIO == sd_card_p->type) {
                 sdio_irq_handler(sd_card_p);
             }
+#endif            
         }
     }
 }

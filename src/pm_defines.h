@@ -29,6 +29,7 @@ If not, see <https://www.gnu.org/licenses/>.
 #define DEV_ADLIB  8
 #define DEV_CMS    9
 #define DEV_TANDY  10
+#define DEV_SBDSP  11
 
 
 // * Status and Commands definition
@@ -38,6 +39,10 @@ If not, see <https://www.gnu.org/licenses/>.
 #define STAT_CMDNOTFOUND   0x03
 #define STAT_INIT          0x04  // Init in Progress
 #define STAT_WAITCOM       0x05  // Wait for the USB Serial to be connected
+#define STAT_DATA_READ     0x10
+#define STAT_DATA_WRITE    0x11
+#define STAT_DATA_READ_W   0x12
+#define STAT_DATA_WRITE_W  0x13
 
 #define CMDERR_NOERROR     0x00
 #define CMDERR_WRITE       0x01  // Disk Write Error (File write)
@@ -49,7 +54,6 @@ If not, see <https://www.gnu.org/licenses/>.
 #define CMDERR_DISK        0x07  // Any other Disk Error
 #define CMDERR_FILEREAD    0x08  // Can't open/Read file (image)
 #define CMDERR_MOUTFAIL    0x09  // Disk image mount fail
-
 
 // 0x 1x General / Configuration Commands
 #define CMD_Reset         0x00   // Put back the status to 0, after an error
@@ -63,9 +67,10 @@ If not, see <https://www.gnu.org/licenses/>.
 #define CMD_SaveCfg       0x08   // Save the Configuration to the file
 #define CMD_DEV_Init      0x09   // Initialize the devices (Run at the BIOS Setup end)
 #define CMD_TDY_Init      0x0A   // Initialize the Tandy RAM emulation
+#define CMD_Test_RAM      0x0B   // Write the sent value to the BIOS RAM Test Address, Return the value that was present
+#define CMD_TESTIO        0x0C  // Test Data transfer via IO > To remove when done
 
 #define CMD_GetPMString   0x10   // Read the PicoMEM Firmware string
-#define CMD_Stop_IORW     0x11   // Stop the in progress I/O r/w command
 #define CMD_ReadConfig    0x12   // Read the Config variables from I/O
 #define CMD_WriteConfig   0x13   // Read the Config variables from I/O
 
@@ -100,7 +105,8 @@ If not, see <https://www.gnu.org/licenses/>.
 #define CMD_Keyb_OnOff    0x55
 
 #define CMD_Wifi_Infos    0x60   // Get the Wifi Status, retry to connect if not connected
-#define CMD_USB_Status    0x61   // Get the USB Status
+#define CMD_USB_Status    0x61   // Get the USB Status Strings
+#define CMD_DISK_Status   0x62   // Get the Disk emulation status screen.
 
 // 7x Audio commands
 #define CMD_AudioOnOff    0x70  // Full audio rendering 0: Off 1:On
@@ -109,8 +115,10 @@ If not, see <https://www.gnu.org/licenses/>.
 #define CMD_TDYOnOff      0x74  // Tandy Audio : 0 : Off 1: On default or port
 #define CMD_CMSOnOff      0x75  // CMS Audio   : 0 : Off 1: On default or port
 #define CMD_CovoxOnOff    0x76  // Covox Audio : 0 : Off 1: On default or port
-#define CMD_SBOnOff       0x77  // Sound Blaster Audio : 0 : Off 1: On default or port
-#define CMD_GUSOnOff      0x78  // GUS Audio : 0 : Off 1: On default or port
+#define CMD_SetSBIRQ      0x77  // Set Sound Blaster IRQ
+#define CMD_SBOnOff       0x78  // Sound Blaster Audio : 0 : Off 1: On default or port
+#define CMD_SetGUSIRQ     0x79  // Set GUS IRQ
+#define CMD_GUSOnOff      0x7A  // GUS Audio : 0 : Off 1: On default or port
 
 // 8x Disk Commands
 #define CMD_HDD_Getlist    0x80  // Write the list of hdd images into the Disk memory buffer
@@ -124,6 +132,8 @@ If not, see <https://www.gnu.org/licenses/>.
 #define CMD_Int13h         0x88  // Emulate the BIOS Int13h
 #define CMD_EthDFS_Send    0x89  // Send a packet to EthDFS server emulator and wait answer
 
+#define CMD_DMA_TEST       0xAA
+
 #define INIT_SKIPPED       0xFC  // Skipped or Error to initialize  ! Hardcoded in the ASM BIOS
 #define INIT_INPROGRESS    0xFE
 #define INIT_DISABLED      0xFE
@@ -134,7 +144,9 @@ If not, see <https://www.gnu.org/licenses/>.
 
 #define  IRQ_Stat_COMPLETED		0x10 // Set by the BIOS, IRQ Completed Ok
 #define  IRQ_Stat_WRONGSOURCE   0x11 // Set by the BIOS, IRQ Completed, Wrong Source
-#define  IRQ_Stat_INVALIDARG    0x11 // Invalid Argument Error
+#define  IRQ_Stat_DISABLED      0x12 // This interrupt is disabled in the PIC
+#define  IRQ_Stat_INVALIDARG    0x13 // Invalid Argument Error
+#define  IRQ_Stat_SameIRQ       0x14 // Asked to call the same IRQ
 
 #define IRQ_None        0		// IRQ was fired, but not intentionally or nothing to do
 #define IRQ_RedirectHW  1		// Directly call another HW interrupt (ne2000, other) To test more...
@@ -149,6 +161,8 @@ If not, see <https://www.gnu.org/licenses/>.
 #define IRQ_IRQ7        10		// Directly call HW interrupt 7
 #define IRQ_IRQ9        11		// Directly call HW interrupt 9
 #define IRQ_IRQ10       12		// Directly call HW interrupt 10
+#define IRQ_E_DMA       13
+
 #define IRQ_NE2000      20
 
 // Shared MEMORY variables defines (Registers and PC Commands)
@@ -157,7 +171,8 @@ If not, see <https://www.gnu.org/licenses/>.
 
 #define BV_SIZE 32
 
-#define BV_VARID     PM_DP_RAM[0]  // Nb of time the PicoMEM Boot
+#define BV_VARID     PM_DP_RAM[0]  // ID
+#define BV_Test      PM_DP_RAM[1]  // Test
 #define BV_InitCount PM_DP_RAM[2]  // Nb of time the PicoMEM BIOS Start
 #define BV_BootCount PM_DP_RAM[3]  // Nb of time the PicoMEM BootStrap Start
 #define BV_PSRAMInit PM_DP_RAM[4]  // BIOS RAM Offset of the PSRAM Init Variable
@@ -165,17 +180,17 @@ If not, see <https://www.gnu.org/licenses/>.
 #define BV_USBInit   PM_DP_RAM[6]  // BIOS RAM Offset of the USB Host Init Variable
 #define BV_CFGInit   PM_DP_RAM[7]  // BIOS RAM Offset of the Config File Init Variable
 #define BV_WifiInit  PM_DP_RAM[8]
-#define BV_PortInit  PM_DP_RAM[9]   // PicoMEM Base Port initialisation  0FEh not initialized 0 Ok
-#define BV_USBDevice PM_DP_RAM[10]  // Mounted USB Device Bit 0: Mouse Bit 1: Keyboard  Bit 3: Joystick ! Not used for the moment
-#define BV_IRQ       PM_DP_RAM[11]  // Detected Hardware IRQ Number
-#define BV_IRQSource PM_DP_RAM[12]  // Source of the Hardware Interrupt, Data stored in IRQ_Param
-#define BV_IRQStatus PM_DP_RAM[13]  // Status of the IRQ
-#define BV_IRQArg    PM_DP_RAM[14]
-#define BV_Reserved  PM_DP_RAM[15]
-#define PC_DiskNB    PM_DP_RAM[16]  // Number of Disk found at the origin
-#define PC_FloppyNB  PM_DP_RAM[17]  // Number of Physical Floppy drive
-#define PC_MEM       PM_DP_RAM[18]  // PC RAM Size in Kb
-#define PC_MEM_H     PM_DP_RAM[19]  // PC RAM Size in Kb
+#define BV_PortInit  PM_DP_RAM[9]  // PicoMEM Base Port initialisation  0FEh not initialized 0 Ok
+#define BV_USBDevice PM_DP_RAM[10] // Mounted USB Device Bit 0: Mouse Bit 1: Keyboard  Bit 3: Joystick ! Not used for the moment
+#define BV_IRQ       PM_DP_RAM[11] // Detected Hardware IRQ Number
+#define BV_IRQSource PM_DP_RAM[12] // Source of the Hardware Interrupt, Data stored in IRQ_Param
+#define BV_IRQStatus PM_DP_RAM[13] // Status of the IRQ
+#define BV_IRQArg    PM_DP_RAM[14] // Argument for the IRQ (Like the SW IRQ number to call)
+#define BV_DMAStatus PM_DP_RAM[15] // Status of the emulated DMA code (In the Interrupt)
+#define PC_DiskNB    PM_DP_RAM[16] // Number of Disk found at the origin
+#define PC_FloppyNB  PM_DP_RAM[17] // Number of Physical Floppy drive
+#define PC_MEM       PM_DP_RAM[18] // PC RAM Size in Kb
+#define PC_MEM_H     PM_DP_RAM[19] // PC RAM Size in Kb
 #define New_DiskNB   PM_DP_RAM[20] // Number of Disk in total after HDD Mount
 #define New_FloppyNB PM_DP_RAM[21] // Number of Floppy in total after FDD Mount
 #define BV_Tandy     PM_DP_RAM[22] // Tandy Mode
@@ -271,7 +286,6 @@ If not, see <https://www.gnu.org/licenses/>.
 
 #define PM_DB_Offset 4*1024  // Offset of the Disk Buffer start in the BIOS/DP RAM
 #define PM_DB_Size   4*1024  // Size of the 'Disk Buffer in the BIOS/DP RAM
-//#define PC_DB_Start  ROM_DISK+PM_DB_Offset  // Start of the Shared disk buffer in the Host (PC) RAM
 
 // Memory emulation defines
 #define MEM_T_Size 128
@@ -307,8 +321,8 @@ typedef struct SizeName_t {
 struct PMCFG_t {
     SizeName_t FDD[2];
     SizeName_t HDD[4];
-    uint8_t FDD_Attribute[2];
-    uint8_t HDD_Attribute[4];
+    uint8_t FDD_Attribute[2];  // Bit 7:1 PicoMEM Image ; Bit 6: USB or SD ; Bit 0-1: PC device / image number
+    uint8_t HDD_Attribute[4];  // Bit 7:1 PicoMEM Image ; Bit 6: USB or SD ; Bit 0-1: PC device / image number
     SizeName_t ROM[2];    // Emulated ROM Extention names
 //130 Bytes	 
     uint8_t  ROM_Addr[2]; // Address
@@ -345,7 +359,7 @@ struct PMCFG_t {
 	uint16_t TDYPort;
 	uint16_t CMSPort;
 	uint16_t SBPort;
-	uint16_t Audio4;
+	uint8_t  SBIRQ;
 	uint8_t  ColorPt;     // Menu Color Profile
 //161 Bytes
 };

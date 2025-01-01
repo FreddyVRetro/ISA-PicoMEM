@@ -45,7 +45,7 @@ tab "Monster", for pin assignments assumed in this configuration file.
 #include <assert.h>
 //
 #include "hw_config.h"
-#include "..\pm_gpiodef.h"     // Various PicoMEM GPIO Definitions
+#include "../pm_gpiodef.h"     // Various PicoMEM GPIO Definitions
 
 // Modified for PicoMEM
 // Hardware Configuration of SPI "objects"
@@ -53,9 +53,9 @@ tab "Monster", for pin assignments assumed in this configuration file.
 // selects (or "chip selects").
 static spi_t spis[] = {  // One for each RP2040 SPI component used
     {   .hw_inst = spi0,           // RP2040 SPI component
-        .sck_gpio = PM_SPI_SCK,    // 6 (PicoMEM)
-        .mosi_gpio = PM_SPI_MOSI,  // 7 (PicoMEM)
-        .miso_gpio = PM_SPI_MISO,  // 4 (PicoMEM)
+        .sck_gpio = SD_SPI_SCK,    // 6 (PicoMEM)
+        .mosi_gpio = SD_SPI_MOSI,  // 7 (PicoMEM)
+        .miso_gpio = SD_SPI_MISO,  // 4 (PicoMEM)
         .set_drive_strength = true,
         .mosi_gpio_drive_strength = GPIO_DRIVE_STRENGTH_8MA,        // Same value as the PSRAM
         .sck_gpio_drive_strength = GPIO_DRIVE_STRENGTH_8MA,         // Same value as the PSRAM
@@ -65,8 +65,8 @@ static spi_t spis[] = {  // One for each RP2040 SPI component used
 
 /* SPI Interfaces */
 static sd_spi_if_t spi_ifs[] = {
-    {   .spi = &spis[0],  // Pointer to the SPI driving this card
-        .ss_gpio = 3,     // The SPI slave select GPIO for this SD card
+    {   .spi = &spis[0],          // Pointer to the SPI driving this card
+        .ss_gpio = SD_SPI_CS,     // The SPI slave select GPIO for this SD card
         .set_drive_strength = true,
         .ss_gpio_drive_strength = GPIO_DRIVE_STRENGTH_4MA
     },
@@ -80,7 +80,7 @@ static sd_card_t sd_card = {  // One for each SD card
         .type = SD_IF_SPI,
         .spi_if_p = &spi_ifs[0],  // Pointer to the SPI interface driving this card
         // SD Card detect:
-        .use_card_detect = false,
+        .use_card_detect = false, // Card detect connection pin
         .card_detect_gpio = 9,  
         .card_detected_true = 0, // What the GPIO read returns when a card is
                                  // present.

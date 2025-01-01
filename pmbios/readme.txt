@@ -31,8 +31,16 @@ The Hardware IRQ Code can be used to execute other Hardware IRQ Code (IRQ Multip
 ;        DX : EMS Address Segment
 
 ;PM BIOS Function 2 : Return the NE2000 / Wifi Connection Status
+; Input : AH=60h AL=02h
+;         DX=1234h
 ; Return AL : Connection Status
 ;        AH : IRQ
+;        BX : Base Port (0 if not Present)
+
+;PM BIOS Function 3 : Get various PicoMEM BIOS RAM offset
+; Input : AH=60h AL=03h
+;         DX=1234h
+; Return AX : 
 ;        BX : Base Port (0 if not Present)
 
 ;PM BIOS Function 10h : Enable the Mouse

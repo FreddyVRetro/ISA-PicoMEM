@@ -1,0 +1,14 @@
+dmaw.c(302): Warning! W111: Meaningless use of an expression
+dmaw.c(470): Warning! W111: Meaningless use of an expression
+dmaw.c(907): Warning! W102: Type mismatch (warning)
+dmaw.c(907): Note! I2003: source conversion type is 'void *'
+dmaw.c(907): Note! I2004: target conversion type is 'char '
+dmaw.c(911): Warning! W102: Type mismatch (warning)
+dmaw.c(911): Note! I2003: source conversion type is 'void *'
+dmaw.c(911): Note! I2004: target conversion type is 'char '
+dmaw.c(930): Warning! W102: Type mismatch (warning)
+dmaw.c(930): Note! I2003: source conversion type is 'void *'
+dmaw.c(930): Note! I2004: target conversion type is 'char '
+dmaw.c(934): Warning! W102: Type mismatch (warning)
+dmaw.c(934): Note! I2003: source conversion type is 'void *'
+dmaw.c(934): Note! I2004: target conversion type is 'char '

@@ -1,6 +1,6 @@
 add_library(ne2000 INTERFACE)
 
-if(NOT PICO_BOARD STREQUAL "PICO_W")
+if(NOT PICO_BOARD STREQUAL "pico_w")
     message(FATAL_ERROR "NE2000 Requires Pico W")
 endif()
 

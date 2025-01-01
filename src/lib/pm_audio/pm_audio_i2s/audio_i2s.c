@@ -64,6 +64,7 @@ bool audio_i2s_setup(const audio_i2s_config_t *config) {
     gpio_set_function(config->clock_pin_base + 1, func);
 
     uint8_t sm = shared_state.pio_sm = config->pio_sm;      // Save the pio sm number
+    //spi.sm = pio_claim_unused_sm(spi.pio, true);          // > To do, auto define state machine
     pio_sm_claim(audio_pio, sm);
 
     uint offset = pio_add_program(audio_pio, &audio_i2s_program);
@@ -72,12 +73,12 @@ bool audio_i2s_setup(const audio_i2s_config_t *config) {
 
     PM_INFO("I2S Claimed DMA :");
 
-    uint8_t dma_channel = config->dma_channel;
-//    dma_channel_claim(dma_channel);
+    uint8_t dma_channel; // = config->dma_channel;
     dma_channel=dma_claim_unused_channel(true);
     shared_state.dma_channel = dma_channel;     // Save the DMA Channel number
+    shared_state.pio_sm = sm;                   // Save the pio sm number
 
-    PM_INFO(" %d\n",dma_channel);
+    PM_INFO(" %d\n, PIO SM:%d",dma_channel,sm);
 
     dma_channel_config dma_config = dma_channel_get_default_config(dma_channel);
 
@@ -95,7 +96,7 @@ bool audio_i2s_setup(const audio_i2s_config_t *config) {
 
     /* Configure the DMA Interrupt */
 
-    PM_INFO("Audio Init : DMA IRQ Config %d\n",DMA_IRQ_0 + PICO_AUDIO_I2S_DMA_IRQ);
+    PM_INFO("DMA IRQ: %d\n",DMA_IRQ_0 + PICO_AUDIO_I2S_DMA_IRQ);
 
     irq_add_shared_handler(DMA_IRQ_0 + PICO_AUDIO_I2S_DMA_IRQ, audio_i2s_dma_irq_handler, PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY);    
     dma_irqn_set_channel_enabled(PICO_AUDIO_I2S_DMA_IRQ, dma_channel, 1);

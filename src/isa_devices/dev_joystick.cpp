@@ -42,6 +42,8 @@ constexpr float pwm_clkdiv = (float) (280000 / 22727.27);  //CPU Clock
 
 extern "C" joystate_struct_t joystate_struct;
 
+void dev_joystick_iow(uint32_t CTRL_AL8,uint8_t Data);
+
 uint8_t dev_joystick_install()
 {
   // Init joystick as centered with no buttons pressed
@@ -58,6 +60,9 @@ uint8_t dev_joystick_install()
   pwm_init(3, &pwm_c, true);
 
   SetPortType(0x201,DEV_JOY,1);
+
+  dev_joystick_iow(0x201,0); // Simulate a Joystick IO Write
+  joystate_struct.button_mask=0xF0;
 
   return 0;
 }
@@ -80,8 +85,8 @@ void dev_joystick_update()
 
 bool dev_joystick_ior(uint32_t CTRL_AL8,uint8_t *Data )
 {
- // if ((CTRL_AL8 & 0x07)==1)  // Port 0x201
- // {
+  if ((CTRL_AL8 & 0x07)==1)  // Port 0x201
+   {
 //  printf("*R\n");    
    // Proportional bits: 1 if counter is still counting, 0 otherwise
    *Data =  (bool)pwm_get_counter(0) |
@@ -89,15 +94,18 @@ bool dev_joystick_ior(uint32_t CTRL_AL8,uint8_t *Data )
            ((bool)pwm_get_counter(2) << 2) |
            ((bool)pwm_get_counter(3) << 3) |
            joystate_struct.button_mask;
+//  printf("*R %X\n",*Data); 
    return true;
-  //} else return false;
+  }
+  *Data=0xFF;
+  return false;  // Nothing read
 }
 
-void dev_joystick_iow(uint32_t CTRL_AL8,uint32_t ISAIOW_Data)
+void dev_joystick_iow(uint32_t CTRL_AL8,uint8_t Data)
 {
   if ((CTRL_AL8 & 0x07)==1)  // Port 0x201  
    {
-  //  printf("*W\n"); 
+  //  printf("*W%X\n",ISAIOW_Data); 
     // Set times in # of cycles (affected by clkdiv) for each PWM slice to count up and wrap back to 0
     // TODO better calibrate this
     // GUS w/ gravis gamestick -

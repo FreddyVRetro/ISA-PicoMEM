@@ -5,17 +5,17 @@
 #include <string.h>  // For memset
 
 #if PICO_ON_DEVICE
-
 #include "hardware/clocks.h"
 #include "hardware/structs/clocks.h"
 #include "pico_pic.h"
-
 #endif
 
 #include "pico/stdlib.h"
 #include "pm_audio.h"
 
 #include "opl.h"
+
+#define A_DEBUG_PIN 0
 
 #ifdef MAME_CMS
 #include "saa1099/saa1099.h"
@@ -48,15 +48,18 @@ uint32_t Buff_mix_totaltime;
 uint32_t MixedinLoop;
 
 uint8_t *buffer;
-
+#if A_DEBUG_PIN
 uint8_t tp1;
 uint8_t tp2;
 bool Toggle1;
 bool Toggle2;
+#endif
+
 volatile bool PM_Audio_MixPause=false;
 
 bool pm_audio_active=false;
 
+#if A_DEBUG_PIN
 void Toggle_PIN(uint8_t pinnb)
 {
 if (pinnb==1) 
@@ -86,7 +89,9 @@ if (pinnb==1)
     } 
    }
 }
+#endif
 
+#if A_DEBUG_PIN
 static int32_t TIMERTEST_Event(Bitu val)
 {
    AudioEventStart=time_us_32();
@@ -96,6 +101,7 @@ static int32_t TIMERTEST_Event(Bitu val)
 
 return -(AudioBufferDuration-(time_us_32()-AudioEventStart));
 }
+#endif
 
 //MixAudioEvent try to pre compute as much buffer in advance and give back time to the main loop regularly.
 
@@ -104,7 +110,7 @@ static int32_t __time_critical_func(MixAudioEvent_pm)(Bitu val)
 if (!PM_Audio_MixPause)
   {
    AudioEventStart=time_us_32();
-   gpio_put(20,1);
+ //  gpio_put(20,1);
 
 //if (pm_audio.mixed_buffers<2) printf ("!%d",pm_audio.mixed_buffers);
 //Toggle_PIN(1);
@@ -143,8 +149,8 @@ if (!PM_Audio_MixPause)
 // Fire a Litle in advance
     if (AudioEventDuration<(AudioBufferDuration-200)) retval=-(AudioBufferDuration-AudioEventDuration-100);
      else retval=-(AudioBufferDuration>>2);
-   gpio_put(20,0);
-//printf("ret %d",-retval);
+//gpio_put(20,0);
+//  printf("ret %d",-retval);
     return retval;
   } else return AudioBufferDuration<<2;
 }
@@ -157,14 +163,14 @@ if (!pm_audio_active)
     AudioBufferDuration=uint32_t ((1000000*PM_SAMPLES_PER_BUFFER)/PM_AUDIO_FREQUENCY);
  //printf("AudioBufferDuration %d \n",AudioBufferDuration);
    
- tp1=20; //PIN_AD;
+//tp1=20; //PIN_AD;
 //tp1=0; //PIN_AD;
 
 //gpio_init(tp1);
 //gpio_set_dir(tp1, GPIO_OUT);
 //gpio_put(tp1, 0);
 
- tp2=21; //PIN_AS;
+//tp2=21; //PIN_AS;
 //tp2=0; //PIN_AD;
 
 //gpio_init(tp2);
@@ -189,6 +195,7 @@ printf("Timer IRQ Priority : %x %x %x %x\n",irq_get_priority(TIMER_IRQ_0),irq_ge
     pm_audio_init_i2s(0);      // Start the I2S Audio output
 
 // Start the mixing interrupt
+// !!! PIC_Init(); must be started before
     PIC_Init();
     PIC_AddEvent(MixAudioEvent_pm,1000,1);  // call MixAudioEvent_pm in 1000us
 

@@ -8,6 +8,10 @@
 #include <i86.h>
 
 
+void err_ultrasnd(char *argv0) {
+    fprintf(stderr, "ERROR: no ULTRASND variable set or is malformed!\n");
+}
+
 int init_gus(char *argv0) {
     char* ultrasnd = getenv("ULTRASND");
     if (ultrasnd == NULL) {

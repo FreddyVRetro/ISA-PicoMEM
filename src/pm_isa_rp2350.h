@@ -8,12 +8,10 @@
 // The code is placed in the Scratch_x (4k Bank used for the Core 1 Stack) to avoid RAM Access conflict.
 
 //void __time_critical_func(main_core1)(void)
-//void __scratch_x("core1_ISA_code") (main_core1)(void)
-
-// Test code, doing IO Only
-
-void __time_critical_func(test_IOW_core1)(void)
+void __scratch_x("core1_ISA_code") (main_core1)(void)
 {
+
+PM_INFO("Core1: pm_isa_rp2350\n");
 
 // PSRAM 4 Bytes cache
 uint32_t  PSRC_Addr;
@@ -32,19 +30,19 @@ for (;;) {
 //  gpio_put(PIN_IRQ,0);  // IRQ Up
 #endif
 
- ISA_WasRead = false;
+  ISA_WasRead = false;
 
 // 2 Values returned by the Assembly code
-  static uint32_t Ctrl_m=0x0F0000;
-  uint32_t IO_CTRL_MDIndex;          // Control for IO, Dev Type for MEM, No need for uint8_t
+  static uint32_t Ctrl_m=0x0F0000;   // Ctrl signals at Bit 16 to 19 are active high (after invertion)
+  uint32_t IO_CTRL_MDIndex;          // Control for IO or Dev Type for MEM, No need for uint8_t
 
  // ** Wait until a Control signal is detected **
  // ** Then, jump to MEMR / MEMW / IO and decode the Memory Address and Device Index
- //asm volatile goto (
-asm volatile (
+asm volatile goto (
+//asm volatile (
      "DetectCtrlEndLoop2:             \n\t"  // 1) Wait until there is no more Control signal (We detect an edge)
-     "ldr %[DEV_T],[%[IOB],%[IOO]]   \n\t"  // Load the GPIO Values 
-     "tst %[DEV_T],%[CM]             \n\t"  // Apply the mask to keep the ISA Control Signals Only
+     "ldr %[DEV_T],[%[IOB],%[IOO]]    \n\t"   // Load the GPIO Values
+     "tst %[DEV_T],%[CM]              \n\t"   // Apply the mask to keep the ISA Control Signals Only
      "bne DetectCtrlEndLoop2          \n\t"  // Loop if Control Signal detected (!=0)
 
      "DetectCtrlLoop2:               \n\t"   // 2) Wait until a Control Signal is present
@@ -53,13 +51,39 @@ asm volatile (
      "beq DetectCtrlLoop2            \n\t"   // Loop if no Control signal detected
      "str %[DEV_T],[%[PIOB],%[PIOT]] \n\t"   // pio->txf[0] = CTRL_AL8; Start the Cycle 
                                              // Then, PIO will returns AL12 or FFFFh if a DMA Cycle is detected
-//     "tst %[DEV_T],2"
-//     "beq NoDMA                   \n\t"   // Loop if no Control signal detected
-//     "NoDMA:                      \n\t"
 
      "lsl %[DEV_T],%[DEV_T],#12       \n\t"  // ISA_CTRL=ISA_CTRL<<12   CAAxxxxx
      "lsr %[DEV_T],%[DEV_T],#28       \n\t"  // ISA_CTRL=ISA_CTRL>>28   -> ISA_CTRL is now correct
 
+     "cmp %[DEV_T],#1                \n\t"  // Is it a MEM Read ?
+     "beq  ISA_Do_MEMR               \n\t"  // Jump must be <200 bytes
+
+     "cmp %[DEV_T],#2                \n\t"  // Is it a MEM Write ?
+     "beq %l[ISA_Do_MEMW]            \n\t"  // Jump must be <200 bytes
+
+//** > ISA IOR / IOW   **
+
+     "b %l[ISA_Do_IO]                \n\t"  // If %[TMP]!=0 Do IO    Jump must be <200 bytes
+
+     "ISA_Do_MEMR:                   \n\t"
+
+// Wait until the address is returned by the PIO
+     "WaitMEMRAddr:                      \n\t" 
+	  "ldr	%[DEV_T], [%[PIOB], #4]	     \n\t" // Load the PIO TX Status
+	  "ands	%[DEV_T], %[DEV_T], #256     \n\t" //
+	  "bne	WaitMEMRAddr		           \n\t" //
+     "ldr %[ADDR],[%[PIOB],%[PIOR]]      \n\t"   // ISA_Addr<<12 = pio->rxf[sm]; Read ISA_Addr from the PIO (Address with Mask) 
+    
+     "lsr %[DEV_T], %[ADDR], #25         \n\t"   // ISA_Addr>>20+5 for 8Kb Block
+     "ldrb %[DEV_T], [%[MIT], %[DEV_T]]  \n\t"   // IO_CTRL_MDIndex = MEM_Index_T[(ISA_Addr>>25)]
+/*
+     "lsr %[MIT], %[DEV_T], #3           \n\t"   // TMP = IO_CTRL_MDIndex>>3 (3, 0-7 : No Wait State) (3, 0-7)
+     "str %[MIT], [%[PIOB], %[PIOT]]     \n\t"   // pio->txf[sm] = TMP;  > Command the IOCHRDY Move if !=0
+
+// complete the ISA_Addr Address calculation for Memory Read
+     "lsr %[ADDR], %[ADDR], #12          \n\t"   // ISA_Addr=ISA_Addr>>12
+     "eor %[ADDR], %[CM]                 \n\t"   // ISA_Addr=ISA_Addr^Ctrl_m (0x0F0000)
+*/
 // Define Outputs
       :[DEV_T]"+l" (IO_CTRL_MDIndex),  // IO_CTRL_MDIndex is for MEM, use it as ISA_CTRL for I/O and used as Temp register
       [ADDR]"+l" (ISA_Addr)     
@@ -72,28 +96,71 @@ asm volatile (
       [PIOT]"i" (PIO_TXF0_OFFSET),
       [PIOR]"i" (PIO_RXF0_OFFSET)
      :"cc"                              // Tell the compiler that regs are changed
-//     : ISA_Do_IO,
-//       ISA_Do_MEMW
+     : ISA_Do_IO,
+       ISA_Do_MEMW
       );
 
-//************************************************
-//***         The ISA Cycle is IO              ***
-//************************************************
+//*************************************************
+//***         The ISA Cycle is MEM              ***
+//*************************************************
 
-   if (IO_CTRL_MDIndex=CTRL_MR) {  // If MEMR, Complete the PIO SM cycle and Loop directly
-        ISA_Addr = pio_sm_get_blocking(isa_pio, isa_bus_sm);  // Read the Address
-        pio_sm_put(isa_pio, isa_bus_sm, 0x00u);  // 1st Write : No Wait state
-        pio_sm_put(isa_pio, isa_bus_sm, 0x00u);  // 2nd Write : Directly Loop (Write Cycle or nothing)
+// ********** ISA_Cycle= Memory Read (0001b) **********
+
+
+//   ISA_Addr = pio_sm_get_blocking(isa_pio, isa_bus_sm);  // Read the Address
+//   IO_CTRL_MDIndex = MEM_Index_T[ISA_Addr>>25];
+   pio_sm_put(isa_pio, isa_bus_sm, IO_CTRL_MDIndex>>4);  // 1st Write : Add Wait state if needed
+   
+   ISA_Addr=(ISA_Addr>>12)^Ctrl_m;
+
+   if ((IO_CTRL_MDIndex>0)&&(IO_CTRL_MDIndex<MI_R_WS_END))    // 0<Index<MI_R_WS_END : "Fast RAM"
+        { // ** Read from the Pico Memory for "Fast" RAM or ROM
+        pm_do_memr(RAM_Offset_Table[IO_CTRL_MDIndex][ISA_Addr]);
         continue;  // Go back to the main loop begining
-       }
-
-
-   if (IO_CTRL_MDIndex=CTRL_MW) {  // If MEMW, Complete the PIO SM cycle and Loop directly
-        ISA_Addr = pio_sm_get_blocking(isa_pio, isa_bus_sm);  // Read the Address
-        pio_sm_put(isa_pio, isa_bus_sm, 0x00u);  // 1st Write : No Wait state
-        pio_sm_put(isa_pio, isa_bus_sm, 0x00u);  // 2nd Write : Directly Loop (Write Cycle or nothing)
+        }
+   else if (IO_CTRL_MDIndex>=16)                              // Index >=16 : PSRAM (RAM or EMS)
+        { // ** Read from QSPI PSRAM
+        pm_do_memr(RAM_Offset_Table[IO_CTRL_MDIndex][ISA_Addr]);
         continue;  // Go back to the main loop begining
-       }
+        }
+ 
+   pio_sm_put(isa_pio, isa_bus_sm, 0x00u);  // 2nd Write : Directly Loop (Write Cycle or nothing)
+   continue;  // Go back to the main loop begining
+
+// ********** ISA_Cycle=Memory Write (0010b) **********
+ISA_Do_MEMW:
+
+   ISA_Addr = pio_sm_get_blocking(isa_pio, isa_bus_sm);  // Read the Address
+
+   IO_CTRL_MDIndex = MEM_Index_T[ISA_Addr>>25];
+   pio_sm_put(isa_pio, isa_bus_sm, IO_CTRL_MDIndex>>4);  // 1st Write : Add Wait state if needed
+   ISA_Addr=(ISA_Addr>>12)^Ctrl_m;
+
+   pio_sm_put(isa_pio, isa_bus_sm, 0x00u);  // 2nd Write : Directly Loop (Write Cycle or nothing)
+
+// ** Write to the PicoMEM Internal RAM
+   if ((IO_CTRL_MDIndex>0)&&(IO_CTRL_MDIndex<MI_W_NOWS_END))  // Memory in the Pico Memory or ROM
+         {
+          uint32_t ISAMW_Data;
+          ISAMW_Data=((uint32_t)gpio_get_all()>>PIN_AD0);                
+          RAM_Offset_Table[IO_CTRL_MDIndex][ISA_Addr]=(uint8_t) ISAMW_Data;
+         }
+   else if (IO_CTRL_MDIndex>=16)                      // Index >=16 : PSRAM (RAM or EMS)
+        {   //!! Be carefull when optimizing / Overclocking 
+          uint32_t ISAMW_Data; 
+//          asm volatile ("nop");
+//          asm volatile ("nop");
+          ISAMW_Data=((uint32_t)gpio_get_all()>>PIN_AD0);                
+          RAM_Offset_Table[IO_CTRL_MDIndex][ISA_Addr]=(uint8_t) ISAMW_Data;
+        }
+   else {}  // To add : RAM Capture with PSRAM (With pimoroni)
+
+continue;  // Go back to the main loop begining
+
+//*************************************************
+//***         The ISA Cycle is IO               ***
+//*************************************************
+ISA_Do_IO:  // Goto, from the assembly code
 
   uint32_t ISA_IO_Addr;
   uint32_t IO_Device;
@@ -103,22 +170,10 @@ asm volatile (
   IO_Device = PORT_Table[(ISA_Addr<<9)>>24];  // <<9 to keep the Bit 13 as well, for DMA Detection
   pio_sm_put(isa_pio, isa_bus_sm, IO_Device); // First pio put : No Wait State if 0
 
-  asm volatile ("nop");
-
   ISA_IO_Addr = (ISA_Addr<<10)>>22;           // Same as (ISA_Addr>>12) & 0x3FF
 
-/*  ISA_Addr=(ISA_Addr^0xF0000000)>>12;
-  if (ISA_Addr>=0x3FF) 
-     {
-      //To_Display32=ISA_Addr;
-      IO_Device=0;
-     }
-*/
-
 //if (IO_Device) To_Display32=ISA_Addr;
-//if (IO_Device!=4) IO_Device=0;
-//IO_Device=0;
-//To_Display32=ISA_Addr;
+//To_Display32=(ISA_Addr||CTRL_IOW);
 
   switch(IO_CTRL_MDIndex)
       {
@@ -132,13 +187,12 @@ asm volatile (
            dev_pmio_iow(ISA_IO_Addr,ISAIOW_Data);
           break;
         case DEV_LTEMS :  // LTEMS : Write to the Bank Registers
-           EMS_Bank[(uint8_t) ISA_IO_Addr & 0x03]=ISAIOW_Data;   // Write the Bank Register
-	        EMS_Base[(uint8_t) ISA_IO_Addr & 0x03]=((uint32_t) ISAIOW_Data*16*1024)+1024*1024; // EMS Bank base Address : 1Mb + Bank number *16Kb (in SPI RAM)
-	      break;  //DEV_LTEMS
+           dev_ems_iow(ISA_IO_Addr,ISAIOW_Data);
+	       break;  //DEV_LTEMS
 #ifdef RASPBERRYPI_PICO_W
 #if USE_NE2000
         case DEV_NE2000:
-           PM_NE2000_Write((ISA_IO_Addr-PM_Config->ne2000Port) & 0x1F,ISAIOW_Data);
+           dev_ne2000_iow((ISA_IO_Addr-PM_Config->ne2000Port) & 0x1F,ISAIOW_Data);
           break;
 #endif
 #endif
@@ -178,13 +232,14 @@ asm volatile (
            pm_do_ior();
           break; //DEV_PM    
         case DEV_LTEMS :
-           ISA_Data=EMS_Bank[(uint8_t) ISA_IO_Addr & 0x03];  // Read the Bank Register
+           dev_ems_ior(ISA_IO_Addr,&ISA_Data);
+           //ISA_Data=EMS_Bank[(uint8_t) ISA_IO_Addr & 0x03];  // Read the Bank Register
            pm_do_ior();
           break;  //DEV_LTEMS  
 #if PM_PICO_W
 #if USE_NE2000             
         case DEV_NE2000:        
-           ISA_Data = PM_NE2000_Read((ISA_IO_Addr-PM_Config->ne2000Port) & 0x1F);
+           ISA_Data = dev_ne2000_ior((ISA_IO_Addr-PM_Config->ne2000Port) & 0x1F);
            pm_do_ior();
           break;          
 #endif          

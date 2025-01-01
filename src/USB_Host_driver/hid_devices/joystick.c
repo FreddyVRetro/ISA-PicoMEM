@@ -29,7 +29,7 @@
 #include "tusb.h"
 #include "xinput_host.h"
 #include "usb.h"
-#include "..\..\pm_debug.h"
+#include "../../pm_debug.h"
 #include "hid_dev.h"
 joystate_struct_t joystate_struct;
 

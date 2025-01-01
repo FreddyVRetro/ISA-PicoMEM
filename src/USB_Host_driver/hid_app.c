@@ -27,7 +27,7 @@
 #include "tusb.h"
 #include "usb.h"
 #include "hid_dev.h"
-#include "..\pm_debug.h"
+#include "../pm_debug.h"
 
 pm_mouse_t pm_mouse;
 

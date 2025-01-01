@@ -27,8 +27,7 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "dev_picomem_io.h"   // SetPortType / GetPortType
 
 #include "square/square.h"
-tandysound_t *tandysound;   // Tandy Emulation object                
-
+tandysound_t *tandysound;   // Tandy Emulation object
 
 bool dev_tdy_active=false;             // True if configured
 volatile bool dev_tdy_playing=false;   // True if playing
@@ -49,7 +48,6 @@ uint8_t dev_tdy_install(uint16_t baseport)
    tandysound=new tandysound_t();
 
    SetPortType(baseport,DEV_TANDY,1);
-   dev_tdy_baseport=baseport;
    dev_tdy_active=true;
    dev_tdy_playing=false;
   }
@@ -59,8 +57,8 @@ uint8_t dev_tdy_install(uint16_t baseport)
       PM_INFO("Change TDY Port (%x)\n",baseport);
       SetPortType(dev_tdy_baseport,DEV_NULL,2);
       SetPortType(baseport,DEV_TANDY,2);
-      dev_tdy_baseport=baseport;
      }
+  dev_tdy_baseport=baseport;
   return 0;
 }
 
@@ -90,17 +88,18 @@ void dev_tdy_update()
 
 bool dev_tdy_ior(uint32_t CTRL_AL8,uint8_t *Data )
 {
-   return true;
+  *Data=0xFF;
+  return false;  // Nothing read
 }
 
-void dev_tdy_iow(uint32_t CTRL_AL8,uint32_t ISAIOW_Data)
+void dev_tdy_iow(uint32_t CTRL_AL8,uint8_t Data)
 {
   if ((CTRL_AL8&0x07)==0) 
    {  
-    tandysound->write_register(0, ISAIOW_Data);    
-    dev_tdy_playing=true;  // enable mixind, start the timer
-    dev_tdy_delay=0;
-//    PM_INFO("TDYW %x ",(uint8_t) ISAIOW_Data);    
+    tandysound->write_register(0, Data);    
+    dev_tdy_playing=true;  // Enable mixind
+    dev_tdy_delay=0;       // Reset the last access delay
+//    PM_INFO("TDYW %x ",(uint8_t) Data);    
    }
 }
 //#endif

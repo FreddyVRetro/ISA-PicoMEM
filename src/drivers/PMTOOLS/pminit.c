@@ -16,11 +16,13 @@
 // List of authorized port for validation.
 #define CMS_PORTS 6
 #define TDY_PORTS 5
+#define SB_PORTS 5
 uint16_t CMSPortList[] = {0,1,0x220,0x230,0x240,0x250};
 uint16_t TDYPortList[] = {0,1,0x1E0,0x2C0,0x0C0};
+uint16_t SBPortList[] = {0,1,0x220,0x230,0x240,0x250};
 
 void banner(void) {
-    printf("PicoMEM Init Rev 0.2 by FreddyV, 10/2024\n");
+    printf("PicoMEM Init Rev 0.3 by FreddyV, 12/2024\n");
 }
 
 void usage()
@@ -38,10 +40,6 @@ void usage()
     //              "................................................................................\n"
     }
 
-void err_ultrasnd(char *argv0) {
-    fprintf(stderr, "ERROR: no ULTRASND variable set or is malformed!\n");
-}
-
 void print_firmware_string(void) {
     outp(PG_CONTROL_PORT, 0xCC); // Knock on the door...
     outp(PG_CONTROL_PORT, 0x02); // Select firmware string register
@@ -54,15 +52,6 @@ void print_firmware_string(void) {
         }
     }
     printf("Firmware version: %s\n", firmware_string);
-}
-
-bool wait_for_read(uint8_t value) {
-    for (uint32_t i = 0; i < 1000000; ++i) {
-        if (inp(DATA_PORT_HIGH) == value) {
-            return true;
-        }
-    }
-    return false;
 }
 
 bool detect_picogus(void)
@@ -96,13 +85,11 @@ if (e != 1 || option > 0x3ffu) { \
     return 4; \
 }
 
-
-
 int main(int argc, char* argv[]) {
     int e;
 
     banner();
-    if (argc==1)
+    if (argc<=1)
       {
         usage();
         return 1;
@@ -145,20 +132,6 @@ int main(int argc, char* argv[]) {
 
                 pm_io_cmd(CMD_AdlibOnOff,tmp_uint16);
                } else printf("Use only 0 or 1\n");               
-        }  else if (stricmp(argv[i], "/adlib") == 0) {    // Tandy
-            if (i + 1 >= argc) {
-                usage();
-                return 255;
-            }
-            process_port_opt(tmp_uint16);
-            printf(" - Adlib : ");
-            if ((tmp_uint16==0)||(tmp_uint16==1))
-               {
-                if (tmp_uint16==0) printf("Disable\n");
-                  else printf("Enable (388)\n");
-
-                pm_io_cmd(CMD_AdlibOnOff,tmp_uint16);
-               } else printf("Use only 0 or 1\n");               
         } else if (stricmp(argv[i], "/j") == 0) {    // Tandy
             if (i + 1 >= argc) {
                 usage();
@@ -183,6 +156,20 @@ int main(int argc, char* argv[]) {
                   else printf("Enable (%x)\n",tmp_uint16);
                  
                  pm_io_cmd(CMD_CMSOnOff,tmp_uint16);
+               } else printf("Invalid port (%x)\n",tmp_uint16);
+        }else if (stricmp(argv[i], "/tdy") == 0) {    // CMS
+            if (i + 1 >= argc) {
+                usage();
+                return 255;
+            }
+            process_port_opt(tmp_uint16);
+            printf(" - Tandy : ");
+            if (check_valid_w(&TDYPortList[0],tmp_uint16,TDY_PORTS))
+               {
+                if (tmp_uint16==0) printf("Disable\n");
+                  else printf("Enable (%x)\n",tmp_uint16);
+                 
+                 pm_io_cmd(CMD_TDYOnOff,tmp_uint16);
                } else printf("Invalid port (%x)\n",tmp_uint16);
         }
         ++i;

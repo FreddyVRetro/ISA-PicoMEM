@@ -5,24 +5,21 @@
 
 #define FIFO_NE2K_SEND 0x88
 
-extern uint8_t PM_EnableWifi();
+extern uint8_t PM_ConnectWifi();
 extern void PM_Wifi_GetStatus();
 extern void PM_RetryWifi();
 
-extern uint8_t PM_NE2000_Read(uint8_t Addr);
-extern void PM_NE2000_Write(uint8_t Addr,uint8_t Data);
+extern uint8_t dev_ne2000_ior(uint8_t Addr);
+extern void dev_ne2000_iow(uint8_t Addr,uint8_t Data);
 
-//ne2000 functions used bu the PicoMEM Code
+//ne2000 functions used by the PicoMEM Code
 extern uint8_t ne2000_read(uint16_t address, void *p);
 extern void ne2000_write(uint16_t address, uint8_t value, void *p);
 extern uint8_t ne2000_asic_read(uint16_t offset, void *p);
 extern void ne2000_asic_write(uint16_t offset, uint8_t value, void *p);
-
 extern uint8_t ne2000_reset_read(uint16_t offset, void *p);
 
 extern void ne2000_initiate_send();
-
-extern ne2000_t *nic;
 
 typedef struct wifi_infos_t {
        uint8_t cyw43_mac[6];
@@ -32,7 +29,11 @@ typedef struct wifi_infos_t {
        int16_t Status;
        int32_t rssi;           // Signal quality
        int16_t rate;           // rate ?
+       bool initialized;       // true if cyw43 is initialized
 } wifi_infos_t;
+
+extern ne2000_t *nic;
+extern wifi_infos_t PM_Wifi;   // Wifi Info Structure for PicoMEM
 
 /* Status values :
 #define CYW43_LINK_DOWN         (0)     ///< link is down

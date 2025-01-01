@@ -26,35 +26,25 @@
 #include "../pm_debug.h"
 #include "../pm_gvars.h"
 #include "../pm_defines.h"
+
 #if USE_PSRAM
 #if USE_PSRAM_DMA
 #include "psram_spi.h"
+extern psram_spi_inst_t psram_spi;
 #else
-#include "..\psram_spi2.h"
+#include "../psram_spi2.h"
+extern pio_spi_inst_t psram_spi;
 #endif
 #endif
 
 #include "dev_memory.h"   // Need access to the emulated RAM infos
 #include "../pm_pccmd.h"
-//pm #include "callback.h"
 #include "bios.h"
 #include "bios_disk.h"
-#include "pm_audio.h"   // For Audio Pause / Resume
-//#include "regs.h"
-//#include "mem.h"
-//pm #include "dos_inc.h" /* for Drives[] */
-//pm #include "../dos/drives.h"
-//pm #include "mapper.h"
+#include "pm_audio.h"    // For Audio Pause / Resume
+
 //PM File functions:
 #include "ff.h"
-
-#if USE_PSRAM_DMA
-#include "psram_spi.h"
-extern psram_spi_inst_t psram_spi;
-#else
-#include "..\psram_spi2.h"
-extern pio_spi_inst_t psram_spi;
-#endif
 
 const diskGeo DiskGeometryList[] = {
 	{ 160,  8, 1, 40, 0},
@@ -86,22 +76,22 @@ diskGeo HDDGeometryList[] = {
 };
 */
 
-Bitu call_int13;
-Bitu diskparm0, diskparm1;
+//Bitu call_int13;
+//Bitu diskparm0, diskparm1;
 static Bit8u last_status;
 static Bit8u last_drive;
 Bit16u imgDTASeg;
 RealPt imgDTAPtr;
 //DOS_DTA *imgDTA;
 bool killRead;
-static bool swapping_requested;
+//static bool swapping_requested;
 
 // PM void CMOS_SetRegister(Bitu regNr, Bit8u val); //For setting equipment word
 uint32_t PC_DB_Start;  // Start of the Shared disk buffer in the Host (PC) RAM
 
 /* 2 floppys and 2 harddrives, max  PM: 4 */ 
 imageDisk *imageDiskList[MAX_DISK_IMAGES];
-imageDisk *diskSwap[MAX_SWAPPABLE_DISKS];
+//imageDisk *diskSwap[MAX_SWAPPABLE_DISKS];
 Bits swapPosition;
 
 // PM : To be Declared
@@ -166,13 +156,14 @@ void updateDPT(void) {
 	}
 }
 
+/*	//Not used in PicoMEM
 void swapInDisks(void) {
 	bool allNull = true;
 	Bits diskcount = 0;
 	Bits swapPos = swapPosition;
 	int i;
 
-	/* Check to make sure there's atleast one setup image */
+	// Check to make sure there's atleast one setup image
 	for(i=0;i<MAX_SWAPPABLE_DISKS;i++) {
 		if(diskSwap[i]!=NULL) {
 			allNull = false;
@@ -180,10 +171,10 @@ void swapInDisks(void) {
 		}
 	}
 
-	/* No disks setup... fail */
+	// No disks setup... fail
 	if (allNull) return;
 
-	/* If only one disk is loaded, this loop will load the same disk in dive A and drive B */
+	// If only one disk is loaded, this loop will load the same disk in dive A and drive B
 	while(diskcount<2) {
 		if(diskSwap[swapPos] != NULL) {
 			//LOG_MSG("Loaded disk %d from swaplist position %d ", diskcount, swapPos);
@@ -194,20 +185,24 @@ void swapInDisks(void) {
 		if(swapPos>=MAX_SWAPPABLE_DISKS) swapPos=0;
 	}
 }
+*/
 
+/*	//Not used in PicoMEM
 bool getSwapRequest(void) {
 	bool sreq=swapping_requested;
 	swapping_requested = false;
 	return sreq;
 }
 
+
+/*	//Not used in PicoMEM
 void swapInNextDisk(bool pressed) {
 	if (!pressed)
 		return;
 //PM	DriveManager::CycleAllDisks();
-	/* Hack/feature: rescan all disks as well */
-	//LOG_MSG("Diskcaching reset for normal mounted drives.");
-//	for(Bitu i=0;i<DOS_DRIVES;i++) {
+//   Hack/feature: rescan all disks as well
+//   LOG_MSG("Diskcaching reset for normal mounted drives.");
+//	 for(Bitu i=0;i<DOS_DRIVES;i++) {
 //		if (Drives[i]) Drives[i]->EmptyCache();
 //	}
 	swapPosition++;
@@ -215,7 +210,7 @@ void swapInNextDisk(bool pressed) {
 	swapInDisks();
 	swapping_requested = true;
 }
-
+*/
 
 Bit32u imageDisk::CHS_to_LBA(Bit32u head,Bit32u cylinder,Bit32u sector) {
 	Bit32u sectnum;
@@ -557,6 +552,10 @@ Only Last Status 0,1 and 7 are used */
 #endif				  
 			 }
 
+#ifdef PIMORONI_PICO_PLUS2_RP2350
+if (mt_beg!=MEM_RAM) mt_beg=MEM_NULL;  // Can go back to use Copy via the CPU
+#endif
+
 		  switch(mt_beg)
 		    {
 		    case MEM_NULL:  // ** Disk Read to the PC Ram (Disk Buffer)
@@ -582,7 +581,7 @@ Only Last Status 0,1 and 7 are used */
                 Send_PCC_MemCopyW_512b(PC_DB_Start+BOffset,PCBuffer_Start);
           		if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;		// Quit if Reset asked
 			   break;
-		    case MEM_RAM:  // ** Disk Read to the PC Ram emulated in the Pico SRAM
+		    case MEM_RAM:  // ** Disk Read to the PC RAM emulated in the Pico SRAM
 			    putchar('s');
 //                pm_audio_pause();     // Need to pause audio during uSD Access  				
 		  		last_status = imageDiskList[drivenum]->Read_AbsoluteSector(sect_lba+sn, &PM_Memory[(PCBuffer_Start - RAM_InitialAddress)]);
@@ -632,7 +631,7 @@ Only Last Status 0,1 and 7 are used */
 //                pm_audio_resume();				
 		       break;
 #endif			   
-			 case 0xFF:
+			 case 0xFF:  // "Slow" case : Copy via the PC CPU with PSRAM re enabled (when mixed RAM)
 #if PM_PRINTF			 
 				putchar('c');
 #endif				
@@ -691,7 +690,6 @@ printf("\n");
         }
 
         PCBuffer_Start=(uint32_t)(reg_es<<4)+reg_bx;  // Segment<<4+Offset
-
 #if PM_PRINTF    
 		PCBuffer_End=(PCBuffer_Start+reg_al*512)-1;	  // Add Buffer NB*5412 -1
 		mt_beg = GetMEMType(PCBuffer_Start);
@@ -701,26 +699,24 @@ printf("\n");
         BOffset=0;
   	    PCBuffer_End=PCBuffer_Start+512-1; //Current 512b PC Buffer End (-1 as we need the end, not the @ just after the end)
 
+        sect_lba = imageDiskList[drivenum]->CHS_to_LBA((Bit32u)reg_dh, (Bit32u)(reg_ch | ((reg_cl & 0xc0)<< 2)), (Bit32u)((reg_cl & 63)));
+
+#if PM_PRINTF
+printf("C%d H%d S%d > LBA: %d ",(Bit32u)(reg_ch | ((reg_cl & 0xc0)<< 2)), (Bit32u)reg_dh, (Bit32u)((reg_cl & 63)),sect_lba);
+#endif	
+
 // ** The PC Copy the first Sector to the Buffer
         PM_EnablePSRAM();  // First sector Copy is done with no SD Access at the same time
         Send_PCC_MemCopyW_512b(PCBuffer_Start,PC_DB_Start+BOffset);
         if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;
         PCC_WaitCMDCompleted();  // Wait until the PC finish the sector copy
 	    if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;
-		PM_EnableSD();			
-        sect_lba = imageDiskList[drivenum]->CHS_to_LBA((Bit32u)reg_dh, (Bit32u)(reg_ch | ((reg_cl & 0xc0)<< 2)), (Bit32u)((reg_cl & 63)));
-
-#if PM_PRINTF
-printf("C%d H%d S%d > LBA: %d ",(Bit32u)(reg_ch | ((reg_cl & 0xc0)<< 2)), (Bit32u)reg_dh, (Bit32u)((reg_cl & 63)),sect_lba);
-#endif		
+		PM_EnableSD();
 
 // **** Disk Write Loop ****
 		for(uint8_t sn=0;sn<reg_al;sn++) 
 		{
 
-#if PM_PRINTF
-//         printf(" O:%d ",BOffset);
-#endif
 #if PM_PRINTF			   
 			printf(".");
 #endif
@@ -732,7 +728,7 @@ printf("C%d H%d S%d > LBA: %d ",(Bit32u)(reg_ch | ((reg_cl & 0xc0)<< 2)), (Bit32
          BOffset = (BOffset==0) ? 512 : 0;
          PCBuffer_Start+=512;
 		 PCBuffer_End+=512;
- 		 mt_beg = GetMEMType(PCBuffer_Start);
+ 		 mt_beg = GetMEMType(PCBuffer_Start);	// 0 for PC RAM, 1 for SRAM emulated RAM
 		 mt_end = GetMEMType(PCBuffer_End);
 
 		  if (mt_beg!=mt_end)
@@ -756,10 +752,14 @@ printf("C%d H%d S%d > LBA: %d ",(Bit32u)(reg_ch | ((reg_cl & 0xc0)<< 2)), (Bit32
 	     PCC_WaitCMDCompleted();  // Wait until the PC finish a sector copy
 		 if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;
 
-	// ** The PC copy the next sector in advance to the Buffer (If there is more to copy)
+#ifdef PIMORONI_PICO_PLUS2_RP2350
+if (mt_beg!=MEM_RAM) mt_beg=MEM_NULL;  // Can go back to use Copy via the CPU
+#endif
+
+	     // ** The PC copy the NEXT sector in advance to the Buffer (If there is more to copy)
          if (sn!=(reg_al-1)) // If processing the last sector, no need to copy in advance.
              {	
-			   if (mt_beg<=MEM_RAM) Send_PCC_MemCopyW_512b(PCBuffer_Start,PC_DB_Start+BOffset);	
+			   if (mt_beg<=MEM_RAM) Send_PCC_MemCopyW_512b(PCBuffer_Start,PC_DB_Start+BOffset);	// PC RAM or 
 			      else 
 				   {  // Need to re enable the PSRAM and Wait
 #if PM_PRINTF
@@ -778,12 +778,12 @@ printf("C%d H%d S%d > LBA: %d ",(Bit32u)(reg_ch | ((reg_cl & 0xc0)<< 2)), (Bit32
        		  if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;
 			 }
 
-	// ** Write the sector do the Disk
-		 last_status = imageDiskList[drivenum]->Write_AbsoluteSector(sect_lba+sn, &PM_PTR_DISKBUFFER[WOffset]);
+	// ** Write the sector do the Disk (Previous sector or first if only 1 to write)
+		     last_status = imageDiskList[drivenum]->Write_AbsoluteSector(sect_lba+sn, &PM_PTR_DISKBUFFER[WOffset]);
 		 if(last_status != 0x00) {
-			    printf("HDD Write Error");				
-			    reg_SetCF();
-				return CBRET_NONE;
+		     printf("HDD Write Error");
+		     reg_SetCF();
+		 	 return CBRET_NONE;
 			}
   
         }  // End Sector Write Loop
@@ -947,13 +947,14 @@ void BIOS_SetupDisks(void) {  // Not called by PicoMEM Anyway, setup the BIOS Va
 	RealSetVec(0x13,CALLBACK_RealPointer(call_int13));
 	int i; */
 	
-	for(int i=0;i<6;i++) {
+	for(int i=0;i<MAX_DISK_IMAGES;i++) {
 		imageDiskList[i] = NULL;
 	}
-
+/*
 	for(int i=0;i<MAX_SWAPPABLE_DISKS;i++) {
 		diskSwap[i] = NULL;
 	}
+*/	
 /*
 	diskparm0 = CALLBACK_Allocate();
 	diskparm1 = CALLBACK_Allocate();

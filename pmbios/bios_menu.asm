@@ -43,7 +43,7 @@ BIOS_MainScreen_TopBott DB 0,0,BL_LB,0,80,' '
   DB 0,23,BL_LB,0,80*2,' '
   DB 0xFF,0xFF
 
-BIOS_TopBar DB 1,0,BL_LB,1,'V0.4',0
+BIOS_TopBar DB 1,0,BL_LB,1,'V0.6',0
             DB 30,0,BL_LB,1,'PicoMEM Setup Utility',0
 			DB 69,0,BL_LB,1,'By FreddyV',0,0xFF,0xFF
 
@@ -116,21 +116,21 @@ BIOS_SubMenu1 DB 3,8,BL_G,1,'EMS  Port:',0
               DB 3,13,BL_G,1,'Ignore Video Segment:',0
               DB 3,14,BL_G,1,'Maximize Conv MEM   :',0
 			  
-              DB 3,16,BL_G,1,'ROM0 File:',0
-              DB 3,17,BL_G,1,'ROM1 File:',0
+;              DB 3,16,BL_G,1,'ROM0 File:',0
+;              DB 3,17,BL_G,1,'ROM1 File:',0
 
-			  DB 45,16,BK_G,1,'- Not Implemented',0
+;			  DB 45,16,BK_G,1,'- Not Implemented',0
 			  
               DB 3,19,BK_G,1,'The Memory map show one Char per 16kB :',0			  
               DB 3,20,BL_G,1,'Computer Memory - S:System V:Video R:ROM',0
               DB 3,21,BL_G,1,'PicoMEM  Memory - B:BIOS   M:RAM   P:PSRAM  E:EMS  0/1:ROM Bank',0
               DB 0xFF,0xFF
-
+			  
 BIOS_Sub1_Braket DB 15,8,2,4    ; EMS Port /Addr
-                 DB 23,10,2,3   ; PM / PSRAM 
+                 DB 23,10,2,3   ; PM / PSRAM
 				 DB 26,13,2,3   ; Ignore Video/ Maximize
-                 DB 15,16,1,19  ; ROM0 File
-                 DB 15,17,1,19  ; ROM1 File			 
+;                 DB 15,16,1,19  ; ROM0 File
+;                 DB 15,17,1,19  ; ROM1 File
 				 DB 0xFF,0xFF
 
 BIOS_Sub1_Coord DB 14,8
@@ -139,10 +139,10 @@ BIOS_Sub1_Coord DB 14,8
 				DB 22,11
 				DB 25,13
 				DB 25,14				
-				DB 14,16 ; ROM0
-				DB 14,17
+;				DB 14,16 ; ROM0
+;				DB 14,17
 
-BIOS_SubMenu1_Nb EQU 7  ; Nb of Sub menu we can select -1
+BIOS_SubMenu1_Nb EQU 5  ; Nb of Sub menu we can select -1
 
 ROM_Addr_List DW 6,0xC000,0xC800,0xD000,0xD800,0xE000,0xE800
 EMS_Addr_List DW 2,0xD000,0xE000
@@ -165,8 +165,8 @@ ROMList_XY      EQU 256*8+46
 ROMListRect_XY  EQU 256*7+44
 ROM0_Menuindex  EQU 6
 
-BIOS_SelectSub1 DW SEL_EMSPort,SEL_EMSAddr,SEL_OnOff_Mem,SEL_OnOff_Mem,SEL_OnOff_Mem,SEL_OnOff_Mem,SEL_ROMImages,SEL_ROMImages
-BIOS_Sub1Data   DW 0,SEL_EMSAddr,PMCFG_PMRAM_Ext,PMCFG_PSRAM_Ext,PMCFG_IgnoreAB,PMCFG_Max_Conv,PMCFG_ROM0Size,PMCFG_ROM1Size
+BIOS_SelectSub1 DW SEL_EMSPort,SEL_EMSAddr,SEL_OnOff_PMRAM,SEL_OnOff_PSRAM,SEL_OnOff_Mem,SEL_OnOff_Mem ;,SEL_ROMImages,SEL_ROMImages
+BIOS_Sub1Data   DW 0,SEL_EMSAddr,PMCFG_PMRAM_Ext,PMCFG_PSRAM_Ext,PMCFG_IgnoreAB,PMCFG_Max_Conv ;,PMCFG_ROM0Size,PMCFG_ROM1Size
 
 T_Y	EQU 3
 
@@ -178,6 +178,12 @@ BIOS_Sub1_MemtableText DB 23,T_Y,BL_G,1,'Conventional',0
               DB 50,T_Y,BL_G,1,'Video',0
               DB 60,T_Y,BL_G,1,'ROM/EMS',0
               DB 0xFF,0xFF
+
+BIOS_PSROff   DB 30,8,R_G,1,'EMS/PSRAM not available',0
+			  DB 0xFF,0xFF
+
+BIOS_NoEMSSeg DB 30,8,R_G,1,'No RAM (Segment D/E) available for EMS',0
+			  DB 0xFF,0xFF
 
 ;*****************************************
 ; **** Sub Menu 2 Definitions (Disk)  ****
@@ -248,6 +254,10 @@ BIOS_SubMenu3 DB 2,4,BK_G,1,'Global Audio',0
 
 			  DB 2,8,BK_G,1,'Sound Cards',0
               DB 3,10,BL_G,1,'Adlib:',0
+              DB 3,11,BL_G,1,'CMS  :',0
+              DB 3,12,BL_G,1,'Tandy:',0
+
+			  DB 30,10,BK_G,1,'> Port 388h',0
 
 
 ;			  DB 40,5,BK_G,1,'- XTIDE Default port is 300h',0
@@ -256,21 +266,32 @@ BIOS_SubMenu3 DB 2,4,BK_G,1,'Global Audio',0
 
               DB 0xFF,0xFF
 
-BIOS_SubMenu3_Nb EQU 1  ; Nb of Sub menu we can select -1
+BIOS_SubMenu3_Nb EQU 3  ; Nb of Sub menu we can select -1
 
 BIOS_Sub3_Braket DB 12,6,1,4
 				 DB 12,10,1,3
+				 DB 12,11,1,3				 
+				 DB 12,12,1,3				 
 				 DB 0xFF,0xFF
 
 BIOS_Sub3_Coord  DB 11,6
                  DB 11,10
+				 DB 11,11
+				 DB 11,12
 
 
 Enable_Output_XY  EQU 256*6+13
 Enable_Adlib_XY   EQU 256*10+13
+CMS_Port_XY       EQU 256*11+13
+TANDY_Port_XY     EQU 256*12+13
+CMS_Port_Sel_XY   EQU 256*10+18
+TANDY_Port_Sel_XY EQU 256*10+18
 
-BIOS_SelectSub3 DW SEL_OnOff_Audio,SEL_OnOff_Audio
-BIOS_Sub3Data   DW PMCFG_AudioOut,PMCFG_Adlib
+CMS_PortList   DW 5,0,0x220,0x230,0x240,0x250
+TANDY_PortList DW 4,0,0x1E0,0x2C0,0x0C0
+
+BIOS_SelectSub3 DW SEL_OnOff_Audio,SEL_OnOff_Audio,SEL_CMS_Port,SEL_TDY_Port
+BIOS_Sub3Data   DW PMCFG_AudioOut,PMCFG_Adlib,PMCFG_CMSPort,PMCFG_TDYPort
 
 
 ;*********************************************
@@ -403,11 +424,11 @@ ColorProfileOk:
 
     MOV AH,0Fh  ; Get Video Mode
 	INT 10h
-;	PUSH AX		; Save Video Mode
+	PUSH AX		; Save Video Mode
 
-	CALL BIOS_PrintAL_Hex
+;	CALL BIOS_PrintAL_Hex
 
-JMP Skipnew
+;JMP Skipnew
 
 ;00  40x25 B/W text
 ;01  40x25 color text
@@ -418,24 +439,26 @@ JMP Skipnew
 ;06  640x200x2
 ;07  80x25 Monochrome text
 	
-	CMP AL,07
+	CMP AL,07		; 80x25 Monochrome text
 	JE MODE_8025M
-	CMP AL,03
+	CMP AL,02		; 80x25 shades of gray text
+	JE MODE_8025M	
+	CMP AL,03		; 80x25 color text
 	JE MODE_8025C
 	
-	CMP AL,0
+	CMP AL,0		; Not 40x25 B/W text ? Force 80x25 Color
 	JNE MODE_SET8025C
-	; Is 40x25 16Gray Go to 80x25 16Gray
+	; Is 40x25 B/W text Go to 80x25 Monochrome
 
-	MOV AL,2
+	MOV AL,7
 	XOR AH,AH
-	INT 10h     ; Set 80x25 shades of gray text
-	JMP MODE_8025C
+	INT 10h     	; Set 80x25 shades of gray text
+	JMP MODE_8025M
 
 MODE_SET8025C:
 	MOV AL,3
 	XOR AH,AH
-	INT 10h     ; Set 80x25 color text
+	INT 10h         ; Set 80x25 color text
 	JMP MODE_8025C
 	
 MODE_8025M:
@@ -443,14 +466,14 @@ MODE_8025M:
 	MOV byte [PMCFG_ColorPr],2	; Force MDA "Color" Profile
 	
 MODE_8025C:
-; Video mode is 80x25 Mono (MDA)
+; Video mode is 80x25 color text or other (No profile change)
 
 ;Set the Offset of the colors/Attribute table
-	XOR AH,AH
-	SHL AL,0
-	MOV BX,AX
-	MOV AX,[Color_Profiles+BX]
-	MOV [ColorOffset],AX
+;	XOR AH,AH
+;	SHL AL,1
+;	MOV BX,AX
+;	MOV AX,[Color_Profiles+BX]
+;	MOV [ColorOffset],AX
 
 Skipnew:
 
@@ -464,8 +487,8 @@ Skipnew:
 
 ; clear Screen / Restore Video Mode 
 
-;	POP AX		; Restore Video Mode
-	MOV AL,3
+	POP AX		; Restore Video Mode
+;	MOV AL,3
 	XOR AH,AH
 	INT 10h     ; Set the same Video Mode
 
@@ -755,7 +778,7 @@ Display_Sub1:   ; Memory Menu
 
 	CALL Disp_EMSInfos
     CALL Disp_RAMOnOff
-	CALL Disp_ROMNames
+;	CALL Disp_ROMNames
 
 	MOV DX,MEM_RectangleXY  ; X Y
 	MOV word CS:[RW_XY],MEM_RectangleXY
@@ -808,6 +831,21 @@ DisplaySegNb_NoSpace:
     MOV SI,PMCFG_PM_MMAP
 	MOV AX,MEM_DisplayXY	
     CALL DisplayMEMType
+
+; Display the EMS/PSRAM Not Present ?
+    CMP byte CS:[BV_PSRAMInit],0F0h	; Does nothing if the PSRAM is not enabled/working
+	JB Display_Sub1_PSRAMPresent
+	MOV SI,BIOS_PSROff
+	JMP Display_Sub1_DisplayMEMError
+Display_Sub1_PSRAMPresent:
+
+; Display Segment D/E not available ?
+    CMP byte CS:[EMS_Possible],1	; Does nothing if D and E Segment not available
+	JE Display_Sub1_EMSPossible
+	MOV SI,BIOS_NoEMSSeg
+Display_Sub1_DisplayMEMError:
+    CALL BIOS_PrintScreenBloc
+Display_Sub1_EMSPossible:
 
 ; Initialize the Sub Menu variables
 	MOV Byte [SubMenu_Current],0
@@ -953,6 +991,8 @@ Display_Sub3:
     CALL Draw_Brackets
 
 	CALL Disp_Sub3OnOff
+
+	CALL Disp_Sub3Ports
 	
 ; Initialize the Sub Menu variables
 	MOV Byte [SubMenu_Current],0
@@ -964,6 +1004,7 @@ Display_Sub3:
 
 Disp_Sub3OnOff:
 
+	MOV BL,BK_G ; Black on Grey
 	MOV DX,Enable_Output_XY
 	MOV AL,CS:[PMCFG_AudioOut]
 	CALL DISPLAY_OnOff_xy
@@ -973,6 +1014,21 @@ Disp_Sub3OnOff:
 	CALL DISPLAY_OnOff_xy
 
 	RET ; Display_Sub3 End
+
+Disp_Sub3Ports:
+
+	MOV BL,BK_G ; Black on Grey
+
+	MOV DX,CMS_Port_XY
+	MOV AX,CS:[PMCFG_CMSPort]
+    call DISPLAY_12bit_Hex_xy
+
+	
+	MOV DX,TANDY_Port_XY
+	MOV AX,CS:[PMCFG_TDYPort]
+    call DISPLAY_12bit_Hex_xy
+
+	RET ; Disp_Sub3Ports End
 
 
 ; ******* Sub menu 4 Display (Other) *********
@@ -1065,13 +1121,13 @@ Disp_Sub4Wifi_Ok:
 	MOV DX,ne2k_IRQ_XY
 	MOV AL,CS:[PMCFG_WifiIRQ]
 	MOV AH,0	
-    call DISPLAY_Byte_Dec_xy
+    CALL DISPLAY_Byte_Dec_xy
 	
 	MOV DX,ne2k_Port_XY
 	MOV AX,CS:[PMCFG_ne2000Port]
-    call DISPLAY_12bit_Hex_xy
+    CALL DISPLAY_12bit_Hex_xy
 	
-	RET	
+	RET
 
 ; ********************************************************************************************************
 ; *****   Sub Menu Actions : Perform the selection actions (Values changes) for the sub Menu Items   *****
@@ -1096,6 +1152,16 @@ SEL_OnOff_Main:
 	CALL Disp_FastBootOnOff
     CALL Display_SubMenuCursor
 	RET
+
+SEL_OnOff_PMRAM:
+	CMP byte CS:[BV_TdyRAM],0	; Don't allow to change PMRAM activation it Tandy Conv RAM emulation is On
+	JE SEL_OnOff_Mem
+	RET
+
+SEL_OnOff_PSRAM:
+    CMP byte CS:[BV_PSRAMInit],0F0h	; Does nothing if the PSRAM is not enabled/working
+	JB SEL_OnOff_Mem
+	RET	
 
 SEL_OnOff_Mem:
 	CALL SEL_OnOff 
@@ -1486,6 +1552,37 @@ SEL_NE2000_Port_Cancelled:
 	CALL Display_SubMenuCursor
 	RET
 
+; Select the CMS port number from a word list
+SEL_CMS_Port:
+
+	MOV DX,CMS_Port_Sel_XY
+	MOV SI,CMS_PortList
+	MOV AL,5
+	CALL Do_Select_12Bit_List
+	JNC SEL_CMS_Port_Cancelled
+
+	MOV CS:[PMCFG_CMSPort],AX
+	CALL Disp_Sub3Ports
+
+SEL_CMS_Port_Cancelled:
+	CALL Display_SubMenuCursor
+	RET
+
+; Select the CMS port number from a word list
+SEL_TDY_Port:
+
+	MOV DX,TANDY_Port_Sel_XY
+	MOV SI,TANDY_PortList
+	MOV AL,5
+	CALL Do_Select_12Bit_List
+	JNC SEL_Tandy_Port_Cancelled
+
+	MOV CS:[PMCFG_TDYPort],AX
+	CALL Disp_Sub3Ports
+
+SEL_Tandy_Port_Cancelled:
+	CALL Display_SubMenuCursor
+	RET
 
 ; ** Selection : SD Speed
 ; Select from a Byte List
@@ -1542,6 +1639,8 @@ Do_NewDiskImage_Continue:
     MOV byte CS:[RW_DX],32
     MOV byte CS:[RW_DY],5
 	MOV BL,BK_G ; Black on Grey
+
+	CALL BIOS_SaveRectangle	
 	CALL BIOS_PrintRectangle
 
 	MOV BL,BL_G ; Black on Grey
@@ -1634,7 +1733,11 @@ CMD_HDD_NewImageOk:
 	MOV BL,BK_G ; Black on Grey
 	CALL BIOS_Printstrc
 
-CMD_HDD_NewImageEnd:	
+CMD_HDD_NewImageEnd:
+
+;	PUSH AX
+	CALL BIOS_RestoreRectangle	
+;	POP AX
 
 	MOV DX,256*17+32
 	CALL BIOS_SetCursorPosDX
@@ -2369,7 +2472,7 @@ DISPLAY_12bit_Hex_xy:
 DISPLAY_12bit_Hex:
     CMP AX,0
     JNE DISPLAY_12bit_Hex_NotOff
-	MOV SI,STR_Off4
+	MOV SI,STR_Off
 	CALL BIOS_Printstrc
 	RET
 DISPLAY_12bit_Hex_NotOff:

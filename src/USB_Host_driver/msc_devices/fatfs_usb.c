@@ -4,12 +4,13 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include "main.h"
+//#include "main.h"
 #include "tusb.h"
-#include "usb/usb.h"
+#include "../usb.h"
 #include "ff.h"
 #include "diskio.h"
 #include <math.h>
+#include "class/msc/msc_host.h"
 
 // We are an 8-bit computer, confirm fatfs is too
 static_assert(sizeof(TCHAR) == sizeof(char));
@@ -51,7 +52,7 @@ bool inquiry_complete_cb(uint8_t dev_addr, tuh_msc_complete_data_t const *cb_dat
                    msc_inquiry_resp.product_rev);
 
     char drive_path[3] = "1:";
-    msc_dev_addr=dev_addr
+    msc_dev_addr=dev_addr;
     FRESULT mount_result = f_mount(&msc_fatfs_volume, drive_path, 1);
     if (mount_result != FR_OK)
     {
@@ -66,12 +67,12 @@ bool inquiry_complete_cb(uint8_t dev_addr, tuh_msc_complete_data_t const *cb_dat
         f_chdrive(drive_path);
         f_chdir("/");
     }
+    //printf(">>Mount completed and successfull !!! :)\n");
     return true;
     }
     else 
     {
-    usb_set_status(dev_addr, "USB %.1f %s Not Mounted",
-                   size, xb,);        
+    usb_set_status(dev_addr, "USB %.1f %s Not Mounted",size, xb);        
     return true;
     }
 }
@@ -93,20 +94,22 @@ void tuh_msc_umount_cb(uint8_t dev_addr)
 
 static void wait_for_disk_io(BYTE pdrv)
 {
+//    printf(">> wait_for_disk_io \n");
     while (msc_volume_busy)
-        main_task();
+        tuh_task();
 }
 
 static bool disk_io_complete(uint8_t dev_addr, tuh_msc_complete_data_t const *cb_data)
 {
     (void)cb_data;
     msc_volume_busy = false;
+//    printf(">> disk_io_complete \n");    
     return true;
 }
 
 DSTATUS usb_disk_status()
 {
-    return tuh_msc_mounted(dev_addr) ? 0 : STA_NODISK;
+    return tuh_msc_mounted(msc_dev_addr) ? 0 : STA_NODISK;
 }
 
 DSTATUS usb_disk_initialize()
@@ -117,9 +120,10 @@ DSTATUS usb_disk_initialize()
 DRESULT usb_disk_read(BYTE *buff, LBA_t sector, UINT count)
 {
     uint8_t const lun = 0;
+  //  printf(">> usb_disk_read s%d c%d\n",sector,count);
     msc_volume_busy = true;
-    tuh_msc_read10(dev_addr, lun, buff, sector, (uint16_t)count, disk_io_complete, 0);
-    wait_for_disk_io(pdrv);
+    tuh_msc_read10(msc_dev_addr, lun, buff, sector, (uint16_t)count, disk_io_complete, 0);
+    wait_for_disk_io(0); //wait_for_disk_io(pdrv);
     return RES_OK;
 }
 
@@ -127,8 +131,8 @@ DRESULT usb_disk_write(const BYTE *buff, LBA_t sector, UINT count)
 {
     uint8_t const lun = 0;
     msc_volume_busy = true;
-    tuh_msc_write10(dev_addr, lun, buff, sector, (uint16_t)count, disk_io_complete, 0);
-    wait_for_disk_io(pdrv);
+    tuh_msc_write10(msc_dev_addr, lun, buff, sector, (uint16_t)count, disk_io_complete, 0);
+    wait_for_disk_io(0);  //wait_for_disk_io(pdrv);
     return RES_OK;
 }
 
@@ -140,10 +144,10 @@ DRESULT usb_disk_ioctl(BYTE cmd, void *buff)
     case CTRL_SYNC:
         return RES_OK;
     case GET_SECTOR_COUNT:
-        *((DWORD *)buff) = (WORD)tuh_msc_get_block_count(dev_addr, lun);
+        *((DWORD *)buff) = (WORD)tuh_msc_get_block_count(msc_dev_addr, lun);
         return RES_OK;
     case GET_SECTOR_SIZE:
-        *((WORD *)buff) = (WORD)tuh_msc_get_block_size(dev_addr, lun);
+        *((WORD *)buff) = (WORD)tuh_msc_get_block_size(msc_dev_addr, lun);
         return RES_OK;
     case GET_BLOCK_SIZE:
         *((DWORD *)buff) = 1; // 1 sector

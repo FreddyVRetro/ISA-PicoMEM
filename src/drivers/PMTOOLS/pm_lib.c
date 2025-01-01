@@ -29,6 +29,8 @@ uint16_t PM_DataH=0;
 uint16_t BIOS_Segment=0;
 uint16_t PM_DeviceMask=0;
 
+uint8_t Ext_ROM_NB;
+
 bool PM_BIOS_IRQ_Present=false;  // BIOS Interrupt detected
 bool PM_BIOS_Present=false;      // BIOS Code detected and Checksum OK
 bool PM_Port_present=false;      // IO Port detected
@@ -50,9 +52,59 @@ bool pm_detectport(uint16_t LoopNb)
  return true;
 }
 
+// Read the port number "port" "LoopNb" times
+
+void IO_ReadLoop(uint16_t port, uint16_t LoopNb)
+{
+_asm {
+  MOV DX,port
+  MOV CX,LoopNb
+@ReadLoop:
+  IN AL,DX
+  LOOP @ReadLoop
+  };
+}
+
+
+// Test the PicoMEM Test port (2x3)
+// Should answer previous value +1 at every read
+// Return the number of errors
+
+uint16_t IO_Test(uint16_t LoopNb)
+{
+ uint16_t r;
+_asm {
+  MOV DX,PM_Base
+  ADD DX,3
+  MOV CX,LoopNb
+  MOV BX,0
+
+  CLI
+  IN AL,DX
+  MOV AH,AL
+@TestReadLoop:
+  IN AL,DX
+  INC AH
+  CMP AL,AH
+  JNE @TestRead_Fail
+  LOOP @TestReadLoop
+  JMP @TestReadEnd
+@TestRead_Fail:
+  INC BX
+  OUT DX,AL 		      // { Generate a signal }
+  LOOP @TestReadLoop  
+@TestReadEnd:
+  STI
+
+  MOV r,BX
+  };
+ return r;
+}
+
+
 // Perform AA 55 Write / Read in loop and tell the Nb of error
 // To use with the Data Low and Data High ports
-uint16_t IO_Test(uint16_t port, uint16_t LoopNb)
+uint16_t IO_Data_Test(uint16_t port, uint16_t LoopNb)
 {
  uint16_t r;
 _asm {
@@ -65,14 +117,14 @@ IOTLoop:
   out dx,al
   in al,dx
   cmp al,0xAA
-  JE IOTAAOk
+  je IOTAAOk
   inc bx
 IOTAAOk:
   mov al,0x55
   out dx,al
   in al,dx
   cmp al,0x55
-  JE IOT55Ok
+  je IOT55Ok
   inc bx
 IOT55Ok:
   loop IOTLoop
@@ -81,10 +133,43 @@ IOT55Ok:
  return r;
 }
 
+
 // Perform AA 55 Write / Read in loop and tell the Nb of error
 uint16_t RAM_Test_w(uint16_t Segm, uint16_t Ofs, uint16_t LoopNb)
 {
- return 0;
+ uint16_t r;
+_asm {
+  PUSH ES
+  PUSH DI
+  MOV AX,Segm
+  MOV ES,AX
+  MOV DI,Ofs
+  MOV DX,PM_Base
+  ADD DX,3
+  
+  MOV CX,LoopNb
+@TestMemWLoop:
+  MOV AX,0xAA55
+  MOV ES:[DI],AX
+  CMP AX,ES:[DI]
+  JNE @TestMemW_Fail
+  MOV AX,0x55AA
+  MOV ES:[DI],AX
+  CMP AX,ES:[DI]
+  JNE @TestMemW_Fail
+  LOOP @TestMemWLoop
+ JMP @PM_RWMEMLoopbEnd
+
+@TestMemW_Fail:
+  MOV AL,0          //{To detect where is the problem in the scope}
+  OUT DX,AL
+  LOOP @TestMemWLoop
+  
+@PM_RWMEMLoopbEnd:   
+  POP DI
+  POP ES  
+  };
+ return r;
 }
 
 // Perform AA Write, XOR, 55 Read in loop and tell the Nb of error
@@ -108,15 +193,6 @@ void RAM_Display(uint16_t Segm, uint16_t size )
 
 }
 
-uint8_t BIOS_detect(uint16_t Segm)
-{
-  ROM_Header_t *ROM;
-  ROM=(ROM_Header_t *) MK_FP(Segm,0);
-  uint16_t id=ROM->id;
-  printf("@ %X ID %X Size %d",Segm,id,ROM->size);
-  return true;
-}
-
 // Return the checksum value at this Segment (Max 64Kb size)
 uint8_t BIOS_Checksum(uint16_t Segm,uint16_t Size)
 {
@@ -135,10 +211,25 @@ CSLoop:
   loop CSLoop
   xchg ah,al      // Return the sum
   pop ds
-  // No need for return as value put in al directly.
   mov r,al
 };
 return r;
+}
+
+bool BIOS_detect(uint16_t Segm)
+{
+  ROM_Header_t far *ROM;
+  uint8_t checksum;
+
+  ROM=(ROM_Header_t far *) MK_FP(Segm,0);
+  uint16_t id=ROM->id;
+  if (id==0xAA55)
+   {
+    checksum=BIOS_Checksum(Segm,(ROM->size)*512);
+    printf("- %FP Size:%d (%dKB) Checksum:%x\n",ROM,ROM->size,(ROM->size)*2,checksum);
+    return true;
+   } else return false;
+
 }
 
 /*
@@ -263,8 +354,9 @@ if (pm_irq_detect())
   PM_BIOS_IRQ_Present=true;
   if (!pm_detectport(100)) 
     {
-     PM_Port_present=false; 
-     printf(" > I/O Port Failure\n");
+      PM_Port_present=false;
+     //PM_Port_present=false; 
+     //printf(" > I/O Port Failure\n");
     }
     else
     {
@@ -305,23 +397,54 @@ bool pm_get_yn()
   return (scanf(" %c", &canswer) == 1 && ((canswer == 'Y')||(canswer == 'y')));
 }
 
+test_print_result(uint16_t total, uint16_t res)
+{
+if (res==0) printf(" Ok (x%d)\n",total);
+   else printf("Fail (%d/%d)\n",res/total);
+}     
+
 void pm_diag()
 {
- printf(" *** Diagnostic MODE ***\n");
+ uint16_t res16;
+ bool TestPort_result;    // Test Port Ok ?
+ bool DataL_port_result;  // Data Low port Ok ?
+ bool DataH_port_result;  // Data High port Ok ?
+
+ printf(" ***     Diagnostic MODE     ***\n");
+ printf(" *** Not fully implemented ! ***\n");
 
  if (!PM_Port_present)
   { printf("** PicoMEM Port Not detected **\n"); }
 
-  printf(" > Start Port test ?");
+  printf(" > Start Port test (2Ax) ? (y/n)");
   if (pm_get_yn())
    {
-     printf("Starting Port test (2A0)\n");
+// Port test with C Test port code
+     printf("- Test Port (2A3, code 1): %d\n",pm_detectport(10000));
+// Port test with ASM Test port code
+     printf("- Test Port (2A3, code 2):");
+     res16=IO_Test(10000);
+     TestPort_result=(res16==0);
+     test_print_result(10000,res16);
+
+     printf("- Data Port L (2A1):");
+     res16=IO_Data_Test(PM_Base+1,10000);
+     DataL_port_result=(res16==0);    
+     test_print_result(10000,res16);
+ 
+     printf("- Data Port H (2A2):");
+     res16=IO_Data_Test(PM_Base+1,10000);
+     DataH_port_result=(res16==0);
+     test_print_result(10000,res16);
    } 
 
- for (uint16_t addr=0xC800;addr<0xF000;addr+=0x1000)
-  {
-   BIOS_detect(addr);
-  }
+  printf(" > ROM detection: \n");
+ for (uint16_t addr=0xC000;addr<0xF800;addr+=0x0400)
+     {
+      BIOS_detect(addr);
+     }
+
+ 
 
  printf("\nPress a key to continue.\n");
  getch();
