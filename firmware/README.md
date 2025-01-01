@@ -27,14 +27,14 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 
 ## Firmwares Revision History : 
 
-### Next firmware :
-- + PSRAM Code improved (DMA Added): PSRAM based RAM and EMS is 30% faster.
-- + 5ns faster ROM/RAM Read cycles.
-- + Access to BIOS Memory doesn't add delay anymore. (Faster BIOS)
-- + Improved BIOS RAM Test, to detect RAM/ROM conflict.
-- + Added detection of cache enabled in the BIOS Address space.
-- + Disk infos now show the Head/Sector/Cylinder.
-- + Display why the EMS can't be enabled in the BIOS.
+### PM_W_Jan1: Various improvement in the RAM emulation, Corrections
+- New: PSRAM Code improved (DMA Added): PSRAM based RAM and EMS is 30% faster.
+- New: 5ns faster ROM/RAM Read cycles.
+- New: Access to BIOS Memory doesn't add delay anymore. (Faster BIOS)
+- New: Improved BIOS RAM Test, to detect RAM/ROM conflict.
+- New: Added detection of cache enabled in the BIOS Address space.
+- New: Disk infos now show the Head/Sector/Cylinder.
+- New: Display why the EMS can't be enabled in the BIOS.
 - - Removed the unused BIOS options (To remove confusion)
 -   Moved to PicoSDK 2.0.0
 - ! Was not working with more than 2 Floppy drive.
