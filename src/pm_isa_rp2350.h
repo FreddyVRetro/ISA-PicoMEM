@@ -54,6 +54,7 @@ asm volatile goto (
 
      "lsl %[DEV_T],%[DEV_T],#12       \n\t"  // ISA_CTRL=ISA_CTRL<<12   CAAxxxxx
      "lsr %[DEV_T],%[DEV_T],#28       \n\t"  // ISA_CTRL=ISA_CTRL>>28   -> ISA_CTRL is now correct
+//   "ubfx %[CTRL],%[CTRL],#16,#4    \n\t"          // Get 4bit from the bit 16
 
      "cmp %[DEV_T],#1                \n\t"  // Is it a MEM Read ?
      "beq  ISA_Do_MEMR               \n\t"  // Jump must be <200 bytes

@@ -310,7 +310,7 @@ void dev_ne2000_iow(uint8_t Addr,uint8_t Data) {
 void ne2000_initiate_send() {        
   cyw43_send_ethernet(&cyw43_state,CYW43_ITF_STA,nic->tx_bytes,&nic->mem[nic->tx_page_start * 256 - BX_NE2K_MEMSTART],false);                  
   sleep_us(100+nic->tx_bytes);   //1 microsecond per byte plus 100us safety?                                
-  ne2000_tx_done(nic); 
+  ne2000_tx_done(nic);
 }
              
 /*
