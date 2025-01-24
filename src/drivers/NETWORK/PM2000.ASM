@@ -146,12 +146,21 @@ block_input:
 	pause_
 	cmp	is_186,0
 	jnz	read_186
+If PicoMEM eq 1
+    inc cx			; Make it even
+	shr cx,1
+endif
 read_loop:
 	in	al,dx		; get a byte
 	stosb			; save it
+If PicoMEM eq 1
+	in	al,dx		; get a byte
+	stosb			; save it	
+endif
 	loop	read_loop
 	ret
 read_186:
+    inc cx			; Make it even
 	shr	cx,1		; word count
 	.286
 	rep	insw
@@ -167,11 +176,9 @@ read_186_1:
 
 block_output:
 	assume	ds:nothing
-	push	ax		; save buffer address
-If PM_8Bit eq 0	
-	inc	cx		; make even
+	push	ax		; save buffer address	
+	inc	cx		    ; make even (padding)
 	and	cx,0fffeh
-endIf	
 	loadport
 	setport EN_CCMD
 	pause_
@@ -201,9 +208,16 @@ endIf
 	pause_
 	cmp	is_186,0
 	jnz	write_186
+If PicoMEM eq 1
+	shr cx,1
+endif	
 write_loop:
 	lodsb			; get a byte
 	out	dx,al		; save it
+If PicoMEM eq 1
+	lodsb			; get a byte
+	out	dx,al		; save it
+endif
 	loop	write_loop
 	jmp	short block_output_1
 write_186:
@@ -237,7 +251,7 @@ endif
 
 	public	copyright_msg
 if PicoMEM  eq 1
-copyright_msg	db	"PicoMEM (NE2000) Packet Driver 0.2, version "
+copyright_msg	db	"PicoMEM (NE2000) Packet Driver 0.4, version "
 else
 copyright_msg	db	"Packet driver for NE2000, version "
 endif

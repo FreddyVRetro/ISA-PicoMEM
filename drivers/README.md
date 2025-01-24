@@ -13,14 +13,17 @@ command line : ne2000 0x60 0x3 0x300
 
 The IRQ can be changed in the BIOS Menu (Default is IRQ 3)
 
-### Rev 0.3 <br /> (January 2025)
-- ! PM2000 Was not working on CPU >= 80186
-- + A little faster on 8088/8086
-
 ## PM2000.COM
 
 Same driver as NE2000 for the PicoMEM : IRQ and Port are Auto detected.
 Does not start if the PicoMEM is not detected
+
+### Rev 0.4 <br /> (January 24, 2025) 
+- ! Corrected a bug occuring when a received packet has an odd size.
+
+### Rev 0.3 <br /> (January 2025)
+- ! PM2000 Was not working on CPU >= 80186
+- + A little faster on 8088/8086
 
 09/04/2024 : Not loaded if the ne2000 emulation is not enabled. Parameters were displayed 2 times.
 03/03/2024 : Removed part of the Copyright text to reduce the display length

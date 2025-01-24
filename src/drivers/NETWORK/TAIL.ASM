@@ -120,6 +120,9 @@ system_msg	db	"System: ",'$'
 i386_msg	db	"[345]86 processor",'$'
 i286_msg	db	"286 processor",'$'
 i186_msg	db	"186 processor",'$'
+if PicoMEM  eq 1 
+iv20_msg	db	"V20/V30 processor",'$'
+endif
 i8088_msg	db	"8088/8086 processor",'$'
 mca_msg		db	", Microchannel bus",'$'
 eisa_msg	db	", EISA bus",'$'
@@ -461,7 +464,7 @@ if PicoMEM  eq 1
 
 endif
 
-if PicoMEM  eq 0
+if PicoMEM eq 0
 	call	parse_args
 	jc	usage_error_j_2
 
@@ -480,8 +483,9 @@ packet_int_unused:
 ;
 ; Verify that the interrupt number they gave is valid.
 ;
-	cmp	int_no,15		;can't possibly be > 15.
-	ja	int_bad
+;	cmp	int_no,15		;can't possibly be > 15.
+;	ja	int_bad
+
 	cmp	int_no,7		;make sure that the packet interrupt
 	jbe	int_ok_7		;  number is in range.
 
