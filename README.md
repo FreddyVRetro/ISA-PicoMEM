@@ -44,7 +44,7 @@ Please go to the Wiki page : https://github.com/FreddyVRetro/ISA-PicoMEM/wiki
 
 The PicoMEM exist in 4 Versions : 1.0, 1.1, 1.11, 1.14 and 1.2A<br />
 
-PicoMEM 1.2A : It is a PicoMEM 1.14 with the DAC Added on Board, DAC Assed by Serdaco.<br />
+PicoMEM 1.2A : It is a PicoMEM 1.14 with the DAC Added on Board, DAC Added by Serdaco.<br />
 PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the Sinclair PC200.<br />
 
 **Picomem LP (Low profile):**<br /> 
