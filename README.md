@@ -1,6 +1,7 @@
 # ISA PicoMEM Extension board (For 8086/8088 PC)
 
-<a href="url"><img src="https://github.com/FreddyVRetro/ISA-PicoMEM/blob/main/jpg/PM111_Close.jpg" align="middle" height=50% width=50% ></a>
+**PicoMEM 1.14:**<br />
+<a href="url"><img src="https://github.com/FreddyVRetro/ISA-PicoMEM/blob/main/jpg/PM114_Close.jpg" align="middle" height=40% width=40% ></a>
 
 ## Introduction
 
@@ -10,13 +11,13 @@ The Pi Pico also has a 8Mbyte PSRAM connected in SPI and a MicroSD Slot.<br />
 
 The PicoMEM Board can be seen as both a working PC extention board as well as a Development platform.
 
-This GitHub Repository does not contains the Firmware for the moment.<br />
-However, PMMOUSE, PMEMM and PM2000 Source are available.
+Full Firmware and drivers sources available.<br />
+PicoMEM Hardware is not open.<br />
 
-To follow the PicoMEM news, see it in action on multiple machines you can follow me on X:
+To follow the PicoMEM news, see it in action on multiple machines you can follow me on X:<br />
 [FreddyV on X](https://x.com/FreddyVETELE)
 
-To see my other projects, here is my Youtube Channel:
+To see my other projects, here is my Youtube Channel:<br />
 [FreddyV Retro Zone](https://www.youtube.com/@freddyvretrozone2849)
 
 ### How to get a PicoMEM ?
@@ -41,7 +42,13 @@ Please go to the Wiki page : https://github.com/FreddyVRetro/ISA-PicoMEM/wiki
 
 ## Board description
 
-The PicoMEM exist in 3 Releases : 1.0, 1.1 and 1.11<br />
+The PicoMEM exist in 4 Versions : 1.0, 1.1, 1.11, 1.14 and 1.2A<br />
+
+PicoMEM 1.2A : It is a PicoMEM 1.14 with the DAC Added on Board, DAC Assed by Serdaco.<br />
+PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the Sinclair PC200.<br />
+
+**Picomem LP (Low profile):**<br /> 
+<a href="url"><img src="https://github.com/FreddyVRetro/ISA-PicoMEM/blob/main/jpg/PM10LP.jpg" align="middle" height=30% width=30% ></a>
 
 **Hardware :**
   - 2 Layers ISA Board connecting a Raspberry Pi Pico through some buffers/Multiplexor and inverter.
@@ -65,18 +72,18 @@ The PicoMEM exist in 3 Releases : 1.0, 1.1 and 1.11<br />
 
 **- Memory emulation with 16Kb Address granularity:**
   > 128Kb of RAM can be emulated from the Pi Pico internal RAM with No Wait State.
-  > We can emulate the whole 1Mb of RAM address space from the PSRAM. (With 6 Wait Stated minimum added)
-  > EMS Emulation of Up to 6/7 Mb. (Only 4Mb for the moment as using the LoTech EMS Driver)
+  > We can emulate the whole 1Mb of RAM address space from the PSRAM. (With 4-5 Wait States added)
+  > 4MB of EMS Emulation .
   > Memory emulation is used to add 4Kb of "Private" memory for the PicoMEM BIOS Usage.
-  > 4Kb of RAM is also added for disk access (Or other) 512b only is used for the moment.
+  > PicoMEM Disks data transfer done via the emulated Memory.
 
 - **ROM Emulation** for its internal BIOS and custom ROM loaded from the MicroSD. (Custom ROM not implemented yet)<br />
   The Board has its own BIOS, used to automatically detect/Extend/Configure the RAM emulation and select Floppy/Disk images.
 - **Floppy and Disk** "emulation" from .img files stored in uSD through FasFs and DosBOX int13h emulation code.<br />
   Emulate 2 Floppy and 4 Disk (80h to 83h), Disk up to 4Gb (More later)
 - **USB Mouse** support through a USB OTC Adapter. (Micro USB to USB A or USB Hub)
-- **POST Code** on Rev 1.1 and 1.11 (Port 80 Display in Hexa) through this device : https://www.sparkfun.com/products/16916
-- **ne2000 network card** emulation via Wifi is working on boards with a PicoW.
+- **POST Code** (Port 80 Display in Hexa) via the QwiiC connector: https://www.sparkfun.com/products/16916
+- **ne2000 network card** emulation via Wifi (Pico W PicoMEM only)
 - **USB Joystick** for PS4 and Xinput controllers.
 - **Adlib** using a PCM5102 I2S module.
 - **NEW: CMS/Game Blaster and Tandy** sound chip are now supported.
@@ -154,6 +161,7 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 - IBM PS/1, IBM PS/2 30 286, PS2 8535 (Warning : As its HDD use DMA, does not boot if emulated RAM is added)
 - Compaq Portable 2 (286): Ok
 - **New : Tandy 1000** : Now tested on a Tandy 1000 SX, EX and HX other to confirm. (October firmware)
+- Tandy 1000 RLX Rev B Need a new BIOS to work.
 - Amstrad PC1512, PC1640, Sinclair PC200 (It is my DEV Machine)
 - Schneider Euro PC1 (Fast RAM Firmware), EuroPC2, Olivetti M21, Olivetti M24, Sega TeraDrive.
 - Commodore PC1, PC10/PC20. (With Fast RAM Firmware)
@@ -168,17 +176,13 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 - IBM PS/2 M25
 - Amstrad PPC512 /PPC640 : Problem on some PPC (Can't Boot) Not sure if it depends on the external ISA connectors boards used.
   > Problem identified on some ISA expantion boards, 100uF Low ESR filtering capacitors may be needed.
-- NuXT / EMM8088 homebrew computers seems to have problem.
+- NuXT / EMM8088 homebrew computers seems to have problem. (NEW: EMM8088 working with the last GlaBIOS)
 - Amiga 2000 with a A2088.
-
 
 ## License
 
-Hardware and Software are currently closed. <br />
-
-As the PicoMEM contains various public source, I Will publish it as well as Public.<br />
-Anyway, I consider it not ready to be opened yet, as I am not sure about the License to use and how to manage it.<br />
-If you want to participate, You can ask me access to the source on demand.<br />
+Software is Available on this GitHub as GNU 2. <br />
+Hardware is currently closed. <br />
 
 ## Contributors / External Libraries
 
