@@ -222,14 +222,14 @@ if (PROJECT_TYPE STREQUAL "TEST")
 # To compile with EMU8950_LINEAR, Needed to comment this in OPL Code (2 Times) if (hack_ch == 0 && s == 12)
 
 # Debug variables (Debug)
-    PM_ENABLE_STDIO=0      # Enable the Serial Display to the defined serial device (ASYNC_UART)
+    PM_ENABLE_STDIO=1      # Enable the Serial Display to the defined serial device (ASYNC_UART)
     UART_PIN0=0            # Use PIN0 (IRQ) instead of Pin 28
 
     CFG_TUSB_DEBUG=0      # TinyUSB: 0 :Off / 1:Error / 2:Warning / 3:Info
     SD_DEBUG=0            # 1 To enable the DBG_PRINTF in the SD/FatFs spi
     USE_PRINTF=0          # Remove for no SD Debug Printf
     USE_DBG_PRINTF=0      # Remove for no SD Debug Printf
-    PM_PRINTF=0           # 1 To enable the Debug Printf
+    PM_PRINTF=1           # 1 To enable the Debug Printf
     DISP32=0
     
     # Test Code activation
