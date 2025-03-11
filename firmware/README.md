@@ -31,7 +31,7 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 
 ## Firmwares Revision History :
 
-### PM_x_3_11_25_x: SD and USB access via a Notwork redirector driver  (March 11, 2025)
+### PM_x_3_11_25_x: SD and USB access via a Network redirector driver  (March 11, 2025)
 - New: You can now access the MicroSD and a USB key via a Network redirector driver using DOS 3.2 +
        The Total size of the SD and USB is accessible even in FAT32/ExtFS (One partition only)
 - New: The number of HDD/Floppy image that can be used increased from 32 to 128.
