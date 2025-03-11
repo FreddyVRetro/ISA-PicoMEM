@@ -7,6 +7,10 @@
 **PM_W_xxx_MD**    : For Monochrome screen / LCD
 **PM_W_xxx_FR**    : Fast RAM Mode for PC needing faster ISA RAM Access 
 
+**New naming:**
+
+**PM_x_M_D_Y_x**   : Change in the Firmware data : Month Day Year (W, FR, MD Does not change)
+
 
 If you use an XTIDE or a Disk BIOS, Use the DO (D000) Picomem Firmware and place the XTIDE in C800.<br />
 **New:** There is no more firmware with different base Address as it is configurable. (config.txt)
@@ -25,11 +29,18 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 - The PicoMEM must be plugged into a PC so that the programming work. 
   Power on the PC (The Retro one) and press the button at the same time.
 
-## Firmwares Revision History : 
+## Firmwares Revision History :
 
-### PM_W_Jan1: Various improvement in the RAM emulation, Corrections
+### PM_x_3_11_25_x: SD and USB access via a Notwork redirector driver  (March 11, 2025)
+- New: You can now access the MicroSD and a USB key via a Network redirector driver using DOS 3.2 +
+       The Total size of the SD and USB is accessible even in FAT32/ExtFS (One partition only)
+- New: The number of HDD/Floppy image that can be used increased from 32 to 128.
+- New: "Utils" BIOS menu added : It host applications running from the Pico controlling the PC.
+- ! Disk access error when using PSRAM emulated RAM corrected (was added in previous FW)
+
+### PM_W_Jan1: Various improvement in the RAM emulation, Corrections  (January 1, 2025)
 - New: PSRAM Code improved (DMA Added): PSRAM based RAM and EMS is 30% faster.
-- New: 5ns faster ROM/RAM Read cycles.
+- New: 5ns faster ROM/RAM Read cycles.  > Schneider EuroPC1 in not Fast RAM Mode (but EMS still does not work)
 - New: Access to BIOS Memory doesn't add delay anymore. (Faster BIOS)
 - New: Improved BIOS RAM Test, to detect RAM/ROM conflict.
 - New: Added detection of cache enabled in the BIOS Address space.

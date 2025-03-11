@@ -14,6 +14,9 @@ The PicoMEM Board can be seen as both a working PC extention board as well as a 
 Full Firmware and drivers sources available.<br />
 PicoMEM Hardware is not open.<br />
 
+**NEW : SD and USB disk direct access** A Network redirector driver allow full access to the SD and USB for DOS 3.2 + !<br />
+The PicoMEM is now the only board providing full USB drive in FAT23/ExtFS from DOS.
+
 To follow the PicoMEM news, see it in action on multiple machines you can follow me on X:<br />
 [FreddyV on X](https://x.com/FreddyVETELE)
 
@@ -62,7 +65,7 @@ PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the 
 **NEW** PicoMEM LP 1.0 the Low profile variant of the PicoMEM will soon be available !
 
 **Software :**
-  - a Full BIOS with a "Phoenix BIOS Like" text interface in assembly.
+  - A Full BIOS with a "Phoenix BIOS Like" text interface in assembly.
   - C/C++ Code, PIO and ARM assembly on the Pi Pico.
   - Multiple other projects library used. (List below)
   - The PC can send multiple command to ask the Pico to perform tasks.
@@ -81,13 +84,15 @@ PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the 
   The Board has its own BIOS, used to automatically detect/Extend/Configure the RAM emulation and select Floppy/Disk images.
 - **Floppy and Disk** "emulation" from .img files stored in uSD through FasFs and DosBOX int13h emulation code.<br />
   Emulate 2 Floppy and 4 Disk (80h to 83h), Disk up to 4Gb (More later)
+- **NEW : SD and USB disk direct access** A Network redirector driver allow full access to the SD and USB for DOS 3.2 +<br />
+   As it is a network redirector, the SD and USB filesystem can be anything (Even FAT32/ExtFS)<br />
 - **USB Mouse** support through a USB OTC Adapter. (Micro USB to USB A or USB Hub)
 - **POST Code** (Port 80 Display in Hexa) via the QwiiC connector: https://www.sparkfun.com/products/16916
 - **ne2000 network card** emulation via Wifi (Pico W PicoMEM only)
 - **USB Joystick** for PS4 and Xinput controllers.
 - **Adlib** using a PCM5102 I2S module.
-- **NEW: CMS/Game Blaster and Tandy** sound chip are now supported.
-- **NEW: Tandy 1000** (Old models with Tandy Graphic) now supported, even for RAM upgrade.
+- **CMS/Game Blaster and Tandy** sound chip are now supported.
+- **Tandy 1000** (Old models with Tandy Graphic) now supported, even for RAM upgrade.
 
 ## Future Functionality
 
@@ -152,7 +157,7 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 
 **How to use it :**
 - Create a wifi.txt file with the SSID in the first line and the Password in the 2nd line
-- use ne2000.com 8Bit (command line : ne2000 0x60 0x3 0x300) or pm2000 (command line : pm2000 0x60)
+- Use ne2000.com 8Bit (command line : ne2000 0x60 0x3 0x300) or pm2000 (command line : pm2000 0x60)
 - The PicoMEM can't tell if the connection fail and does not try to re connect.
 - The Wifi Access point need to be relatively close to increase the chance of connection success. The IRQ Can be changed in the BIOS Menu (Default is IRQ 3)<br />
 
@@ -178,6 +183,11 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
   > Problem identified on some ISA expantion boards, 100uF Low ESR filtering capacitors may be needed.
 - NuXT / EMM8088 homebrew computers seems to have problem. (NEW: EMM8088 working with the last GlaBIOS)
 - Amiga 2000 with a A2088.
+- Tandy 1000 RXS Fail, but work if the BIOS is updated (See the Wiki)
+- Pocket8086 : IO Port error
+
+## Known bug :
+- The PC may crash when using a PS/2 Mouse (Except with Windows 95)
 
 ## License
 
