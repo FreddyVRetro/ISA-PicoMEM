@@ -12,7 +12,7 @@ The Pi Pico also has a 8Mbyte PSRAM connected in SPI and a MicroSD Slot.<br />
 The PicoMEM Board can be seen as both a working PC extention board as well as a Development platform.
 
 Full Firmware and drivers sources available.<br />
-PicoMEM Hardware is not open.<br />
+**PicoMEM Hardware is not open.**<br />
 
 **NEW : SD and USB disk direct access** A Network redirector driver allow full access to the SD and USB for DOS 3.2 + !<br />
 The PicoMEM is now the only board providing full USB drive in FAT23/ExtFS from DOS.
@@ -37,7 +37,6 @@ To see my other projects, here is my Youtube Channel:<br />
 You can have one from me (Mainly for Europe, with wait time), on my form:
 [FreddyV PicoMEM Form](https://docs.google.com/forms/d/e/1FAIpQLScwYPvnVoGynLLgP_hiLMH_qn9uBX1sxims7Ah4LabjQ0mSLw/viewform)
 
-Gerber and full sources are not available for the moment. The source code will be released soon.
 
 ### How to use the PicoMEM ?
 
@@ -73,17 +72,17 @@ PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the 
 
 ## Current Functionality
 
-**- Memory emulation with 16Kb Address granularity:**
-  > 128Kb of RAM can be emulated from the Pi Pico internal RAM with No Wait State.
-  > We can emulate the whole 1Mb of RAM address space from the PSRAM. (With 4-5 Wait States added)
-  > 4MB of EMS Emulation .
-  > Memory emulation is used to add 4Kb of "Private" memory for the PicoMEM BIOS Usage.
-  > PicoMEM Disks data transfer done via the emulated Memory.
+- **Memory emulation with 16Kb Address granularity:**<br />
+   128Kb of RAM can be emulated from the Pi Pico internal RAM with No Wait State.<br />
+   It can emulate the whole 1Mb of RAM address space from the PSRAM. (With 4-5 Wait States added)<br />
+   4MB of EMS Emulation.<br />
+   Memory emulation is used to add 4Kb of "Private" memory for the PicoMEM BIOS Usage.<br />
+   PicoMEM Disks data transfer done via the emulated Memory.<br />
 
 - **ROM Emulation** for its internal BIOS and custom ROM loaded from the MicroSD. (Custom ROM not implemented yet)<br />
-  The Board has its own BIOS, used to automatically detect/Extend/Configure the RAM emulation and select Floppy/Disk images.
+   The Board has its own BIOS, used to automatically detect/Extend/Configure the RAM emulation and select Floppy/Disk images.
 - **Floppy and Disk** "emulation" from .img files stored in uSD through FasFs and DosBOX int13h emulation code.<br />
-  Emulate 2 Floppy and 4 Disk (80h to 83h), Disk up to 4Gb (More later)
+   Emulate 2 Floppy and 4 Disk (80h to 83h), Disk up to 4Gb (More later)
 - **NEW : SD and USB disk direct access** A Network redirector driver allow full access to the SD and USB for DOS 3.2 +<br />
    As it is a network redirector, the SD and USB filesystem can be anything (Even FAT32/ExtFS)<br />
 - **USB Mouse** support through a USB OTC Adapter. (Micro USB to USB A or USB Hub)
@@ -110,27 +109,28 @@ The Pi Pico is limmited in its speed, this is excellent and bad at the same time
 - We can still program the Pico and Feel like doing coding on a "Retro" Machine, so we don't have the effect "Look, it is easy, he put a processor in the PC that can emulate the full PC"
 - There are still problems on various machines.
 
-## Memory emulation
+## Memory emulation details :
 
-As the PicoMEM is an 8Bit ISA Card, the RAM Emulation may be slower than the PC own RAM.
-The PicoMEM is then **more suitable to extend a 512Kb PC to 640K**, Add some UMB (For Driver) **than extend an IBM PC With 128Kb of RAM**.
-(RAM Card for 5150/5160 is still recommended)
+As the PicoMEM is an 8Bit ISA Card, the RAM Emulation is most of the time slower than the PC own RAM.
+The PicoMEM is then more suitable to extend a **512KB PC to 640KB**, Add some UMB (For Driver) than **extend an IBM PC With 128Kb of RAM**.
+(Other RAM Card for 5150/5160 is still recommended, as full 0Wait State)
 
 ### Memory emulation capabilities :
 
-- The PicoMEM BIOS auto detect (At Hardwsare level) the 1st Mb of RAM and Display the RAM MAP with a "Checkit" like Display.
+- The PicoMEM BIOS auto detect (At Hardware level) the 1st Mb of RAM and Display the RAM MAP with a "Checkit" like Display.
 - You can select to add RAM from the Internal SRAM (128Kb with No Wait State)
 - Emulation from the PSRAM (External RAM) can add RAM to any Address Space. (2x slower than SRAM emulated RAM)
-- Then, EMS Emulation emulate a LOTECH Board with Up to 4Mb.
+- EMS Emulation emulate a LOTECH Board with Up to 4Mb.
 - Disk access on PM RAM emulated memory are done at the Pico uSD speed. (3Mb/s)
 
 ### Memory emulation limitations :
 
 - Memory emulation with PSRAM is quite slow for the moment, but multiple mechanism like a 32bit cache will improve this. (And Maybe DMA)
-- **The emulated Memory does not support DMA**, Add support for it may be done in one or two months (May/June 2024)
-  Anyway:  
+- **The emulated Memory does not support DMA**, Add support for it may be done in one or two months (May/June 2024) <br />
+  Then :
     - As the real floppy use DMA, **you should disable temporarily the RAM emulation** if the real Disk access are not working.
     - For SoundCard, if the PC has 512Kb of base RAM, it is really unlikely that the DMA Buffer will be placed in emulated RAM, it may work 90% of the time.
+    - Boot/Use of MFM / XT Hard Drive with DMA will fail.
 
 ## Disk "emulation"
 
@@ -156,35 +156,36 @@ The PicoMEM can emulate a ne2000 network card via Wifi.<br />
 The wifi code is preliminary, the PicoMEM can't see if the access point is connected or not, code improvement in progress.
 
 **How to use it :**
-- Create a wifi.txt file with the SSID in the first line and the Password in the 2nd line
-- Use ne2000.com 8Bit (command line : ne2000 0x60 0x3 0x300) or pm2000 (command line : pm2000 0x60)
-- The PicoMEM can't tell if the connection fail and does not try to re connect.
+- Create a wifi.txt file with the SSID in the first line and the Password in the 2nd line.<br />
+- Use ne2000.com 8Bit (command line : ne2000 0x60 0x3 0x300) or pm2000 (command line : pm2000 0x60)<br />
+- The PicoMEM can't tell if the connection fail and does not try to re connect.<br />
 - The Wifi Access point need to be relatively close to increase the chance of connection success. The IRQ Can be changed in the BIOS Menu (Default is IRQ 3)<br />
 
 ## Tested machines :
 - IBM 5150, 5160, 5170
 - IBM PS/1, IBM PS/2 30 286, PS2 8535 (Warning : As its HDD use DMA, does not boot if emulated RAM is added)
 - Compaq Portable 2 (286): Ok
-- **New : Tandy 1000** : Now tested on a Tandy 1000 SX, EX and HX other to confirm. (October firmware)
+- **New : Tandy 1000** : Now tested on a Tandy 1000 SX, EX and HX other to confirm. (October 2024 firmware)
 - Tandy 1000 RLX Rev B Need a new BIOS to work.
 - Amstrad PC1512, PC1640, Sinclair PC200 (It is my DEV Machine)
 - Schneider Euro PC1 (Fast RAM Firmware), EuroPC2, Olivetti M21, Olivetti M24, Sega TeraDrive.
-- Commodore PC1, PC10/PC20. (With Fast RAM Firmware)
+- Commodore PC1, PC10/PC20. (Need Fast RAM Firmware)
 - Worked on Various 486, 386, 286 (Has more chance to work with lower ISA Clocks)
 - Tested with some Pentium, Pentium MMX, Pentium 2, AMD K6 ...<br />
 - Amiga 2000 with a A2286/A2386 SX Board. (Use the BIOS in C800)
-- Book8088 (At 4.77MHz and 8MHz with the latest firmware), **The Power need to be connected at 8MHz**.
+- Book8088 (At 4.77MHz and 8MHz with the latest firmware), **The Power need to be connected at 8MHz**. EMS/PSRAM based RAM is failing.
 
 ## Failing Machines :
-- Failed on a 386 with 12MHz ISA Clock
+- The number of failing machines is decreasing, if it does not work on your machine, you can post an issue in this GitHub repository.
 - Fail on some fast 286 (16MHz)
 - IBM PS/2 M25
-- Amstrad PPC512 /PPC640 : Problem on some PPC (Can't Boot) Not sure if it depends on the external ISA connectors boards used.
+- Amstrad PPC512 /PPC640 : Problem on some PPC (Can't Boot) Not sure if it depends on the external ISA connectors boards used. <br />
   > Problem identified on some ISA expantion boards, 100uF Low ESR filtering capacitors may be needed.
-- NuXT / EMM8088 homebrew computers seems to have problem. (NEW: EMM8088 working with the last GlaBIOS)
+- NuXT / EMM8088 homebrew computers seems to have problem. (NEW: EMM8088 working with the last GlaBIOS) <br />
 - Amiga 2000 with a A2088.
 - Tandy 1000 RXS Fail, but work if the BIOS is updated (See the Wiki)
 - Pocket8086 : IO Port error
+- Pocket386 : A BUG on this machine ISA BUS prevent the PicoMEM and any BIOS Based board to boot.
 
 ## Known bug :
 - The PC may crash when using a PS/2 Mouse (Except with Windows 95)
