@@ -54,12 +54,16 @@ PMINIT /k
 /adlib x  - Enable/Disable the Adlib output (0:Off 1:On)<br />
 /cms x    - Enable/Disable the CMS output   (0:Off 1:220 x:Port)<br />
 /tdy x    - Enable/Disable the Tandy output (0:Off 1:2C0 x:Port)<br />
+/mmb x    - Enable/Disable the Tandy output (0:Off 1:300 x:Port)<br />
 /j x      - Enable/Disable the Joystick     (0:Off 1:On)<br />
 /diag     - Start in Diagnostic Mode <br />
 
+### Rev 0.4 <br /> (May 2025)
+- + Added the Mindscape Music Board parameter (mmb)<br />
+
 ### Rev 0.3 <br /> (December 2024)
-- ! Corrected the Tandy initialisation : Was not implemented
-- + Added some test in the Diagnostic Mode
+- ! Corrected the Tandy initialisation : Was not implemented<br />
+- + Added some test in the Diagnostic Mode<br />
 
 ### Rev 0.2 : Added CMS, Adlib and Tandy initialisation (October 2024 Firmware)<br />
 
@@ -84,5 +88,16 @@ Example: pmdfs S-D U-E<br />
 
 **Use PMDFS3 for DOS 3.2 to 3.31 and PMDFS for DOS 4 and more.**<br />
 
-
 Warning : This driver can't be used if the PicoMEM BIOS is not loaded.<br />
+
+
+## ASTCLOCK.COM<br />
+
+The PicoMEM added the first AST 6 Pack board RTC emulation.<br />
+
+ASTCLOCK can set the DOS date to the PicoMEM time and can update it if kept resident.<br />
+
+Usage : ASTCLOCK /R  (/R for resident)<br />
+
+**WARNING :** The PicoMEM RTC initially set the date to May 22 2025 and stay saved only if th ePicoMEM is kept powered on, via the USB port.<br />
+Time is saved after a PC soft reboot.<br />
