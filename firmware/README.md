@@ -32,9 +32,9 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 ## Firmwares Revision History :
 
 ### PM_x_5_36_25_x: Mindscape sound card, RTC  (May 26, 2025)
+- New: The rare Mindscape Music Board with dual AY-3-8910 is now emulated.
 - New: MM58167AN RTC (AST Six Pack Plus Real Time Clock) added. (Thanks to Matthew Dovey)
        Time can be saved if the PicoMEM is still powered on via USB.
-- New: The rare Mindscape Music Board with dual card is now emulated.
 - ! Memory size wrongly increased causing mainly PS/2 Mouse bug corrected.
 - ! Correction of a problem preventing a legacy IDE Disk to boot with a PicoMEM disk image added (as 2nd disk)
 
