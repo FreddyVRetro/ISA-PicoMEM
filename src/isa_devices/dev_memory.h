@@ -1,5 +1,10 @@
 #pragma once
 
+#define EMS_PORT_NB 5
+#define EMS_ADDR_NB 2
+const uint8_t EMS_Port_List[EMS_PORT_NB]={0,0x268>>3,0x288>>3,0x298>>3,0x2A8>>3}; // 278 used by LPT
+const uint8_t EMS_Addr_List[EMS_ADDR_NB]={0xD0000>>14,0xE0000>>14};
+
 #define MT_Shift 13
 #define MEM_BlockSize 8*1024
 #define MEM_S_16k     2			// Nb of MEM Block for 16k
@@ -13,11 +18,12 @@
 
 #define MEM_RAM    1   // RAM in the Pico SRAM    RW / ZWS  !! Change Disk code if modified !!
 #define MEM_DISK   2   // BIOS RAM/DISK           RW / ZWS
-// Add MEM_DEV Type (RAM for emulated Devices)
 
 #define MEM_BIOS   8   // PicoMEM BIOS ROM        R  / ZWS
 #define MEM_ROM0   9   // ROM in Segment C	      R  / ZSW > not used for the moment
 #define MEM_ROM1   10  // ROM in Segment D	      R  / ZWS > not used for the moment
+
+#define MEM_BIOS_EXT 12
 
 // Add 15, as NULL, to have 1 Cycle less in Memory Read
 
@@ -41,7 +47,6 @@
 #define MEM_I_EMS2 19   // EMS in the PSRAM			  WS
 #define MEM_I_EMS3 20   // EMS in the PSRAM			  WS
 #endif
-
 
 // Memory index Types  :
 // MIT_NONE     : 

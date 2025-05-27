@@ -19,9 +19,7 @@ specific language governing permissions and limitations under the License.
 #include "pico/stdio.h"
 #include "pico/stdlib.h"
 #include "pico/util/datetime.h"
-#if HAS_RP2040_RTC
-#  include "hardware/rtc.h"
-#endif
+//#include "hardware/rtc.h"
 //
 #include "crc.h"
 #include "ff.h"
@@ -90,7 +88,7 @@ void time_init() {
 
         // Initialize the RTC if it is available
 #if HAS_RP2040_RTC
-    rtc_init();
+//    rtc_init();
 #endif
 
     // Check if the saved time is valid

@@ -70,7 +70,6 @@ static __force_inline void __time_critical_func(pio_spi_write_read_blocking)(
         if (!pio_sm_is_rx_fifo_empty(spi->pio, spi->sm)) {
             *dst++ = *rxfifo;
             --rx_remain;
- //        printf(".");
         }
     }
 //printf("End");
@@ -81,17 +80,14 @@ static __force_inline void __time_critical_func(pio_spi_write_read_blocking)(
  * NOTE that the read/write functions abuse type punning to avoid shifts and masks to be as fast as possible!
  * I'm open to suggestions that this is really dumb or insane. This is a fixed platform (arm-none-eabi-gcc) so I'm OK with it
  */
-__force_inline pio_spi_inst_t psram_init(void) {
-//    printf("add program\n");
+__force_inline pio_spi_inst_t psram_init(float clkdiv) {
     uint spi_offset = pio_add_program(pio1, &spi_fudge_program);
-//    printf("claim unused sm\n");
     uint spi_sm = pio_claim_unused_sm(pio1, true);
     pio_spi_inst_t spi;
     spi.pio = PSRAM_PIO;
     spi.sm = spi_sm;
-    //printf("!! PSRAM PIO Init : SM %d \n",spi_sm);
-
-//    printf("sm is %d\n", spi_sm);
+//   printf("!! PSRAM PIO Init : SM %d \n",spi_sm);
+//   printf("sm is %d\n", spi_sm);
 
     gpio_set_drive_strength(PSRAM_PIN_CS, GPIO_DRIVE_STRENGTH_4MA);
     gpio_set_drive_strength(PSRAM_PIN_SCK, GPIO_DRIVE_STRENGTH_8MA);
@@ -101,9 +97,9 @@ __force_inline pio_spi_inst_t psram_init(void) {
     gpio_set_slew_rate(PSRAM_PIN_MOSI, GPIO_SLEW_RATE_FAST);
 
 //    printf("about to init fudge\n", spi_sm);
-    pio_spi_fudge_cs_init(pio1, spi_sm, spi_offset, 8 /*n_bits*/, 1 /*clkdiv*/, PSRAM_PIN_CS, PSRAM_PIN_MOSI, PSRAM_PIN_MISO);
+    pio_spi_fudge_cs_init(pio1, spi_sm, spi_offset, 8 /*n_bits*/, clkdiv /*clkdiv*/, PSRAM_PIN_CS, PSRAM_PIN_MOSI, PSRAM_PIN_MISO);
 
-    // SPI initialisation.
+  //  SPI initialisation.
   //  printf("Inited SPI PIO... at sm %d pio %d\n", spi.sm, spi.pio);
 
     busy_wait_us(150);

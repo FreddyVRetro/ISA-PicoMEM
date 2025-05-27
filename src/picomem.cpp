@@ -17,20 +17,20 @@ If not, see <https://www.gnu.org/licenses/>.
  * picomem.cpp : Contains the Main initialisazion, ISA Bus Cycles management and commands executed by the Pi Pico
  */ 
 
-extern void sbdsp_test();
+//extern void sbdsp_test();
 
 #define ISA_DBG_IO 0
 
 #include <stdio.h>
 #include <string.h>
-#include "pm_debug.h"
-
 #include "pico/stdlib.h"
+
 #include "pico/multicore.h"
 #include "hardware/clocks.h"
 #include "hardware/pio.h"
 #include "hardware/irq.h"
 #include "hardware/vreg.h"
+
 #if !(defined(RASPBERRYPI_PICO2) || defined(PIMORONI_PICO_PLUS2_RP2350))
 #include "hardware/regs/vreg_and_chip_reset.h"
 #endif
@@ -38,25 +38,33 @@ extern void sbdsp_test();
 #include "hardware/structs/bus_ctrl.h"
 #include "hardware/regs/busctrl.h"              /* Bus Priority defines */
 
+#include "pm_debug.h"
+
 //#include "ff.h"    // Needed by pm_disk.h
 
 //Other PicoMEM Code
+#include "pm_gpiodef.h"     // Various PicoMEM GPIO Definitions
 #include "pm_defines.h"     // Shared MEMORY variables defines (Registers and PC Commands)
 #include "pm_cmd.h"
-#include "pm_libs.h"
-#include "pm_gpiodef.h"     // Various PicoMEM GPIO Definitions
+#include "pm_libs/pm_libs.h"
 #include "ff.h"
-#include "pm_disk/pm_disk.h"
+#include "pm_libs/pm_disk.h"
 #include "pm_pccmd.h"
 #include "qwiic.h"
 
 // PicoMEM emulated devices include
+//#include "isa_devices.h"
 #include "dev_post.h"
+#include "dev_irq.h"
 #include "dev_joystick.h"
+#if USE_RTC
+#include "dev_rtc.h"
+#endif
 #if USE_AUDIO
 #include "dev_adlib.h"
 #include "dev_cms.h"
 #include "dev_tandy.h"
+#include "dev_mindscape.h"
 #include "dev_sbdsp.h"
 #include "dev_dma.h"
 #endif
@@ -64,6 +72,7 @@ extern void sbdsp_test();
 extern "C" const uint8_t _binary_pmbios_bin_start[];
 extern "C" const uint8_t _binary_pmbios_bin_size[];
 uint8_t  __in_flash() *PMBIOS=(uint8_t *)_binary_pmbios_bin_start;
+// PicoMEM BIOS is stored in the RAM (It is what I need) but I don't understand why :(
 
 
 // Memory and IO Tables in the core stack RAM (Must be before PM_defines)
@@ -108,22 +117,33 @@ pio_spi_inst_t psram_spi;
 #endif
 #endif
 
+#if BOARD_PM15
+#include "isa_iomem_m2_v15.pio.h"
+#else
 #if ISA_NOAEN
 #include "isa_iomem_noaen.pio.h"
 #else
 #if MUX_V2
 //#include "isa_iomem_test_addr_v2.pio.h"
-#include "isa_iomem_v2.pio.h"
+#include "isa_iomem_m2.pio.h"
 #else
-#include "isa_iomem.pio.h"
+#include "isa_iomem_m1.pio.h"
 #endif
 #endif
-//#include "pm_test.pio.h"
+#endif
 
 // Define the UART values for debug (On the Free GPIO 28)
 #if ASYNC_UART
 #include "stdio_async_uart.h"
 #endif 
+
+#if BOARD_PM15
+
+#define UART_TX_PIN 36
+#define UART_RX_PIN 37
+#define UART_ID     uart1
+
+#else
 #if UART_PIN0
 #define UART_TX_PIN 0
 #else
@@ -131,9 +151,15 @@ pio_spi_inst_t psram_spi;
 #endif
 #define UART_RX_PIN (-1)
 #define UART_ID     uart0
+#endif
+
 #define BAUD_RATE   115200
 
+#if BOARD_PM15
+#define LED_PIN 11
+#else
 #define LED_PIN 25
+#endif
 
 // ** State Machines ** Order should not be changed, "Hardcoded" (For ISA)
 //
@@ -167,10 +193,10 @@ static uint sd_spi_sm;          // State machine number for SD
 //*              PicoMEM Variables              *
 //***********************************************
 
-#define CTRL_MR   0x01  // 0001b
-#define CTRL_MW   0x02  // 0010b
-#define CTRL_IOR  0x04  // 0100b
-#define CTRL_IOW  0x08  // 1000b
+#define CTRL_MR    0x01  // 0001b
+#define CTRL_MW    0x02  // 0010b
+#define CTRL_IOR   0x04  // 0100b
+#define CTRL_IOW   0x08  // 1000b
 
 #define CTRL_MR_   0x0E  // 0001b
 #define CTRL_MW_   0x0D  // 0010b
@@ -228,10 +254,21 @@ gpio_set_slew_rate(PIN_AD, GPIO_SLEW_RATE_FAST);
 gpio_set_slew_rate(PIN_AS, GPIO_SLEW_RATE_FAST);
 gpio_set_slew_rate(PIN_IORDY, GPIO_SLEW_RATE_FAST);
 
+//PM_INFO("init gpio %d to %d\n",PIN_AD0,PIN_AD0+11);
+for (int i=PIN_AD0; i<(PIN_AD0 + 12); ++i) {
+  gpio_init(i);
+  gpio_disable_pulls(i);
+  gpio_set_dir(i, GPIO_IN);
+}
+
 // Start the ISA PIO State Machine
+#if BOARD_PM15
+pio_set_gpio_base(isa_pio,16);          // This pio will start from the gpio 16
+#endif
 uint isa_bus_offset = pio_add_program(isa_pio, &isa_bus_program);
-//printf("ISA_Offset: %d SM: %d\n",isa_bus_offset,isa_bus_sm); 
-if (pio_claim_unused_sm(isa_pio, true)!=isa_bus_sm) printf("PIO SM For ISA Error");
+
+PM_INFO("ISA SM Offset: %d SM: %d\n",isa_bus_offset,isa_bus_sm); 
+if (pio_claim_unused_sm(isa_pio, true)!=isa_bus_sm) PM_ERROR("PIO SM For ISA Error");
 isa_bus_program_init(isa_pio, isa_bus_sm, isa_bus_offset);
 
 // Invert the A16_MR to A11_IW pin, for signal detect speed up !! If placed before the SM init, does not work
@@ -255,7 +292,8 @@ SetPortType(PM_IOBASEPORT,DEV_PM,1);
 dev_memory_init(0);
 
 #ifdef ROM_BIOS
-PM_BIOSADDRESS=ROM_BIOS>>4;
+PM_BIOSADDRESS=(ROM_BIOS>>4);
+//PM_INFO("ROM_BIOS %x PM_BIOSADDRESS %x\n",ROM_BIOS,PM_BIOSADDRESS);
 PC_DB_Start=ROM_BIOS+0x4000+PM_DB_Offset;
 //dev_memory_init(ROM_BIOS);
 
@@ -266,7 +304,6 @@ RAM_Offset_Table[MEM_BIOS]=&PMBIOS[-ROM_BIOS];
 SetMEMType(ROM_BIOS+0x4000,MEM_DISK,1);  // 8kb only
 SetMEMIndex(ROM_BIOS+0x4000,MEM_DISK,1);
 RAM_Offset_Table[MEM_DISK]=&PM_DP_RAM[-(ROM_BIOS+0x4000)];
-
 #endif
 
 PM_DP_RAM[0] = 0x12; //ID of The PicoMEM BIOS RAM  (Magic ID)
@@ -282,15 +319,25 @@ PM_DP_RAM[0] = 0x12; //ID of The PicoMEM BIOS RAM  (Magic ID)
 
 __force_inline void pm_do_ior(void)
 {
- ISA_WasRead=true; 
+ ISA_WasRead=true;
+ #if BOARD_PM15
+// 0x380e, // 16: wait   0 gpio, 14      side 2
+ pio_sm_put(isa_pio, isa_bus_sm, 0x380e); // Do IOR (wait 0 gpio PIN_A18_IR)
+ #else
  pio_sm_put(isa_pio, isa_bus_sm, DO_IOR); // Do IOR (wait 0 gpio PIN_A18_IR)
-}
+ #endif
+} // Data is sent after in the core1
 
 // Start of a Memory Read with Wait States added
 __force_inline void pm_do_memr(uint32_t ISA_Data)
 {
-// ISA_WasRead=true;
+
+#if BOARD_PM15
+ //0x380c, // 18: wait   0 gpio, 12      side 2
+pio_sm_put(isa_pio, isa_bus_sm, 0x380c); // 2nd Write : Do MEMR (wait 0 gpio PIN_A16_MR)
+#else
  pio_sm_put(isa_pio, isa_bus_sm, DO_MEMR);                  // 2nd Write : Do MEMR (wait 0 gpio PIN_A16_MR)
+#endif
  pio_sm_put(isa_pio, isa_bus_sm, 0x00ffff00u | ISA_Data);   // 3nd Write : Send the Data to the CPU (Read Cycle)
  asm volatile ("nop");                                      // Force the compiler to not prepare the next instruction in advanced : One Cycle less
  // Added to wait until the PIO Send the Data
@@ -310,21 +357,69 @@ __force_inline void pm_do_memr(uint32_t ISA_Data)
 #include "pm_isa_test.h"
 #else
 #if defined(RASPBERRYPI_PICO2) || defined(PIMORONI_PICO_PLUS2_RP2350)
+
+#if BOARD_PM15
+//#include "pm_isa_debug.h"
+#include "pm_isa_rp2350_m2_v15.h"
+#else
 #if MUX_V2
 #include "pm_isa_rp2350_v2_dev.h"
 #else
 #include "pm_isa_rp2350.h"
 #endif
+#endif
+
 #else
 #if MUX_V2
-//#include "pm_isa_rp2040_V2.h"
-//#include "pm_isa_rp2040_test_addr_V2.h"
-#include "pm_isa_rp2040_V2_dev.h"
+//#include "pm_isa_rp2040_m2.h"
+#include "pm_isa_rp2040_m2_dev.h"
 #else
 #include "pm_isa_rp2040.h"
 #endif
 #endif
 #endif
+
+void Do_PIOTest()
+{
+    uint32_t sm_data;
+     
+    gpio_init_put(LED_PIN,1);
+
+    gpio_init_put(PIN_IORDY,0);
+    gpio_init_put(PIN_AD,1);
+    gpio_init_put(PIN_AS,1);
+    
+    // Start the ISA PIO State Machine
+    pio_set_gpio_base(isa_pio,16);          // This pio will start from the gpio 16
+    uint isa_bus_offset = pio_add_program(isa_pio, &isa_bus_program);
+    PM_INFO("ISA SM Offset: %d SM: %d\n",isa_bus_offset,isa_bus_sm); 
+    if (isa_bus_offset<0) PM_ERROR("pio_add_program Error");    
+
+    if (pio_claim_unused_sm(isa_pio, true)!=isa_bus_sm) PM_ERROR("PIO SM For ISA Error");
+    isa_bus_program_init(isa_pio, isa_bus_sm, isa_bus_offset);
+
+    PM_INFO("Write/Read in loop to/from the ISA SM\n",isa_bus_offset,isa_bus_sm);     
+for (;;) {
+        PM_INFO("1");
+        pio_sm_put(isa_pio, isa_bus_sm, 0);  // Start the cycle
+//        printf("");
+        sm_data = pio_sm_get_blocking(isa_pio, isa_bus_sm);
+//        printf("3 Addr:%x",sm_data);
+        pio_sm_put(isa_pio, isa_bus_sm, 1);  // 1st Write : No Wait State
+//        printf("4");
+        pio_sm_put(isa_pio, isa_bus_sm, 0);  // 2nd Write : Directly Loop (Write Cycle or nothing)
+}
+/*
+    for (;;) 
+    {
+        uint32_t readsm;
+        readsm=pio_sm_get_blocking(isa_pio, isa_bus_sm);
+        printf("Read SM: %x\n",readsm);
+        busy_wait_ms(500);
+    }
+*/
+
+}
 
 //***********************************************************************************************//
 //*         CORE 0 Main : PicoMEM Code Start                                                    *//
@@ -333,12 +428,17 @@ __force_inline void pm_do_memr(uint32_t ISA_Data)
 int main(void) 
 {
 
+ #if PM_ENABLE_STDIO
+ stdio_init_all();
+ #endif
+
 // 130000 133000 160000 170000 180000 190000 200000 210000 220000 232000 240000  250000 260000 270000 280000
 // Use hacked set_sys_clock_khz to keep SPI clock high - see clock_pll.h for details
 // Voltage : 280 VREG_VOLTAGE_1_20
 //           300 VREG_VOLTAGE_1_25
 
 // Pico2 Overclocking : https://forums.raspberrypi.com/viewtopic.php?t=375975
+
 
 // Overclock!
 #ifdef PIMORONI_PICO_PLUS2_RP2350
@@ -349,6 +449,9 @@ set_sys_clock_khz(280*1000, true);
 vreg_set_voltage(VREG_VOLTAGE_1_20);
 set_sys_clock_khz(PM_SYS_CLK*1000, true);
 #endif
+
+
+ //Do_PIOTest();
 
 // TinyUSB Test
 // https://forums.raspberrypi.com/viewtopic.php?t=346802
@@ -373,6 +476,8 @@ set_sys_clock_khz(PM_SYS_CLK*1000, true);
   //  hid_app_task();
   }
 #endif
+
+gpio_init(1);
 gpio_init(PIN_IRQ);
 PM_Version_Detect=gpio_get_all();
 
@@ -389,7 +494,11 @@ gpio_put(PIN_AD, SEL_ADR);       // Address Multiplexer active, Data buffer 3 St
 
 gpio_init(PIN_AS);
 gpio_set_dir(PIN_AS, GPIO_OUT);
+#if BOARD_PM13
+gpio_put(PIN_AS, SEL_CTRL);        // Low part of the @ and I/O Mem Signals
+#else
 gpio_put(PIN_AS, SEL_ADL);        // Low part of the @ and I/O Mem Signals
+#endif
 
 // * Init the SDCard CS to 1 to not disturb the PSRAM init
 
@@ -402,18 +511,12 @@ gpio_put(SD_SPI_CS, 1);
 // Same with PSRAM CS
 #if USE_PSRAM
 #define PSRAM_PIN_CS   5 // Chip Select (SPI0 CS )
-#else
-#define PSRAM_PIN_CS   5 // Chip Select (SPI0 CS )
-#endif
 gpio_init(PSRAM_PIN_CS);
 gpio_set_dir(PSRAM_PIN_CS, GPIO_OUT);
 gpio_put(PSRAM_PIN_CS, 1);
-
-// * Set input pins direction (Not needed normally, GPIO In are always available to the CPU)
-for (int i=PIN_AEN; i<(PIN_AEN + 13); ++i) {
-        gpio_disable_pulls(i);
-        gpio_set_dir(i, GPIO_IN);
-    }
+#else
+#define PSRAM_PIN_CS   5 // Chip Select (SPI0 CS )
+#endif
 
 // * Init other Output pin 
 #if UART_PIN0
@@ -422,17 +525,6 @@ gpio_init(PIN_IRQ);
 gpio_set_dir(PIN_IRQ, GPIO_OUT);
 gpio_put(PIN_IRQ, 1);  // Set IRQ Up (There is an inverter) for no IRQ
 #endif
-
-// GPIO 26, 27, 28 to Output (TEST)
-gpio_init(PIN_GP26);
-gpio_init(PIN_GP27);
-gpio_init(PIN_GP28);  
-gpio_set_dir(PIN_GP26, GPIO_OUT);
-gpio_set_dir(PIN_GP27, GPIO_OUT);
-gpio_set_dir(PIN_GP28, GPIO_OUT);        
-gpio_put(PIN_GP26, 1);
-gpio_put(PIN_GP27, 1);
-gpio_put(PIN_GP28, 1);
 
 // * Init and Light the LED
 #if PM_PICO_W
@@ -475,14 +567,12 @@ BV_WifiInit=INIT_INPROGRESS;    // Init in progress
 BV_WifiInit=0xFF;    // Disabled
 #endif
 
-
-//stdio_init_all();   
-//PM_DoISA_Test();
+// ************************************* INIT ISA SM and Loop code *************************************
 
 Init_ISAIOVars(); // Setup the ISA bus code variables and PIO SM
 
 // Set the priority of PROC0 to high
-    bus_ctrl_hw->priority = BUSCTRL_BUS_PRIORITY_PROC1_BITS; // 
+bus_ctrl_hw->priority = BUSCTRL_BUS_PRIORITY_PROC1_BITS; // 
 
 #if ISA_DBG_IO
 multicore_launch_core1(test_IOW_core1);
@@ -499,10 +589,12 @@ multicore_launch_core1(main_core1);
     stdio_async_uart_init_full(UART_ID, BAUD_RATE, UART_TX_PIN, UART_RX_PIN);
     PM_Status=STAT_INIT;  // Status Register set to Initialisation in progress  
     SERIAL_Enabled=true;
+    PM_INFO("PicoMEM is alive (async uart)\n");
 #else
 // Serial using USB or default serial
     stdio_init_all();   
     SERIAL_Enabled=true;
+    PM_INFO("PicoMEM is alive (stdio)\n");
 #endif
 
 #if USB_UART
@@ -511,9 +603,8 @@ multicore_launch_core1(main_core1);
     SERIAL_USB=false;
 #endif   
 
-PM_INFO("PicoMEM is alive\n");
-
 pm_timefrominit();
+
 /*
 PM_INFO("CFG BIOS Addr: %x\n",ROM_BIOS);
 PM_INFO("CFG SYS Clk: %d\n",PM_SYS_CLK);
@@ -523,7 +614,7 @@ PM_INFO("CFG USE_USBHOST: %d\n",USE_USBHOST);
 // 1.3a   : Pull Up on GPIO 0,1,2        PM_Version_Detect 100007
 // 1.14   : Pull Up on GPIO 0, 1,2 Input PM_Version_Detect 100003
 // LP 1.0 : Pull Up and Down on GPIO0 ! Error
-PM_INFO("PM_Version_Detect %x",PM_Version_Detect);
+PM_INFO("PM_Version_Detect %x\n",PM_Version_Detect);
 
 /*
 PM_INFO("Mem Index: ");
@@ -554,6 +645,14 @@ ifdef //PM_PICO_INFOS
     pico_infos();
 #endif ////PM_PICO_INFOS
 */
+
+PM_INFO("PIN_AD0: %d \n",PIN_AD0);
+
+#if BOARD_PM15
+#if !PICO_PIO_USE_GPIO_BASE
+#error PICO_PIO_USE_GPIO_BASE must be 1 to use >32 pins
+#endif
+#endif
 
 PM_Status=STAT_INIT;  // Status Register set to Initialisation in progress
 

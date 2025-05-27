@@ -214,15 +214,15 @@ void swapInNextDisk(bool pressed) {
 
 Bit32u imageDisk::CHS_to_LBA(Bit32u head,Bit32u cylinder,Bit32u sector) {
 	Bit32u sectnum;
-//printf("CHS to LBA C%d H%d S%d\n",cylinder,head,sector);
-//printf("Disk Geometry C%d H%d S%d\n",cylinders,heads,sectors);
+//PM_INFO("CHS to LBA C%d H%d S%d\n",cylinder,head,sector);
+//PM_INFO("Disk Geometry C%d H%d S%d\n",cylinders,heads,sectors);
 
 	return ( (cylinder * heads + head) * sectors ) + sector - 1L;
 }
 
 Bit8u imageDisk::Read_Sector(Bit32u head,Bit32u cylinder,Bit32u sector,void * data) {
 	Bit32u sectnum;
-//printf("Disk Geometry C%d H%d S%d\n",cylinders,heads,sectors);
+//PM_INFO("Disk Geometry C%d H%d S%d\n",cylinders,heads,sectors);
 
     PM_INFO("ReadSector C%d H%d S%d\n",cylinder,head,sector);
 
@@ -238,10 +238,11 @@ Bit8u imageDisk::Read_AbsoluteSector(Bit32u sectnum, void * data) {
 	f_lseek(diskimg,bytenum);
 	fr = f_read(diskimg,data,sector_size,&byteread);
 	if (FR_OK != fr) 
-	{ printf("Fail: %d \n",fr);
+	{ 
+	  PM_ERROR("Fail: %d \n",fr);
 	  return 0x04;  //04h : sector not found/read error (BIOS error code)
 	}
-//printf("Ok \n");
+//PM_INFO("Ok \n");
 
 //	fseek(diskimg,bytenum,SEEK_SET);
 //	fread(data, 1, sector_size, diskimg);
@@ -262,11 +263,12 @@ Bit8u imageDisk::Write_AbsoluteSector(Bit32u sectnum, void *data) {
     uint bytewrite;
     FRESULT fr;
 
-//printf("fwrite: pos %d - ",bytenum);
+//PM_INFO("fwrite: pos %d - ",bytenum);
 	f_lseek(diskimg,bytenum);
 	fr = f_write(diskimg,data,sector_size,&bytewrite);
 	if (FR_OK != fr) 
-	{ printf("Fail: %d \n",fr);
+	{ 
+	  PM_ERROR("Fail: %d \n",fr);
 	  return 0x04;  //04h : sector not found/write error
 	}
 
@@ -393,8 +395,7 @@ static Bitu GetDosDriveNumber(Bitu biosNum) {
 
 static bool driveInactive(Bitu driveNum) {
 	if(driveNum>=(2 + MAX_HDD_IMAGES)) {
-		//PM LOG(LOG_BIOS,LOG_ERROR)("Disk %d non-existant", driveNum);
-	//	printf("Disk %d non-existant", driveNum);
+	//	PM_INFO("Disk %d non-existant", driveNum);
 
 		PM_INFO("di1 %d",driveNum);
 		last_status = 0x01;
@@ -402,8 +403,7 @@ static bool driveInactive(Bitu driveNum) {
 		return true;
 	}
 	if(imageDiskList[driveNum] == NULL) {
-		//PM LOG(LOG_BIOS,LOG_ERROR)("Disk %d not active", driveNum);
-	//	printf("Disk %d not active", driveNum);
+	//	PM_INFO("Disk %d not active", driveNum);
 		last_status = 0x01;
 
 		PM_INFO("di2 %d",driveNum);	
@@ -411,8 +411,7 @@ static bool driveInactive(Bitu driveNum) {
 		return true;
 	}
 	if(!imageDiskList[driveNum]->active) {
-		//PM LOG(LOG_BIOS,LOG_ERROR)("Disk %d not active", driveNum);
-	//	printf("Disk %d not active", driveNum);
+	//	PM_INFO("Disk %d not active", driveNum);
 		last_status = 0x01;
 						
 		PM_INFO("di3 %d",driveNum);
@@ -435,8 +434,9 @@ Bitu INT13_DiskHandler(void) {
 
 	last_drive = reg_dl;
 	drivenum = GetDosDriveNumber(reg_dl);
-
+#ifdef HDD_DISPLAY
 	PM_INFO("Int13h, drive: %x Fnt: %x AL: %x \n",reg_dl,reg_ah,reg_al);
+#endif
 	//LOG_MSG("INT13: Function %x called on drive %x (dos drive %d)", reg_ah,  reg_dl, drivenum);
 	
 	switch(reg_ah) {
@@ -498,10 +498,8 @@ Only Last Status 0,1 and 7 are used */
 			reg_SetCF();
 			return CBRET_NONE;
 		}
-		if (driveInactive(drivenum)) {
-#if PM_PRINTF			
-			printf("Drive inactive");
-#endif
+		if (driveInactive(drivenum)) {		
+			PM_INFO("Drive inactive");
 			reg_ah = 0xff;
 			reg_SetCF();
 			return CBRET_NONE;
@@ -516,13 +514,15 @@ Only Last Status 0,1 and 7 are used */
 
         PCBuffer_Start=(uint32_t)(reg_es<<4)+reg_bx; // PC_Buffer_Start is the current @ of the application disk buffer
 
+#ifdef HDD_DISPLAY
 #if PM_PRINTF
 		PCBuffer_End=(PCBuffer_Start+reg_al*512)-1;  // PC_Buffer_End is the last @ of the application disk buffer
 		mt_beg = GetMEMType(PCBuffer_Start);
 		mt_end = GetMEMType(PCBuffer_End);   //-1 as we need the end, not the @ just after the end
 
-		printf("C%d H%d S%d > LBA: %d ",(Bit32u)(reg_ch | ((reg_cl & 0xc0)<< 2)), (Bit32u)reg_dh, (Bit32u)((reg_cl & 63)),sect_lba);
-		printf("B@ %x:%x>%x,T%x %x : ",reg_es,reg_bx,PCBuffer_Start,mt_beg,mt_end);
+		PM_INFO("C%d H%d S%d > LBA: %d ",(Bit32u)(reg_ch | ((reg_cl & 0xc0)<< 2)), (Bit32u)reg_dh, (Bit32u)((reg_cl & 63)),sect_lba);
+		PM_INFO("B@ %x:%x>%x,T%x %x : ",reg_es,reg_bx,PCBuffer_Start,mt_beg,mt_end);
+#endif
 #endif
 
         BOffset=0;
@@ -531,7 +531,7 @@ Only Last Status 0,1 and 7 are used */
 // **** Disk Read Loop ****
 		for(uint8_t sn=0;sn<reg_al;sn++) {
 #if PM_PRINTF
-    //      printf(" O:%d ",BOffset);
+    //      PM_INFO(" O:%d ",BOffset);
 #endif
 // Current 512b Buffer Memory type (Begining and End)
  		  mt_beg = GetMEMType(PCBuffer_Start);
@@ -546,56 +546,67 @@ Only Last Status 0,1 and 7 are used */
 				 else
 			      {					// MEM Begining or End in PSRAM/EMS
 			        mt_beg=0xFF;    // Force Slow MEM Copy with uSD Disable
-				  }
-#if PM_PRINTF				
-			  printf("%d > ",mt_beg);
-#endif				  
+				  }			
+#ifdef HDD_DISPLAY
+  		     PM_INFO("%d > ",mt_beg);		  
+#endif			 
 			 }
 
 #ifdef PIMORONI_PICO_PLUS2_RP2350
 if (mt_beg!=MEM_RAM) mt_beg=MEM_NULL;  // Can go back to use Copy via the CPU
 #endif
-
+/*
+#if USE_PSRAM_DMA
+if (mt_beg==MEM_PSRAM|mt_beg==MEM_EMS) 
+  {
+#if PM_PRINTF
+   putchar('!');	 
+#endif   
+   mt_beg=0xFF;   // Do "Slow copy" with PSRAM Disabled
+  }
+#endif
+*/
 		  switch(mt_beg)
 		    {
 		    case MEM_NULL:  // ** Disk Read to the PC Ram (Disk Buffer)
-#if PM_PRINTF			
+#ifdef HDD_DISPLAY
+#if PM_PRINTF
 			    putchar('m');
-#endif				
-//                pm_audio_pause();     // Need to pause audio during uSD Access  
+#endif
+#endif
+//                dev_audiomix_pause();     // Need to pause audio during uSD Access  
 		  		last_status = imageDiskList[drivenum]->Read_AbsoluteSector(sect_lba+sn, &PM_PTR_DISKBUFFER[BOffset]);
-//                pm_audio_resume(); 			
+//                dev_audiomix_resume(); 			
 		  		if ((last_status != 0x00) || (killRead)) 
-				    {
-#if PM_PRINTF						
-				 	 printf("HDD Read Error");
-#endif					 
+				    {				
+				 	 PM_ERROR("HDD Read Error");				 
 					 killRead = false;
 					 reg_ah = last_status;  // 4 if CF not accessible
 					 reg_SetCF();
 					 return CBRET_NONE;
 		    		}	
                 // ** Ask the BIOS to Copy the data to the application buffer (in Background)
-		  		PCC_WaitCMDCompleted();
-          		if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;		// Quit if Reset asked
-                Send_PCC_MemCopyW_512b(PC_DB_Start+BOffset,PCBuffer_Start);
+		  		PC_WaitCMDCompleted();
+                PC_MemCopyW_512b(PC_DB_Start+BOffset,PCBuffer_Start);
           		if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;		// Quit if Reset asked
 			   break;
 		    case MEM_RAM:  // ** Disk Read to the PC RAM emulated in the Pico SRAM
+#ifdef HDD_DISPLAY
+#if PM_PRINTF
 			    putchar('s');
-//                pm_audio_pause();     // Need to pause audio during uSD Access  				
+#endif
+#endif
+//                dev_audiomix_pause();     // Need to pause audio during uSD Access  				
 		  		last_status = imageDiskList[drivenum]->Read_AbsoluteSector(sect_lba+sn, &PM_Memory[(PCBuffer_Start - RAM_InitialAddress)]);
-//                pm_audio_resume(); 					
+//                dev_audiomix_resume(); 					
 		  		if ((last_status != 0x00) || (killRead)) 
-				    {
-#if PM_PRINTF						
-				 	 printf("HDD Read Error");
-#endif					 
+				    {		
+				 	 PM_ERROR("HDD Read Error");				 
 					 killRead = false;
 					 reg_ah = last_status;  // 4 if CF not accessible
 					 reg_SetCF();
 					 return CBRET_NONE;
-		    		}		   
+		    		}
 		       break;
 		     case MEM_PSRAM:   // ** Disk Read to the PC RAM emulated in the Pico PSRAM
 		     case MEM_EMS:     // ** Disk Read to the PC EMS emulated in the Pico PSRAM
@@ -603,13 +614,11 @@ if (mt_beg!=MEM_RAM) mt_beg=MEM_NULL;  // Can go back to use Copy via the CPU
 #if PM_PRINTF
 			    putchar('p');
 #endif				
-//                pm_audio_pause();     // Need to pause audio during uSD Access  
+//                dev_audiomix_pause();     // Need to pause audio during uSD Access  
 		  		last_status = imageDiskList[drivenum]->Read_AbsoluteSector(sect_lba+sn, &PM_PTR_DISKBUFFER[BOffset]);
 		  		if ((last_status != 0x00) || (killRead)) 
 				    {
-#if PM_PRINTF						
-				 	 printf("HDD Read Error");
-#endif					 
+				 	 PM_ERROR("HDD Read Error");				 
 					 killRead = false;
 					 reg_ah = last_status;  // 4 if CF not accessible
 					 reg_SetCF();
@@ -618,38 +627,54 @@ if (mt_beg!=MEM_RAM) mt_beg=MEM_NULL;  // Can go back to use Copy via the CPU
 
 				// Copy to PSRAM
 				PM_EnablePSRAM();
-				uint32_t PSRAM_Addr;  // Compute the address to use in PSRAM
+                // Compute the address to use in PSRAM
+				uint32_t PSRAM_Addr;  			
                 if (mt_beg==MEM_EMS) PSRAM_Addr=EMS_Base[(PCBuffer_Start>>14)&0x03]+(PCBuffer_Start & 0x3FFF);	
 				   else PSRAM_Addr=PCBuffer_Start;
-                for (int i=0;i<128;i++)	// ** Copy the Disk Data to the PSRAM  (Need to find a faster way)
-				 { 
-					uint32_t tmp=((uint32_t)PM_PTR_DISKBUFFER[BOffset+(i<<2)])+((uint32_t)PM_PTR_DISKBUFFER[BOffset+(i<<2)+1]<<8)+((uint32_t)PM_PTR_DISKBUFFER[BOffset+(i<<2)+2]<<16)+((uint32_t)PM_PTR_DISKBUFFER[BOffset+(i<<2)+3]<<24);
-//					printf("%x-",tmp);
-					psram_write32(&psram_spi,PSRAM_Addr+(i<<2),tmp);
+				// Copy the data to PSRAM
+				if (PSRAM_Addr&0x03)
+				 {  // Not 32Bit aligned, write in 8Bit to avoid problem
+				 
+#if PM_PRINTF
+			    putchar('8');
+#endif				 
+			  	   for (int i=0;i<512;i++)	// ** Copy the Disk Data to the PSRAM  (Need to find a faster way)
+				    { 
+					psram_write8(&psram_spi,PSRAM_Addr+i,PM_PTR_DISKBUFFER[BOffset+i]);
+				    }
 				 }
+				 else
+				 {  // If 32Bit aligned, copy in 32Bit
+			  	   for (int i=0;i<128;i++)	// ** Copy the Disk Data to the PSRAM  (Need to find a faster way)
+				    { 
+					uint32_t tmp=((uint32_t)PM_PTR_DISKBUFFER[BOffset+(i<<2)])+((uint32_t)PM_PTR_DISKBUFFER[BOffset+(i<<2)+1]<<8)+((uint32_t)PM_PTR_DISKBUFFER[BOffset+(i<<2)+2]<<16)+((uint32_t)PM_PTR_DISKBUFFER[BOffset+(i<<2)+3]<<24);
+					psram_write32(&psram_spi,PSRAM_Addr+(i<<2),tmp);
+				    }
+				 }
+
 				PM_EnableSD();
-//                pm_audio_resume();				
+//                dev_audiomix_resume();				
 		       break;
 #endif			   
 			 case 0xFF:  // "Slow" case : Copy via the PC CPU with PSRAM re enabled (when mixed RAM)
 #if PM_PRINTF			 
 				putchar('c');
 #endif				
-//                pm_audio_pause();     // Need to pause audio during uSD Access  
+//                dev_audiomix_pause();     // Need to pause audio during uSD Access  
 		  		last_status = imageDiskList[drivenum]->Read_AbsoluteSector(sect_lba+sn, &PM_PTR_DISKBUFFER[BOffset]);
-//                pm_audio_resume();
+//                dev_audiomix_resume();
 		  		if ((last_status != 0x00) || (killRead)) 
 				    {
-				 	 printf("HDD Read Error");
+				 	 PM_ERROR("HDD Read Error");
 					 killRead = false;
 					 reg_ah = last_status;  // 4 if CF not accessible
 					 reg_SetCF();
 					 return CBRET_NONE;
 		    		}
 				PM_EnablePSRAM();
-                Send_PCC_MemCopyW_512b(PC_DB_Start+BOffset,PCBuffer_Start);
-          		if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;	
-		        PCC_WaitCMDCompleted();
+		        PC_WaitCMDCompleted();
+				PC_MemCopyW_512b(PC_DB_Start+BOffset,PCBuffer_Start);
+		        PC_WaitCMDCompleted();
                 if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;						
 				PM_EnableSD();				
 			   break;
@@ -659,15 +684,16 @@ if (mt_beg!=MEM_RAM) mt_beg=MEM_NULL;  // Can go back to use Copy via the CPU
          PCBuffer_Start+=512;
 		 PCBuffer_End+=512;
 #if PM_PRINTF
-//          printf("E ");		  
+//          PM_INFO("E ");		  
 #endif
 		 }  // End For (Read Loop)
 
-		  PCC_WaitCMDCompleted();
-          if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;
-#if PM_PRINTF
-printf("\n");
+		PC_WaitCMDCompleted();
+        if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;
+#ifdef HDD_DISPLAY        
+		PM_INFO("\n");
 #endif
+
 		reg_ah = 0x00;
 		reg_ClearCF();
 		break;
@@ -694,32 +720,28 @@ printf("\n");
 		PCBuffer_End=(PCBuffer_Start+reg_al*512)-1;	  // Add Buffer NB*5412 -1
 		mt_beg = GetMEMType(PCBuffer_Start);
 		mt_end = GetMEMType(PCBuffer_End);
-	    printf("B@ %x:%x>%x Type %x, %x \n",reg_es,reg_bx,PCBuffer_Start,mt_beg,mt_end);
+	    PM_INFO("B@ %x:%x>%x Type %x, %x \n",reg_es,reg_bx,PCBuffer_Start,mt_beg,mt_end);
 #endif
         BOffset=0;
   	    PCBuffer_End=PCBuffer_Start+512-1; //Current 512b PC Buffer End (-1 as we need the end, not the @ just after the end)
 
         sect_lba = imageDiskList[drivenum]->CHS_to_LBA((Bit32u)reg_dh, (Bit32u)(reg_ch | ((reg_cl & 0xc0)<< 2)), (Bit32u)((reg_cl & 63)));
 
-#if PM_PRINTF
-printf("C%d H%d S%d > LBA: %d ",(Bit32u)(reg_ch | ((reg_cl & 0xc0)<< 2)), (Bit32u)reg_dh, (Bit32u)((reg_cl & 63)),sect_lba);
-#endif	
+	    PM_INFO("C%d H%d S%d > LBA: %d ",(Bit32u)(reg_ch | ((reg_cl & 0xc0)<< 2)), (Bit32u)reg_dh, (Bit32u)((reg_cl & 63)),sect_lba);
 
 // ** The PC Copy the first Sector to the Buffer
         PM_EnablePSRAM();  // First sector Copy is done with no SD Access at the same time
-        Send_PCC_MemCopyW_512b(PCBuffer_Start,PC_DB_Start+BOffset);
-        if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;
-        PCC_WaitCMDCompleted();  // Wait until the PC finish the sector copy
+        PC_WaitCMDCompleted();  // Wait until the PC finish the sector copy
+		PC_MemCopyW_512b(PCBuffer_Start,PC_DB_Start+BOffset);
+        PC_WaitCMDCompleted();  // Wait until the PC finish the sector copy
 	    if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;
 		PM_EnableSD();
 
 // **** Disk Write Loop ****
 		for(uint8_t sn=0;sn<reg_al;sn++) 
 		{
-
-#if PM_PRINTF			   
-			printf(".");
-#endif
+		   
+		PM_INFO(".");
 
 		 WOffset=BOffset;		// Save the Buffer Offset : The sector to copy to the Disk is the previous sector
 
@@ -732,10 +754,9 @@ printf("C%d H%d S%d > LBA: %d ",(Bit32u)(reg_ch | ((reg_cl & 0xc0)<< 2)), (Bit32
 		 mt_end = GetMEMType(PCBuffer_End);
 
 		  if (mt_beg!=mt_end)
-		     { 
-#if PM_PRINTF				
-			  printf(" Diff T %d %d > ",mt_beg,mt_end);
-#endif
+		     { 			
+			  PM_INFO(" Diff T %d %d > ",mt_beg,mt_end);
+
 				if ((mt_beg<=MEM_RAM) && (mt_end<=MEM_RAM))
 			      {						// MEM Begining and End not in PSRAM
 			        mt_beg=MEM_NULL;  	// Force Standard BIOS Copy
@@ -744,12 +765,11 @@ printf("C%d H%d S%d > LBA: %d ",(Bit32u)(reg_ch | ((reg_cl & 0xc0)<< 2)), (Bit32
 			      {					// MEM Begining or End in PSRAM/EMS
 			        mt_beg=0xFF;    // Force Slow MEM Copy with uSD Disable
 				  }		  
-#if PM_PRINTF				
-			  printf("%d > ",mt_beg);
-#endif
+			
+			  PM_INFO("%d > ",mt_beg);
 			 }
 
-	     PCC_WaitCMDCompleted();  // Wait until the PC finish a sector copy
+	     PC_WaitCMDCompleted();  // Wait until the PC finish a sector copy
 		 if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;
 
 #ifdef PIMORONI_PICO_PLUS2_RP2350
@@ -759,20 +779,21 @@ if (mt_beg!=MEM_RAM) mt_beg=MEM_NULL;  // Can go back to use Copy via the CPU
 	     // ** The PC copy the NEXT sector in advance to the Buffer (If there is more to copy)
          if (sn!=(reg_al-1)) // If processing the last sector, no need to copy in advance.
              {	
-			   if (mt_beg<=MEM_RAM) Send_PCC_MemCopyW_512b(PCBuffer_Start,PC_DB_Start+BOffset);	// PC RAM or 
+               PC_WaitCMDCompleted();  // Wait until the PC finish the sector copy
+			   if (mt_beg<=MEM_RAM) PC_MemCopyW_512b(PCBuffer_Start,PC_DB_Start+BOffset);	// PC RAM or 
 			      else 
 				   {  // Need to re enable the PSRAM and Wait
 #if PM_PRINTF
-//         			printf("!%x %x",PCBuffer_Start,PCBuffer_End);
-                    printf("!");
+//         			PM_INFO("!%x %x",PCBuffer_Start,PCBuffer_End);
+                    PM_INFO("!");
 #endif
 			        PM_EnablePSRAM();  	// If target is not SRAM Emulated RAM Enable PSRAM
-					Send_PCC_MemCopyW_512b(PCBuffer_Start,PC_DB_Start+BOffset);	
+					PC_MemCopyW_512b(PCBuffer_Start,PC_DB_Start+BOffset);	
 		            if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;
 //#if PM_PRINTF
-//         			printf("w");
+//         			PM_INFO("w");
 //#endif
-	                PCC_WaitCMDCompleted();  	// Wait until the PC finish a sector copy
+	                PC_WaitCMDCompleted();  	// Wait until the PC finish a sector copy
 					PM_EnableSD();  			// Re enable SD
 				   }
        		  if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;
@@ -781,14 +802,14 @@ if (mt_beg!=MEM_RAM) mt_beg=MEM_NULL;  // Can go back to use Copy via the CPU
 	// ** Write the sector do the Disk (Previous sector or first if only 1 to write)
 		     last_status = imageDiskList[drivenum]->Write_AbsoluteSector(sect_lba+sn, &PM_PTR_DISKBUFFER[WOffset]);
 		 if(last_status != 0x00) {
-		     printf("HDD Write Error");
+		     PM_ERROR("HDD Write Error");
 		     reg_SetCF();
 		 	 return CBRET_NONE;
 			}
   
         }  // End Sector Write Loop
 			
-//printf("EW");
+//PM_INFO("EW");
 		reg_ah = 0x00;
 		reg_ClearCF();
         break;
@@ -872,7 +893,7 @@ Return: CF set on error
 			reg_SetCF();
 			return CBRET_NONE;
 		}
-		printf("GetType: ");
+		PM_INFO("GetType: ");
 		reg_ah = 0x00;
 		reg_al = 0x00;
 		reg_bl = imageDiskList[drivenum]->GetBiosType();
@@ -882,6 +903,7 @@ Return: CF set on error
 		   tmpcyl--;		// cylinder count -> max cylinder
 		if (tmpheads!=0) //PM LOG(LOG_BIOS,LOG_ERROR)("INT13 DrivParm: head count zero!");
 		   tmpheads--;	// head count -> max head
+        if (tmpheads>255) PM_INFO("Error: Head > 255\n");
 		reg_ch = (Bit8u)(tmpcyl & 0xff);
 		reg_cl = (Bit8u)(((tmpcyl >> 2) & 0xc0) | (tmpsect & 0x3f)); 
 		reg_dh = (Bit8u)tmpheads;
@@ -903,7 +925,8 @@ Return: CF set on error
 			if(imageDiskList[1] != NULL) reg_dl++;
 			*/
 		}
-        printf("Type: %d Disk Nb: %d \n",reg_bl,reg_dl);
+        PM_INFO("Type: %d Disk Nb: %d \n",reg_bl,reg_dl);
+		PM_INFO("C%d H%d S%d \n",tmpcyl,tmpheads,tmpsect);
 		reg_ClearCF();
 		break;
 	case 0x0C: /* SEEK TO CYLINDER (called by Checkit3 and Northon sysinfo) */
@@ -933,7 +956,7 @@ Return: CF set on error
 		reg_SetCF();
 	}
 #if PM_PRINTF
-	if (reg_ah!=0x00) printf("Int13h Error %x\n",reg_ah);  
+	if (reg_ah!=0x00) PM_ERROR("Int13h Error %x\n",reg_ah);  
 #endif	
 	return CBRET_NONE;
 }

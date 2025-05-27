@@ -213,12 +213,13 @@ ISA_Do_MEMW:
    if (IO_CTRL_MDIndex==MEM_EMS) {  // EMS
          ISA_Addr=EMS_Base[(ISA_Addr>>14)&0x03u]+(ISA_Addr & 0x3FFFu);  // Compute the base PSRAM Address           
         }
-#if USE_PSRAM_DMA
-      psram_write8_async(&psram_spi, ISA_Addr, (uint8_t) ISAMW_Data);
-#else
+#if USE_PSRAM        
+//#if USE_PSRAM_DMA
+//      psram_write8_async(&psram_spi, ISA_Addr, (uint8_t) ISAMW_Data);
+//#else
       psram_write8(&psram_spi, ISA_Addr, (uint8_t) ISAMW_Data);
-#endif        
-   
+//#endif
+#endif   
    pio_sm_put(isa_pio, isa_bus_sm, 0x00u);  // 2nd Write : Directly Loop (Write Cycle or nothing)
    continue;  // Go back to the main loop begining
 #endif
@@ -247,6 +248,9 @@ ISA_Do_IO:  // Goto, from the assembly code
        case CTRL_IOW : // ISA_Cycle=IOW  (0111b)
        uint32_t ISAIOW_Data;
        ISAIOW_Data=((uint32_t)gpio_get_all()>>PIN_AD0)&0xFF;
+
+      
+
        switch(IO_Device)
         {
         case DEV_PM :
@@ -264,7 +268,7 @@ ISA_Do_IO:  // Goto, from the assembly code
           break;
 #endif
 #endif
-#if DEV_POST_Enable==1
+#if DEV_POST_Enable
 	      case DEV_POST :
            dev_post_iow(ISA_IO_Addr,ISAIOW_Data);
           break;
@@ -283,13 +287,26 @@ ISA_Do_IO:  // Goto, from the assembly code
           break;
         case DEV_TANDY :
            dev_tdy_iow(ISA_IO_Addr,ISAIOW_Data);
-          break;          
+          break;
+        case DEV_MMB :
+          dev_mmb_iow(ISA_IO_Addr,ISAIOW_Data);
+          break;  
+#if USE_SBDSP                   
         case DEV_SBDSP :
            dev_sbdsp_iow(ISA_IO_Addr,ISAIOW_Data);
           break;
+#endif          
+#endif
+#if USE_SBDSP   
         case DEV_DMA :
            dev_dma_iow(ISA_IO_Addr,ISAIOW_Data);
           break;           
+#endif
+
+#if USE_RTC
+        case DEV_RTC :
+           dev_rtc_iow(ISA_IO_Addr,ISAIOW_Data);
+           break;   
 #endif
 
 // *** Add Other device IOW here ***         
@@ -313,7 +330,7 @@ ISA_Do_IO:  // Goto, from the assembly code
 #if PM_PICO_W
 #if USE_NE2000
         case DEV_NE2000:        
-           ISA_Data = dev_ne2000_ior((ISA_IO_Addr-PM_Config->ne2000Port) & 0x1F);
+           dev_ne2000_ior(ISA_IO_Addr,&ISA_Data);
            pm_do_ior();
           break;          
 #endif          
@@ -331,10 +348,23 @@ ISA_Do_IO:  // Goto, from the assembly code
         case DEV_CMS:
            if (dev_cms_ior(ISA_IO_Addr,&ISA_Data)) pm_do_ior();
           break;
+        case DEV_MMB:
+          dev_mmb_ior(ISA_IO_Addr,&ISA_Data);
+          pm_do_ior();           
+         break;   
+#if USE_SBDSP                   
         case DEV_SBDSP:
            if (dev_sbdsp_ior(ISA_IO_Addr,&ISA_Data)) pm_do_ior();        
           break;
 #endif          
+#endif          
+
+#if USE_RTC
+        case DEV_RTC:
+           dev_rtc_ior(ISA_IO_Addr,&ISA_Data);
+           pm_do_ior();           
+          break; 
+#endif
 
    // *** Add Other device IOR here ***
         }         // switch(IO_Device) (Read)

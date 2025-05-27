@@ -1,0 +1,243 @@
+*** ETHERDFS (ETHERNET) PROTOCOL ***
+                         (a.k.a. "the EDF5 protocol")
+
+The ethernet communication between the client and the server is very simple:
+for every INT 2F query, the client (EtherDFS) sends a single ethernet frame to
+the server (ethersrv), using the following format:
+
+DOEEpppVSDLxxx
+
+where:
+
+offs|field| description
+----+-----+-------------------------------------------------------------------
+ 0  | D   | destination MAC address
+ 6  | O   | origin (source) MAC address
+ 12 | EE  | EtherType value (0xEDF5)
+ 14 | ppp | padding: 38 bytes of garbage space. used to make sure every frame
+    |     | respects the minimum ethernet payload length of 46 bytes. could
+    |     | also be used in the future to fill in fake IP/UDP headers for
+    |     | router traversal and such.
+ 52 | ss  | size, in bytes, of the entire frame (optional, can be zero)
+ 54 | cc  | 16-bit BSD checksum, covers payload that follows (if CKS flag set)
+ 56 | V   | the etherdfs protocol version (7 bits) and CKS flag (highest bit)
+ 57 | S   | a single byte with a "sequence" value. Each query is supposed to
+    |     | use a different sequence, to avoid the client getting confused if
+    |     | it receives an answer relating to a different query than it
+    |     | expects.
+ 58 | D   | a single byte representing the numeric value of the destination
+    |     | (server-side) drive (A=0, B=1, C=2, etc) in its 5 lowest bits,
+    |     | and flags in its highest 3 bits (flags are undefined yet).
+ 59 | L   | the AL value of the original INT 2F query, used by the server to
+    |     | identify the exact "subfunction" that is being called.
+ 60 | xxx | a variable-length payload of the request, it highly depends on the
+    |     | type subfunction being called.
+
+For each request sent, the client expects to receive exactly one answer. The
+client might (and is encouraged to) repeat the query if no valid answer comes
+back within a reasonable period of time (several milliseconds at least).
+
+An EDF5 answer has the following format:
+
+DOEEpppssccVSAAxxx
+
+where:
+ DOEEpppssccVS = same as in query (but with D and O reversed)
+ AA            = the 16-bit value of the AX register (0 for success)
+ xxx           = an optional payload
+
+Note: All numeric values are transmitted in the native x86 format (that is,
+      "little endian"), with the obvious exception of the EtherType which
+      must be transmitted in network byte order (big endian).
+
+==============================================================================
+RMDIR (0x01), MKDIR (0x03) and CHDIR (0x05)
+
+Request: SSS...
+
+SSS... = Variable length, contains the full path of the directory to create,
+         remove or verify existence (like "\THIS\DIR").
+
+Answer: -
+
+Note: The returned value of AX is 0 on success.
+==============================================================================
+CLOSEFILE (0x06)
+
+Request: SS
+
+SS = starting sector of the open file (ie. its 16-bit identifier)
+
+Answer: -
+
+Note: The returned value of AX is 0 on success.
+==============================================================================
+READFILE (0x08)
+
+Request: OOOOSSLL
+
+OOOO = offset of the file (where the read must start), 32-bits
+SS   = starting sector of the open file (ie. its 16-bit identifier)
+LL   = length of data to read
+
+Answer: DDD...
+
+DDD... = binary data of the read file
+
+Note: AX is set to non-zero on error. Be warned that although LL can be set
+      as high as 65535, the unerlying Ethernet network is unlikely to be able
+      to accommodate such amounts of data.
+==============================================================================
+WRITEFILE (0x09)
+
+Request: OOOOSSDDD...
+
+OOOO = offset of the file (where the read must start), 32-bits
+SS   = starting sector of the open file (ie. its 16-bit identifier)
+DDD... = binary data that has to be written (variable length)
+
+Answer: LL
+
+LL = amounts of data (in bytes) actually written.
+
+Note: AX is set to non-zero on error.
+==============================================================================
+LOCK/UNLOCK FILE REGION (LOCK = 0x0A, UNLOCK = 0x0B)
+
+Request: NNSSOOOOZZZZ[OOOOZZZZ]*
+
+NN   = number of lock/unlock regions (16 bit)
+SS   = starting sector of the open file (ie. its 16-bit identifier)
+OOOO = offset of the file where the lock/unlock starts
+ZZZZ = size of the lock/unlock region
+
+Answer: -
+
+Note: AX is set to non-zero on error.
+==============================================================================
+DISKSPACE (0x0C)
+
+Request: -
+
+Answer: BBCCDD
+  BB = BX value
+  CC = CX value
+  DD = DX value
+
+Note: The AX value is already handled in the protocol's header, no need to
+      transmit it a second time here.
+==============================================================================
+SETATTR (0x0E)
+
+Request: Afff...
+  A      = attributes to set on file
+  fff... = path/file name
+
+Answer: -
+
+Note: AX is set to non-zero on error.
+==============================================================================
+GETATTR (0x0F)
+
+Request: fff...
+  fff... = path/file name
+
+Answer: ttddssssA
+  tt = time of file (word)
+  dd = date of file (word)
+  ssss = file size (dword)
+  A = single byte with the attributes of the file
+
+Note: AX is set to non-zero on error.
+==============================================================================
+RENAME (0x11)
+
+Request: LSSS...DDD...
+  L      = length of the source file name, in bytes
+  SSS... = source file name and path
+  DDD... = destination file name and path
+
+Answer: -
+
+Note: AX is set to non-zero on error.
+==============================================================================
+DELETE (0x13)
+
+Request: fff...
+  fff... = path/file name (may contain wildcards)
+
+Answer: - (AX = 0 on success)
+==============================================================================
+OPEN (0x16) and CREATE (0x17) and SPOPNFIL (0x2E)
+
+Request: SSCCMMfff...
+  SS = word from the stack (attributes for created/truncated file, see RBIL)
+  CC = "action code" (see RBIL for details) - only relevant for SPOPNFIL
+  MM = "open mode" (see RBIL for details) - only relevant for SPOPNFIL
+  fff... = path/file name
+
+Answer: AfffffffffffttddssssCCRRo (25 bytes)
+  A  = single byte with the attributes of the file
+  fff... = filename in FCB format (always 11 bytes, "FILE0000TXT")
+  tt = time of file (word)
+  dd = date of file (word)
+  ssss = file size (dword)
+  CC = start cluster of the file (16 bits)
+  RR = CX result: 1=opened, 2=created, 3=truncated (used with SPOPNFIL only)
+  o  = access and open mode, as defined by INT 21h/AH=3Dh
+
+Note: Returns AX != 0 on error.
+==============================================================================
+FINDFIRST (0x1B)
+
+Request: Affffffff...
+  A = single byte with attributes we look for
+  ffff... = path/file mask (eg. X:\DIR\FILE????.???), variable length (up to
+            the end of the ethernet frame)
+
+Answer: AfffffffffffttddssssCCpp (24 bytes)
+  A = single byte with the attributes we look for
+  fff... = filename in FCB format (always 11 bytes, "FILE0000TXT")
+  tt = time of file (word)
+  dd = date of file (word)
+  ssss = file size (dword)
+  CC = "cluster" of the directory (its 16-bit identifier)
+  pp = position of the file within the directory
+==============================================================================
+FINDNEXT (0x1C)
+
+Request: CCppAfffffffffff
+  CC = "cluster" of the searched directory (its 16-bit identifier)
+  pp = the position of the last file within the directory
+  A  = a single byte with attributes we look for
+  ffff... = an 11-bytes file search template (eg. FILE????.???)
+
+Answer: exactly the same as for FindFirst
+==============================================================================
+SEEKFROMEND (0x21)
+
+The EDF5 protocol doesn't really need any 'seek' function. This is rather used
+by applications to detect changes of file sizes, by translating a 'seek from
+end' offset into a 'seek from start' offset.
+
+Request: ooooSS
+  oooo = offset (in bytes) from end of file
+  SS   = the 'starting sector' (or 16-bit id) of the open file
+
+Answer: oooo
+  oooo = offset (in bytes) from start of file
+==============================================================================
+SETFILETIMESTAMP (0x24)
+
+Request: ttddSS
+  tt = new time to be set on the file (FAT format, 16 bits)
+  dd = new date to be set on the file (FAT format, 16 bits)
+  SS = the 'starting sector' (or 16-bit id) of the open file
+
+Answer: - (AX zero on success, non-zero otherwise)
+
+Note: The INT 2Fh interface provides no method to set a file's timestamp. This
+      call is supported by the EDF5 protocol, but client application must get
+      creative if such support is required. This would typically involve
+      catching INT 21h,AX=5701h queries.
+==============================================================================

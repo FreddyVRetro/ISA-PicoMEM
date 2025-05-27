@@ -21,8 +21,6 @@ if (port<0x3FF) return PORT_Table[(port^0x0300)>>3];
 #endif
 }
 
-
-
 // Set "Size" consecutive block to "Type" in the Port type table 
 __force_inline void SetPortType(uint32_t port,uint8_t Type, uint8_t Size)
 {

@@ -31,6 +31,13 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 
 ## Firmwares Revision History :
 
+### PM_x_5_36_25_x: Mindscape sound card, RTC  (May 26, 2025)
+- New: MM58167AN RTC (AST Six Pack Plus Real Time Clock) added. (Thanks to Matthew Dovey)
+       Time can be saved if the PicoMEM is still powered on via USB.
+- New: The rare Mindscape Music Board with dual card is now emulated.
+- ! Memory size wrongly increased causing mainly PS/2 Mouse bug corrected.
+- ! Correction of a problem preventing a legacy IDE Disk to boot with a PicoMEM disk image added (as 2nd disk)
+
 ### PM_x_3_11_25_x: SD and USB access via a Network redirector driver  (March 11, 2025)
 - New: You can now access the MicroSD and a USB key via a Network redirector driver using DOS 3.2 +
        The Total size of the SD and USB is accessible even in FAT32/ExtFS (One partition only)

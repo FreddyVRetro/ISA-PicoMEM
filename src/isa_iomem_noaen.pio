@@ -1,5 +1,8 @@
 ; PIO Code for ISA Signals, Pico MEM Board
 ; By Freddy VETELE
+; For multiplexer Version 1 and no AEN signal (PicoMEM LP and 1.2A)
+; Work with RP2040 and RP2350
+
 ; This use one SM, and don't use ALE for pre address read.
 ; Control signals activation detection and date/Addres Low read done by the CPU
 ; To Optimize the overall speed

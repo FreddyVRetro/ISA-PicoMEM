@@ -30,13 +30,7 @@ static inline void pio_spi_fudge_cs_init(PIO pio, uint sm, uint prog_offs, uint 
     sm_config_set_out_shift(&c, false, true, n_bits); // Auto Pull after 8Bit
     sm_config_set_in_shift(&c, false, true, n_bits);  // Auto Push after 8Bit
     
-//    float div = (float)clock_get_hz(clk_sys) / (260000000); //
-//    float div = (float)clock_get_hz(clk_sys) / (200000000); //
-      float div = (float)clock_get_hz(clk_sys) / (200000000); //     
-//    printf("PSRAM Freq ;Div %f\n",div);
     sm_config_set_clkdiv(&c, div);
-//    SPI Frequency = PIO Frequency /2 With the Pico Overclocked at 270 > 135MHz
-//    sm_config_set_clkdiv(&c, clkdiv);
 
     pio_sm_set_consecutive_pindirs(pio, sm, pin_cs, 2, true);
     pio_sm_set_consecutive_pindirs(pio, sm, pin_mosi, 1, true);

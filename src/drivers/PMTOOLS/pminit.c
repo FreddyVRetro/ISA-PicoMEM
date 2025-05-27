@@ -17,12 +17,14 @@
 #define CMS_PORTS 6
 #define TDY_PORTS 5
 #define SB_PORTS 5
+#define MMB_PORTS 7
 uint16_t CMSPortList[] = {0,1,0x220,0x230,0x240,0x250};
 uint16_t TDYPortList[] = {0,1,0x1E0,0x2C0,0x0C0};
-uint16_t SBPortList[] = {0,1,0x220,0x230,0x240,0x250};
+uint16_t SBPortList[]  = {0,1,0x220,0x230,0x240,0x250};
+uint16_t MMBPortList[] = {0,1,0x220,0x2F0,0x300,0x310,0x320};
 
 void banner(void) {
-    printf("PicoMEM Init Rev 0.3 by FreddyV, 12/2024\n");
+    printf("PicoMEM Init Rev 0.4 by FreddyV, 05/2025\n");
 }
 
 void usage()
@@ -35,6 +37,7 @@ void usage()
     fprintf(stderr, "    /adlib x  - Enable/Disable the Adlib output (0:Off 1:On)\n"); 
     fprintf(stderr, "    /cms x    - Enable/Disable the CMS output   (0:Off 1:220 x:Port)\n");    
     fprintf(stderr, "    /tdy x    - Enable/Disable the Tandy output (0:Off 1:2C0 x:Port)\n");
+    fprintf(stderr, "    /mmb x    - Enable/Disable the Mindscape output (0:Off 1:300 x:Port)\n");    
     fprintf(stderr, "    /j x      - Enable/Disable the Joystick (0:Off 1:On)\n");
     fprintf(stderr, "    /diag     - Start in Diagnostic Mode\n");
     //              "................................................................................\n"
@@ -72,6 +75,13 @@ bool check_valid_w(uint16_t *table, uint16_t value, uint8_t size)
  for (int i=0;i<size;i++)
      if (table[i]==value) return true;
 return false;
+}
+
+void display_valid_ports(uint16_t *table, uint8_t size)
+{
+ for (int i=0;i<size-2;i++)
+     printf("%x ",table[i+2]);
+ printf("\n");
 }
 
 #define process_port_opt(option) \
@@ -114,6 +124,14 @@ int main(int argc, char* argv[]) {
               }
               else {printf(" > Error: PicoMEM BIOS Needed to enable the shortcut.\n");}
             return 0;
+        } else if (stricmp(argv[i], "/d") == 0) {   // Shortcut
+            if (PM_BIOS_IRQ_Present)
+              {
+               printf(" - Install the DOS int 21h/2Fh Spy\n");
+               pm_irq_cmd(0x0F);
+              }
+              else {printf(" > Error: PicoMEM BIOS Needed to enable the shortcut.\n");}
+            return 0;
         } else if (stricmp(argv[i], "/diag") == 0) {    // Diagnostic
             printf(" - Diagnostic mode:\n");
             pm_diag();
@@ -131,8 +149,8 @@ int main(int argc, char* argv[]) {
                   else printf("Enable (388)\n");
 
                 pm_io_cmd(CMD_AdlibOnOff,tmp_uint16);
-               } else printf("Use only 0 or 1\n");               
-        } else if (stricmp(argv[i], "/j") == 0) {    // Tandy
+               } else printf("Use only 0 or 1\n");                           
+        } else if (stricmp(argv[i], "/j") == 0) {    // Joystick
             if (i + 1 >= argc) {
                 usage();
                 return 255;
@@ -153,10 +171,13 @@ int main(int argc, char* argv[]) {
             if (check_valid_w(&CMSPortList[0],tmp_uint16,CMS_PORTS))
                {
                 if (tmp_uint16==0) printf("Disable\n");
-                  else printf("Enable (%x)\n",tmp_uint16);
+                  else printf("Enable (%x)\n",(tmp_uint16 == 1) ? 0x220 : tmp_uint16);
                  
                  pm_io_cmd(CMD_CMSOnOff,tmp_uint16);
-               } else printf("Invalid port (%x)\n",tmp_uint16);
+               } else 
+                 {
+                  printf("Invalid port (%x)\n",tmp_uint16);
+                 }
         }else if (stricmp(argv[i], "/tdy") == 0) {    // CMS
             if (i + 1 >= argc) {
                 usage();
@@ -170,7 +191,27 @@ int main(int argc, char* argv[]) {
                   else printf("Enable (%x)\n",tmp_uint16);
                  
                  pm_io_cmd(CMD_TDYOnOff,tmp_uint16);
-               } else printf("Invalid port (%x)\n",tmp_uint16);
+               } else                 
+                 {
+                  printf("Invalid port (%x)\n",tmp_uint16);
+                 }
+        }else if (stricmp(argv[i], "/mmb") == 0) {    // Mindscape
+            if (i + 1 >= argc) {
+                usage();
+                return 255;
+            }
+            process_port_opt(tmp_uint16);
+            printf(" - Mindscape Music Board : ");
+            if (check_valid_w(&MMBPortList[0],tmp_uint16,MMB_PORTS))
+               {
+                if (tmp_uint16==0) printf("Disable\n");
+                  else printf("Enable (%x)\n",(tmp_uint16 == 1) ? 0x300 : tmp_uint16);
+                 
+                 pm_io_cmd(CMD_MMBOnOff,tmp_uint16);
+               } else 
+                 {
+                  printf("Invalid port (%x)\n",tmp_uint16);
+                 }
         }
         ++i;
      }

@@ -1,0 +1,846 @@
+--------N-2F1100-----------------------------
+INT 2F C - NETWORK REDIRECTOR - INSTALLATION CHECK
+	AX = 1100h
+Return: AL = status
+	    00h not installed, OK to install
+	    01h not installed, not OK to install
+	    FFh installed
+		AH = product identifier (ad hoc by various manufacturers)
+		    00h if PC Tools v8 DRIVEMAP
+		    42h ('B') for Beame&Whiteside BWNFS v3.0a
+		    6Eh ('n') for NetWare Lite v1.1 CLIENT
+Notes:	this function is called by the DOS 3.1+ kernel
+	in DOS 4.x only, the 11xx calls are all in IFSFUNC.EXE, not in the
+	  PC LAN Program redirector; DOS 5+ moves the calls back into the
+	  redirector
+	the PC Network 1.00 redirector (renamed to PC LAN Program in 1.1-1.3)
+	  only supports AL=00h-27h
+--------d-2F1100SFDADA-----------------------
+INT 2F - MSCDEX (MS CD-ROM Extensions) - INSTALLATION CHECK
+	AX = 1100h subfn DADAh
+	STACK: WORD DADAh
+Return: AL = status
+	    00h not installed, OK to install
+		STACK unchanged
+	    01h not installed, not OK to install
+		STACK unchanged
+	    FFh installed
+		STACK: WORD	ADADh if MSCDEX installed
+				DADBh if Lotus CD/Networker installed
+Note:	although MSCDEX sets the stack word to ADADh on return, any value other
+	  than DADAh is considered to mean that MSCDEX is already installed;
+	  Lotus CD/Networker v4+ uses this feature to fool MSCDEX into
+	  thinking it is already installed when it is in fact CD/Networker
+	  that is installed
+Index:	installation check;Lotus CD/Networker
+Index:	Lotus CD/Networker;installation check
+--------N-2F1101-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - REMOVE REMOTE DIRECTORY
+	AX = 1101h
+	SS = DOS DS
+	SDA first filename pointer -> fully-qualified directory name
+	SDA CDS pointer -> current directory structure for drive with dir
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+Note:	this function is called by the DOS 3.1+ kernel
+SeeAlso: AX=1103h,AX=1105h,INT 21/AH=3Ah,INT 21/AH=60h
+--------N-2F1102-----------------------------
+INT 2F CU - IFSFUNC.EXE (DOS 4.x only) - REMOVE REMOTE DIRECTORY
+	AX = 1102h
+	SS = DOS DS
+	SDA first filename pointer -> fully-qualified directory name
+	SDA CDS pointer -> current directory structure for drive with dir
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+Note:	appears to be identical to AX=1101h; MS internal documentation calls
+	  this function "SEQ_RMDIR"
+SeeAlso: AX=1101h
+--------N-2F1103-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - MAKE REMOTE DIRECTORY
+	AX = 1103h
+	SS = DOS DS
+	SDA first filename pointer -> fully-qualified directory name
+	SDA CDS pointer -> current directory structure for drive with dir
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+Note:	this function is called by the DOS 3.1+ kernel
+SeeAlso: AX=1101h,AX=1105h,INT 21/AH=39h,INT 21/AH=60h
+--------N-2F1104-----------------------------
+INT 2F CU - IFSFUNC.EXE (DOS 4.x only) - MAKE REMOTE DIRECTORY
+	AX = 1104h
+	SS = DOS DS
+	SDA first filename pointer -> fully-qualified directory name
+	SDA CDS pointer -> current directory structure for drive with dir
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+Note:	appears to be identical to AX=1103h
+SeeAlso: AX=1103h
+--------N-2F1105-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - CHDIR
+	AX = 1105h
+	SS = DOS DS
+	SDA first filename pointer -> fully-qualified directory name
+	SDA CDS pointer -> current directory structure for drive with dir
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+	    CDS updated with new path
+Notes:	this function is called by the DOS 3.1+ kernel
+	directory string in CDS should not have a terminating backslash unless
+	  the current directory is the root
+SeeAlso: AX=1101h,AX=1103h,INT 21/AH=3Bh,INT 21/AH=60h
+--------N-2F1106-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - CLOSE REMOTE FILE
+	AX = 1106h
+	ES:DI -> filled-in SFT (assumed to point at SDA's current SFT field)
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+	    SFT updated (redirector must decrement open count, which may be
+		  done with INT 2F/AX=1208h)
+	ES:DI must be preserved
+Note:	this function is called by the DOS 3.1+ kernel
+SeeAlso: AX=1116h,AX=1201h,AX=1208h,AX=1227h,INT 21/AH=3Eh
+--------N-2F1107-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - COMMIT REMOTE FILE
+	AX = 1107h
+	ES:DI -> filled-in SFT (assumed to point at SDA's current SFT field)
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+	    all buffers for file flushed
+	    directory entry updated
+	ES:DI must be preserved
+Desc:	perform all the buffer flushing, directory updates, etc. that would be
+	  performed on a file close, but do not decrement the SFT reference
+	  count
+Note:	this function is called by the DOS 3.1+ kernel
+SeeAlso: INT 21/AH=68h,INT 21/AX=5D01h
+--------N-2F1108-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - READ FROM REMOTE FILE
+	AX = 1108h
+	ES:DI -> SFT
+	    SFT DPB field -> DPB of drive containing file
+	CX = number of bytes
+	SS = DOS DS
+	SDA DTA field -> user buffer
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+	    CX = number of bytes read (0000h = end of file)
+	    SFT updated
+Note:	this function is called by the DOS 3.1+ kernel
+SeeAlso: AX=1109h,AX=1229h,INT 21/AH=3Fh"DOS",INT 21/AX=5D06h
+--------N-2F1109-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - WRITE TO REMOTE FILE
+	AX = 1109h
+	ES:DI -> SFT
+	    SFT DPB field -> DPB of drive containing file
+	CX = number of bytes
+	SS = DOS DS
+	SDA DTA field -> user buffer
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+	    CX = number of bytes written
+	    SFT updated
+Notes:	this function is called by the DOS 3.1+ kernel
+	PrintCache v3.1 PCACHE.EXE intercepts this function for SFTs where
+	  the Device Driver Header field points at PCACHE, but does not
+	  intercept any other network redirector functions
+SeeAlso: AX=1107h,AX=1108h,INT 21/AH=40h,INT 21/AX=5D06h
+--------N-2F110A-----------------------------
+INT 2F CU - NETWORK REDIRECTOR (DOS 3.x only) - LOCK REGION OF FILE
+	AX = 110Ah
+	BX = file handle
+	CX:DX = starting offset
+	SI = high word of size
+	STACK: WORD low word of size
+	ES:DI -> SFT
+	    SFT DPB field -> DPB of drive containing file
+	SS = DOS DS
+Return: CF set on error
+	   AL = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	STACK unchanged
+Notes:	this function is called by the DOS 3.10-3.31 kernel
+	the redirector is expected to resolve lock conflicts
+SeeAlso: AX=110Bh,INT 21/AH=5Ch
+--------N-2F110A-----------------------------
+INT 2F CU - NETWORK REDIRECTOR (DOS 4.0+) - LOCK/UNLOCK REGION OF FILE
+	AX = 110Ah
+	BL = function
+	    00h lock
+	    01h unlock
+	CX = number of lock/unlock parameters (0001h for DOS 4.0-6.1)
+	DS:DX -> parameter block (see #02606)
+	ES:DI -> SFT
+	    SFT DPB field -> DPB of drive containing file
+	SS = DOS DS
+Return: CF set on error
+	   AL = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+Notes:	this function is called by the DOS 4.0+ kernel
+	the redirector is expected to resolve lock conflicts
+SeeAlso: AX=110Bh,INT 21/AH=5Ch
+
+Format of parameter block entry [array, but currently limited to single entry]:
+Offset	Size	Description	(Table 02606)
+ 00h	DWORD	start offset
+ 04h	DWORD	size of region
+--------N-2F110B-----------------------------
+INT 2F CU - NETWORK REDIRECTOR (DOS 3.x only) - UNLOCK REGION OF FILE
+	AX = 110Bh
+	BX = file handle
+	CX:DX = starting offset
+	SI = high word of size
+	STACK: WORD low word of size
+	ES:DI -> SFT for file
+	    SFT DPB field -> DPB of drive containing file
+Return: CF set on error
+	   AL = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	STACK unchanged
+Note:	this function is called by the DOS 3.1-3.31 kernel; DOS 4.0+ calls
+	  AX=110Ah instead
+SeeAlso: AX=110Ah,INT 21/AH=5Ch
+--------N-2F110C-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - GET DISK INFORMATION
+	AX = 110Ch
+	ES:DI -> current directory structure for desired drive
+Return: CF clear if data valid
+	    AL = sectors per cluster
+	    AH = media ID byte
+	    BX = total clusters
+	    CX = bytes per sector
+	    DX = number of available clusters
+	CF set if data invalid
+Note:	this function is called by the DOS 3.1+ kernel
+SeeAlso: INT 21/AH=36h
+--------N-2F110D-----------------------------
+INT 2F CU - IFSFUNC.EXE (DOS 4.x only) - SET REMOTE FILE'S ATTRIBUTES
+	AX = 110Dh
+	SDA first filename pointer -> name of file
+	???
+Return: ???
+Note:	similar to AX=110Eh
+SeeAlso: AX=110Eh
+--------N-2F110E-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - SET REMOTE FILE'S ATTRIBUTES
+	AX = 110Eh
+	SS = DOS DS
+	SDA first filename pointer -> fully-qualified name of file
+	SDA CDS pointer -> current directory structure for drive with file
+	STACK: WORD new file attributes
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+	STACK unchanged
+Note:	this function is called by the DOS 3.1+ kernel
+SeeAlso: AX=110Dh,AX=110Fh,INT 21/AX=4301h,INT 21/AH=60h
+--------N-2F110F-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - GET REMOTE FILE'S ATTRIBUTES AND SIZE
+	AX = 110Fh
+	SS = DOS DS
+	SDA first filename pointer -> fully-qualified name of file
+	SDA CDS pointer -> current directory structure for drive with file
+		(offset = FFFFh if null CDS [net direct request])
+	SDA search attributes = mask of attributes which may be included in
+		  search for file
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+	    AX = file attributes
+	    BX:DI = file size
+	    CX = time stamp of file
+	    DX = date stamp of file
+Notes:	this function is called by the DOS 3.1+ kernel
+	wildcards and device names are not permitted
+SeeAlso: AX=110Eh,INT 21/AX=4300h,INT 21/AH=60h
+--------N-2F1110-----------------------------
+INT 2F CU - IFSFUNC.EXE (DOS 4.x only) - GET REMOTE FILE'S ATTRIBUTES AND SIZE
+	AX = 1110h
+	SDA first filename pointer -> name of file
+	???
+Return: ???
+Note:	appears to be similar to AX=110Fh
+SeeAlso: AX=110Eh
+--------N-2F1111-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - RENAME REMOTE FILE
+	AX = 1111h
+	SS = DS = DOS DS
+	SDA first filename pointer = offset of fully-qualified old name
+	SDA second filename pointer = offset of fully-qualified new name
+	SDA CDS pointer -> current directory structure for drive with file
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+Note:	this function is called by the DOS 3.1+ kernel
+SeeAlso: AX=1112h,INT 21/AH=56h,INT 21/AH=60h
+--------N-2F1112-----------------------------
+INT 2F CU - IFSFUNC.EXE (DOS 4.x only) - RENAME REMOTE FILE
+	AX = 1112h
+	SS = DS = DOS DS
+	SDA first filename pointer -> name of file
+	???
+Return: ???
+Note:	similar to AX=1111h
+SeeAlso: AX=1111h
+--------N-2F1113-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - DELETE REMOTE FILE
+	AX = 1113h
+	SS = DS = DOS DS
+	SDA first filename pointer -> fully-qualified filename in DOS DS
+	SDA CDS pointer -> current directory structure for drive with file
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+Notes:	this function is called by the DOS 3.1+ kernel
+	the filespec may contain wildcards
+SeeAlso: AX=1114h,INT 21/AH=41h,INT 21/AH=60h
+--------N-2F1114-----------------------------
+INT 2F CU - IFSFUNC.EXE (DOS 4.x only) - DELETE REMOTE FILE
+	AX = 1114h
+	SDA first filename pointer -> name of file
+	???
+Return: ???
+Note:	similar to AX=1113h
+SeeAlso: AX=1113h
+--------N-2F1115-----------------------------
+INT 2F CU - IFSFUNC.EXE (DOS 4.x only) - OPEN REMOTE FILE
+	AX = 1115h
+	SS = DOS DS
+	ES:DI -> SFT ???
+	???
+Return: ???
+Note:	similar to AX=1116h
+SeeAlso: AX=1116h,AX=112Eh
+--------N-2F1116-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - OPEN EXISTING REMOTE FILE
+	AX = 1116h
+	ES:DI -> uninitialized SFT
+	SS = DOS DS
+	SDA first filename pointer -> fully-qualified name of file to open
+	STACK: WORD file access and sharing modes (see #01402 at INT 21/AH=3Dh)
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+	    SFT filled (except handle count, which DOS manages itself)
+	STACK unchanged
+Note:	this function is called by the DOS 3.1+ kernel
+SeeAlso: AX=1106h,AX=1115h,AX=1117h,AX=1118h,AX=112Eh,INT 21/AH=3Dh
+SeeAlso: INT 21/AH=60h
+--------N-2F1117-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - CREATE/TRUNCATE REMOTE FILE
+	AX = 1117h
+	ES:DI -> uninitialized SFT
+	SS = DOS DS
+	SDA first filename pointer -> fully-qualified name of file to open
+	SDA CDS pointer -> current directory structure for drive with file
+	STACK: WORD file creation mode
+			low byte = file attributes (see #01401 at INT 21/AH=3Ch)
+			high byte = 00h normal create, 01h create new file
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+	    SFT filled (except handle count, which DOS manages itself)
+	STACK unchanged
+Note:	this function is called by the DOS 3.1+ kernel
+SeeAlso: AX=1106h,AX=1116h,AX=1118h,AX=112Eh,INT 21/AH=3Ch,INT 21/AH=60h
+--------N-2F1118-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - CREATE/TRUNCATE FILE WITHOUT CDS
+	AX = 1118h
+	ES:DI -> uninitialized SFT
+	SS = DOS DS
+	SDA first filename pointer -> fully-qualified name of file
+	STACK: WORD file creation mode
+			low byte = file attributes
+			high byte = 00h normal create, 01h create new file
+Return: ???
+	STACK unchanged
+Note:	this function is called by the DOS 3.1+ kernel when creating a file
+	  on a drive for which the SDA CDS pointer has offset FFFFh
+SeeAlso: AX=1106h,AX=1116h,AX=1117h,AX=112Eh,INT 21/AH=60h
+--------N-2F1119-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - FIND FIRST FILE WITHOUT CDS
+	AX = 1119h
+	SS = DS = DOS DS
+	[DTA] = uninitialized 21-byte findfirst search data
+	      (see #01626 at INT 21/AH=4Eh)
+	SDA first filename pointer -> fully-qualified search template
+	SDA search attribute = attribute mask for search
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+	    [DTA] = updated findfirst search data
+		    (bit 7 of first byte must be set)
+	    [DTA+15h] = standard directory entry for file (see #01352)
+Notes:	this function is called by the DOS 3.1+ kernel
+	DOS 4.x IFSFUNC returns CF set, AX=0003h
+SeeAlso: AX=111Ah,AX=111Bh,INT 21/AH=1Ah
+--------N-2F111A-----------------------------
+INT 2F CU - IFSFUNC.EXE (DOS 4.x only) - FIND NEXT FILE WITHOUT CDS
+	AX = 111Ah
+	???
+Return: CF set
+	    AX = error code (03h for DOS 4.01 IFSFUNC)
+Note:	use AX=111Ch for DOS 5+
+SeeAlso: AX=1119h,AX=111Ch
+--------N-2F111B-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - FINDFIRST
+	AX = 111Bh
+	SS = DS = DOS DS
+	[DTA] = uninitialized 21-byte findfirst search data
+	      (see #01626 at INT 21/AH=4Eh)
+	SDA first filename pointer -> fully-qualified search template
+	SDA CDS pointer -> current directory structure for drive with file
+	SDA search attribute = attribute mask for search
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+	    [DTA] = updated findfirst search data
+		    (bit 7 of first byte must be set)
+	    [DTA+15h] = standard directory entry for file (see #01352)
+Note:	this function is called by the DOS 3.1+ kernel
+SeeAlso: AX=1119h,AX=111Ch,INT 21/AH=1Ah,INT 21/AH=4Eh,INT 21/AH=60h
+--------N-2F111C-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - FINDNEXT
+	AX = 111Ch
+	SS = DS = DOS DS
+	ES:DI -> CDS
+	ES:DI -> DTA (MSDOS v5.0)
+	[DTA] = 21-byte findfirst search data
+	      (see #01626 at INT 21/AH=4Eh)
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+	    [DTA] = updated findfirst search data
+		    (bit 7 of first byte must be set)
+	    [DTA+15h] = standard directory entry for file (see #01352)
+Note:	this function is called by the DOS 3.1+ kernel
+SeeAlso: AX=1119h,AX=111Bh,INT 21/AH=1Ah,INT 21/AH=4Fh
+--------N-2F111D-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - CLOSE ALL REMOTE FILES FOR PROCESS (ABORT)
+	AX = 111Dh
+	SS = DOS DS
+	SDA PSP segment field = PSP of terminating process
+Return: nothing
+Notes:	used when a process is aborted; the process being terminated is
+	  indicated by the "sharing PSP" field in the SDA (offset 1Ah/1Ch)
+	this function is called by the DOS 3.1+ kernel
+	closes all FCBs opened by process
+SeeAlso: INT 21/AX=5D04h
+--------N-2F111E-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - DO REDIRECTION
+	AX = 111Eh
+	SS = DOS DS
+	STACK: WORD function to execute
+		5F00h  get redirection mode
+			BL = type (03h printer, 04h disk)
+			Return: BH = state (00h off, 01h on)
+		5F01h  set redirection mode
+			BL = type (03h printer, 04h disk)
+			BH = state (00h off, 01h on)
+		5F02h  get redirection list entry
+			BX = redirection list index
+			DS:SI -> 16-byte local device name buffer
+			ES:DI -> 128-byte network name buffer
+			Return: must set user's BX to device type and CX to
+				stored parameter value, using AX=1218h to get
+				stack frame address
+		5F03h  redirect device
+			BL = device type (see INT 21/AX=5F03h)
+			CX = stored parameter value
+			DS:SI -> ASCIZ source device name
+			ES:DI -> destination ASCIZ network path + ASCIZ passwd
+		5F04h  cancel redirection
+			DS:SI -> ASCIZ device name or network path
+		5F05h  get redirection list extended entry
+			BX = redirection list index
+			DS:SI -> buffer for ASCIZ source device name
+			ES:DI -> buffer for destination ASCIZ network path
+			Return: BH = status flag
+				BL = type (03h printer, 04h disk)
+				CX = stored parameter value
+				BP = NETBIOS local session number
+		5F06h  similar to 5F05h???
+Return: CF set on error
+	    AX = error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	STACK unchanged
+Notes:	this function is called by the DOS 3.1+ kernel on INT 21/AH=5Fh
+	  (including LAN Manager calls)
+	the PC Network 1.00 redirector does not support function 5F06h
+SeeAlso: INT 21/AX=5F00h,INT 21/AX=5F01h,INT 21/AX=5F02h,INT 21/AX=5F03h
+SeeAlso: INT 21/AX=5F04h,INT 21/AX=5F05h,INT 21/AX=5F06h
+--------N-2F111F-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - PRINTER SETUP
+	AX = 111Fh
+	STACK: WORD function
+		5E02h  set printer setup
+		5E03h  get printer setup
+		5E04h  set printer mode
+		5E05h  get printer mode
+Return: CF set on error
+	    AX = error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	STACK unchanged
+Note:	this function is called by the DOS 3.1+ kernel
+SeeAlso: INT 21/AX=5E02h,INT 21/AX=5E03h,INT 21/AX=5E04h,INT 21/AX=5E05h
+--------N-2F1120-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - FLUSH ALL DISK BUFFERS
+	AX = 1120h
+	DS = DOS DS
+	???
+Return: CF clear (successful)
+Notes:	this function is called by the DOS 3.1+ kernel
+	uses CDS array pointer and LASTDRIVE= entries in DOS list of lists
+SeeAlso: INT 21/AH=0Dh,INT 21/AX=5D01h
+--------N-2F1121-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - SEEK FROM END OF REMOTE FILE
+	AX = 1121h
+	CX:DX = offset (in bytes) from end
+	ES:DI -> SFT
+	    SFT DPB field -> DPB of drive with file
+	SS = DOS DS
+Return: CF set on error
+	    AL = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+	    DX:AX = new file position
+Note:	this function is called by the DOS 3.1+ kernel, but only when seeking
+	  from the end of a file opened with sharing modes set in such a
+	  manner that another process is able to change the size of the file
+	  while it is already open
+SeeAlso: AX=1228h,INT 21/AH=42h
+--------N-2F1122-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - PROCESS TERMINATION HOOK
+	AX = 1122h
+	SS = DOS DS
+	DS = PSP of process about to terminate
+Return: ???
+Notes:	this function is called by the DOS 3.1+ kernel
+	after calling this function, the kernel calls INT 2F/AX=111Dh
+SeeAlso: AX=111Dh,INT 21/AH=4Ch,INT 60/DI=0601h
+--------N-2F1123-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - QUALIFY REMOTE FILENAME
+	AX = 1123h
+	DS:SI -> ASCIZ filename to canonicalize
+	ES:DI -> 128-byte buffer for qualified name
+Return: CF set if not resolved
+Notes:	called by MS-DOS 3.1+ kernel, but not called by DR DOS 5.0 unless the
+	  filename matches the name of a character device
+	called first when DOS attempts to resolve a filename (unless inside an
+	  AX=5D00h server call); if this fails, DOS resolves the name locally
+SeeAlso: AX=1221h,INT 21/AH=60h
+--------N-2F1124-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - TURN OFF REMOTE PRINTER
+	AX = 1124h
+	ES:DI -> SFT
+	SS = DOS DS
+	???
+Return: CX = ???
+Note:	this function is called by the DOS 3.1+ kernel if AX=1126h
+	  returns CF set
+SeeAlso: AX=1126h
+--------N-2F1125-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - REDIRECTED PRINTER MODE
+	AX = 1125h
+	STACK: WORD subfunction
+		5D07h get print stream state
+			Return: DL = current state
+		5D08h set print stream state
+			DL = new state
+		5D09h finish print job
+Return: CF set on error
+	    AX = error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	STACK unchanged
+Note:	this function is called by the DOS 3.1+ kernel
+SeeAlso: INT 21/AX=5D07h,INT 21/AX=5D08h,INT 21/AX=5D09h
+--------N-2F1126-----------------------------
+INT 2F CU - NETWORK REDIRECTOR - REMOTE PRINTER ECHO ON/OFF
+	AX = 1126h
+	ES:DI -> SFT for file handle 4???
+	SS = DOS DS???
+	???
+Return: CF set on error
+Notes:	this function is called by the DOS 3.1+ kernel
+	called when print echoing (^P, ^PrtSc) changes state and STDPRN has
+	  bit 11 of the device information word in the SFT set
+SeeAlso: AX=1124h
+--------N-2F1127-----------------------------
+INT 2F CU - IFSFUNC.EXE (DOS 4.x only) - UNUSED
+	AX = 1127h
+Return: CF set
+	    AX = 0001h (invalid function) (see #01680 at INT 21/AH=59h/BX=0000h)
+--------N-2F1127BX4E57-----------------------
+INT 2F - NetWare 4.0 - REMOTE FILE COPY
+	AX = 1127h
+	BX = 4E57h ('NW') (signature identifying this as a NetWare call)
+	SI = source file handle
+	DI = destination file handle
+	DX:CX = number of bytes to copy, starting at current file position
+Return: CF clear if successful
+	CF set on error
+	    AX = error code (05h,06h,0Bh,11h,3Bh) (see #01680)
+	DX:CX = number of bytes successfully copied (file position updated)
+Notes:	this is the only call which may be made directly to the NetWare
+	  redirector from an application
+	COMMAND.COM's COPY and DOS's XCOPY reportedly call INT 21/AX=1127h in
+	  order to speed up copies between files on the same network server;
+	  if error code 11h (not same device) is returned, the copy is
+	  performed in the usual manner.  However, no such calls appear to
+	  be present in MS-DOS 6.22.
+	From the DR DOS "Panther" BETA COMMAND.COM (1992/06/22) up to some of
+	  the Novell DOS 7 COMMAND.COM updates (1994/09/12), the shell made
+	  calls to INT 2F/AX=11F0h to attempt "remote server COPYing". However,
+	  this was removed from later releases of the shell because it stopped
+	  Performance Technologies' PowerLAN 3.1 working. (A successor of
+	  the DR-DOS 7.03 COMMAND.COM may possibly reintroduce this remote
+	  copy feature.	 Probably it would then try both INT 2F/AX=1127h and
+	  INT 2F/AX=11F0h.)
+SeeAlso: INT 2F/AX=11F0h
+--------N-2F1128-----------------------------
+INT 2F CU - IFSFUNC.EXE (DOS 4.x only) - UNUSED
+	AX = 1128h
+Return: CF set
+	    AX = 0001h (invalid function) (see #01680 at INT 21/AH=59h/BX=0000h)
+--------N-2F1129-----------------------------
+INT 2F CU - IFSFUNC.EXE (DOS 4.x only) - UNUSED
+	AX = 1129h
+Return: CF set
+	    AX = 0001h (invalid function) (see #01680 at INT 21/AH=59h/BX=0000h)
+--------N-2F112A-----------------------------
+INT 2F CU - IFSFUNC.EXE (DOS 4.x only) - CLOSE ALL FILES FOR PROCESS
+	AX = 112Ah
+	DS = DOS DS
+	???
+Return: ???
+Note:	does something to each IFS driver
+--------N-2F112B-----------------------------
+INT 2F CU - IFSFUNC.EXE (DOS 4.x only) - GENERIC IOCTL
+	AX = 112Bh
+	SS = DOS DS
+	CX = function/category
+	DS:DX -> parameter block
+	STACK: WORD value of AX on entry to INT 21 (440Ch or 440Dh)
+	???
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+Note:	this function is called by the DOS 4.0 kernel
+--------N-2F112C-----------------------------
+INT 2F CU - NETWORK REDIRECTOR (DOS 4.0+) - "UPDATE_CB" - ???
+	AX = 112Ch
+	SS = DOS DS
+	SDA current SFT pointer -> SFT for file
+	???
+Return: CF set on error
+Note:	called by SHARE in DOS 5.0-6.0
+--------N-2F112D-----------------------------
+INT 2F CU - IFSFUNC.EXE (DOS 4.x only) - EXTENDED ATTRIBUTES
+	AX = 112Dh
+	BL = subfunction (value of AL on INT 21)
+	    02h get extended attributes
+	    03h get extended attribute properties
+	    04h set extended attributes
+		Return: CF clear
+	    else ???
+		Return: CX = ??? (00h or 02h for DOS 4.01)
+	ES:DI -> SFT for file
+	SS = DOS DS
+Return: DS = DOS DS
+Note:	this function is called by the DOS 4.0 kernel on INT 21/AX=5702h,
+	  INT 21/AX=5703h, and INT 21/AX=5704h
+SeeAlso: INT 21/AX=5702h,INT 21/AX=5703h,INT 21/AX=5704h,INT 21/AH=6Eh
+--------N-2F112E-----------------------------
+INT 2F CU - NETWORK REDIRECTOR (DOS 4.0+) - EXTENDED OPEN/CREATE FILE
+	AX = 112Eh
+	SS = DS = DOS DS
+	ES:DI -> uninitialized SFT for file
+	STACK: WORD file attribute for created/truncated file
+			low byte = file attributes
+			high byte = 00h normal create/open, 01h create new file
+	SDA first filename pointer -> fully-qualified filename
+	SDA extended file open action = action code
+	      (see #01770 at INT 21/AX=6C00h)
+	SDA extended file open mode = open mode for file (see INT 21/AX=6C00h)
+Return: CF set on error
+	    AX = error code
+	CF clear if successful
+	    CX = result code
+		01h file opened
+		02h file created
+		03h file replaced (truncated)
+	    SFT initialized (except handle count, which DOS manages itself)
+Note:	this function is called by the DOS 4.0+ kernel
+BUG:	this function is not called correctly under some DOS versions
+	  (at least 5.0 and 6.2):
+	    the file attribute on the stack is not correct if the action
+	      code is 11h,
+	    the result code in CX is not passed back to the application.
+SeeAlso: AX=1115h,AX=1116h,AX=1117h,INT 21/AX=6C00h
+--------N-2F112F-----------------------------
+INT 2F CU - IFSFUNC.EXE (DOS 4.x only) - IFS IOCTL
+	AX = 112Fh
+	SS = DOS DS
+	STACK: WORD function in low byte
+		00h ???
+		    DS:SI -> Current Directory Structure???
+		    CL = drive (1=A:)
+		01h ???
+		    DS:SI -> ???
+		    CL = file handle???
+		02h ???
+		    DS:SI -> Current Directory Structure???
+		    DI = ???
+		    CX = drive (1=A:)
+	???
+Return: CF set on error
+	    AX = DOS error code (see #01680 at INT 21/AH=59h/BX=0000h)
+	CF clear if successful
+Note:	this function is called by the DOS 4.0 kernel
+SeeAlso: INT 21/AH=6Bh
+--------N-2F1130-----------------------------
+INT 2F CU - IFSFUNC.EXE (DOS 4.x only) - GET IFSFUNC SEGMENT
+	AX = 1130h
+Return: ES = CS of resident IFSFUNC
+--------N-2F1180-----------------------------
+INT 2F - LAN Manager Enhanced DOS Services - ???
+	AX = 1180h
+	???
+Return: ???
+SeeAlso: AX=1100h,AX=1181h,AX=118Eh
+--------N-2F1181-----------------------------
+INT 2F - LAN Manager Enhanced DOS Services - SET USER NAME???
+	AX = 1181h
+	???
+Return: ???
+SeeAlso: AX=1100h,AX=1180h
+--------N-2F1182-----------------------------
+INT 2F - LAN Manager Enhanced DOS Services - INSTALL SERVICE
+	AX = 1182h
+	???
+Return: ???
+SeeAlso: AX=1100h,AX=1180h
+--------N-2F1184-----------------------------
+INT 2F - LAN Manager Enhanced DOS - ???
+	AX = 1184h
+	???
+Return: ???
+--------N-2F1186-----------------------------
+INT 2F - LAN Manager Enhanced DOS - DosReadAsynchNmPipe
+	AX = 1186h
+	DS:SI -> stack frame (see #02607)
+Return: CF clear if successful
+	CF set if error
+	    AX = error code
+Note:	LAN Manager enhance mode adds features beyond the standard redirector
+	  file/printer services
+SeeAlso: AX=118Fh,AX=1190h,AX=1191h,INT 21/AX=5F39h
+
+Format of LAN Manager DosReadAsynchNmPipe stack frame:
+Offset	Size	Description	(Table 02607)
+ 00h	DWORD	-> number of bytes read
+ 04h	WORD	size of buffer
+ 06h	DWORD	-> buffer
+ 0Ah	DWORD	-> return code
+ 0Eh	DWORD	function to call on completion as function( char far *buffer )
+ 12h	WORD	handle
+--------N-2F118A-----------------------------
+INT 2F - LAN Manager 2.0+ DOS Enhanced ENCRYPT.EXE - STREAM ENCRYPTION SERVICE
+	AX = 118Ah
+	BX = function (0000h or 0001h)
+Return: CF clear if successful
+	    AX = 1100h success
+	CF set if error
+	    AX = 0001h, etc.
+SeeAlso: AX=1186h,AH=41h,AH=42h,AH=4Bh
+--------N-2F118B-----------------------------
+INT 2F - LAN Manager Enhanced DOS - ???
+	AX = 118Bh
+	???
+Return: ???
+--------N-2F118C-----------------------------
+INT 2F - LAN Manager Enhanced DOS - ???
+	AX = 118Ch
+	???
+Return: ???
+--------N-2F118E-----------------------------
+INT 2F - LAN Manager Enhanced DOS - ???
+	AX = 118Eh
+	???
+Return: ???
+--------N-2F118F-----------------------------
+INT 2F - LAN Manager Enhanced DOS - DosWriteAsynchNmPipe
+	AX = 118Fh
+	DS:SI -> stack frame (see #02608)
+Return: CF clear if successful
+	CF set if error
+	    AX = error code
+SeeAlso: AX=1186h,AX=1191h,INT 21/AX=5F3Ah
+
+Format of LAN Manager DosReadAsynchNmPipe stack frame:
+Offset	Size	Description	(Table 02608)
+ 00h	DWORD	-> number of bytes read
+ 04h	WORD	Size of buffer
+ 06h	DWORD	-> buffer
+ 0Ah	DWORD	-> return code
+ 0Eh	DWORD	function to call on completion as function( char far *buffer )
+ 12h	WORD	handle
+--------N-2F1190-----------------------------
+INT 2F - LAN Manager Enhanced DOS - DosReadAsynchNmPipe2
+	AX = 1190h
+	DS:SI -> stack frame (see #02609)
+Return: CF clear if successful
+	CF set if error
+	    AX = error code
+SeeAlso: AX=1186h,AX=1191h
+
+Format of LAN Manager DosReadAsynchNmPipe2 stack frame:
+Offset	Size	Description	(Table 02609)
+ 00h	DWORD	-> number of bytes read
+ 04h	WORD	size of buffer
+ 06h	DWORD	-> buffer
+ 0Ah	DWORD	-> return code
+ 0Eh	DWORD	function to call on completion as function( char far *buffer )
+ 12h	WORD	handle
+ 14h	DWORD	???
+--------N-2F1191-----------------------------
+INT 2F - LAN Manager Enhanced DOS - DosWriteAsynchNmPipe2
+	AX = 1191h
+	DS:SI -> stack frame (see #02610)
+Return: CF clear if successful
+	CF set if error
+	    AX = error code
+SeeAlso: AX=118Fh,AX=1190h,INT 21/AX=5F3Ah
+
+Format of LAN Manager DosReadAsynchNmPipe2 stack frame:
+Offset	Size	Description	(Table 02610)
+ 00h	DWORD	-> number of bytes read
+ 04h	WORD	size of buffer
+ 06h	DWORD	-> buffer
+ 0Ah	DWORD	-> return code
+ 0Eh	DWORD	function to call on completion as function( char far *buffer )
+ 12h	WORD	handle
+ 14h	DWORD	???
+--------N-2F11F0-----------------------------
+INT 2F - Novell ??? - REMOTE FILE COPY
+	AX = 11F0h
+	SI = source file handle
+	DI = destination file handle
+	DX:CX = number of bytes to copy, starting at current file position
+	CF cleared
+Return: CF clear:
+	    AX = 11F0h	"no network there"
+	    AX <> 11F0h if successful
+	CF set on error "the request could not be handled"
+	    AX = error code (05h,06h,0Bh,11h,3Bh) (see #01680)
+	DX:CX = number of bytes successfully copied (file position updated)
+Notes:	From the DR DOS "Panther" BETA COMMAND.COM (1992/06/22) up to some of
+	  the Novell DOS 7 COMMAND.COM updates (1994/09/12), the shell made
+	  calls to INT 2F/AX=11F0h to attempt "remote server COPYing". However,
+	  this was removed from later releases of the shell because it 
+	  interfered with Performance Technologies' PowerLAN 3.1. (A successor
+	  of the DR-DOS 7.03 COMMAND.COM may possibly reintroduce this remote
+	  copy feature. Probably it would then try both INT 2F/AX=1127h and
+	  INT 2F/AX=11F0h.)
+SeeAlso: INT 2F/AX=1127h

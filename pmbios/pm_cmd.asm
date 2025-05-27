@@ -45,29 +45,78 @@
 
 %define PCC_EndCommand    0   ; // No more Command
 
-%define PCC_Printf        2   ; // Display a 0 terminiated string with Int10h
-%define PCC_GetScreenMode 3   ; // Get the currently used Screen Mode
-%define PCC_GetPos        4   ; // Get Screen Offset
-%define PCC_SetPos        5   ; // 
-%define PCC_IN8           10
-%define PCC_IN16          11
-%define PCC_OUT8          12
-%define PCC_OUT16         13
-%define PCC_MemCopyB      14
-%define PCC_MemCopyW      15
-%define PCC_MemCopyW_512b 16
-%define PCC_IRQ           17  ; //Send an IRQ and get the result
+%define PCC_IN8           1	  ; IO Read  8Bit
+%define PCC_IN16          2   ; IO Read  16Bit
+%define PCC_OUT8          3   ; IO Write 8Bit
+%define PCC_OUT16         4   ; IO Write 16Bit
+%define PCC_MemCopyB      5
+%define PCC_MemCopyW      6
+%define PCC_MemCopyW_Odd  7
+%define PCC_MemCopyW_512b 8
+%define PCC_MEMR16        9   ; // Memory Read 16Bit
+%define PCC_MEMW8         10  ; // Memory Write 16Bit
+%define PCC_MEMW16        11  ; // Memory Write 16Bit
+%define PCC_DMA_READ      12  ; // Read requested DMA channel Page:Offset and size
+%define PCC_DMA_WRITE     13  ; // Update the DMA channel Offset and size
+%define PCC_IRQ13         14  ; // Send an IRQ13 and get the result (BIOS)
+%define PCC_IRQ21         15  ; // Send an IRQ21 and get the result (DOS )
 
-%define MAX_PCCMD         17
+%define PCC_Printf        16  ; // Display a 0 terminiated string with Int10h
+%define PCC_GetScreenMode 17  ; // Get the currently used Screen Mode
+%define PCC_GetPos        18  ; // Get Screen Offset
+%define PCC_SetPos        19  ; // Segment + Size for the Checksum
+%define PCC_KeyPressed    20  ;
+%define PCC_ReadKey       21  ;
+%define PCC_SendKey       22  ;
+%define PCC_ReadString    23  ;
 
-STR_CMDNB DB "CMD: ",0
-STR_WAIT DB "-Wait-",0
-STR_WAITCMD DB "-Wait CMD-",0
-STR_END  DB "-CMD End-",0
 
+%define PCC_Checksum      24  ; // Perform a Checksum from one Segment Start with a Size
+%define PCC_SetRAMBlock16 25  ; // Write the same value to a memory Block
+%define PCC_MEMWR8        26  ; // Write then read a byte
+%define PCC_MEMWR16       27  ; // Write then read a word
+
+%define MAX_PCCMD         27
+
+
+CMD_TABLE DW PCC_DoEndCommand
+CMD_1     DW PCC_Do_IN8
+CMD_2	  DW PCC_Do_IN16
+CMD_3	  DW PCC_Do_OUT8
+CMD_4	  DW PCC_Do_OUT16
+CMD_5	  DW PCC_Do_MemCopyB
+CMD_6	  DW PCC_Do_MemCopyW
+CMD_7	  DW PCC_Do_MemCopyW_Odd
+CMD_8	  DW PCC_Do_MemCopyW_512b
+CMD_9     DW PCC_Do_MR16
+CMD_10    DW PCC_Do_MW8		  
+          DW PCC_Do_MW16
+		  DW PCC_Do_DMA_READ
+		  DW PCC_Do_DMA_WRITE
+		  DW PCC_NoCMD
+		  DW PCC_NoCMD	  
+		  
+          DW PCC_Do_Printf
+          DW PCC_Do_GetScreenMode
+		  DW PPC_Do_Getpos
+		  DW PCC_Do_SetPos
+		  DW PCC_Do_KeyPressed
+		  DW PCC_Do_ReadKey
+		  DW PCC_Do_SendKey
+		  DW PCC_Do_ReadString
+		  
+          DW PCC_Do_Checksum
+		  DW PCC_Do_SetRAMBlock16
+		  DW PCC_Do_MEMWR8
+		  DW PCC_Do_MEMWR16
+		  
+;STR_CMDNB DB "CMD: ",0
+;STR_WAIT DB "-Wait-",0
+;STR_WAITCMD DB "-Wait CMD-",0
+;STR_END  DB "-CMD End-",0
 
 BIOS_DoPCCMD:
-	MOV byte CS:[PCCR_SectNB],0
+;	MOV byte CS:[PCCR_SectNB],0
 	
 IRQ_DoPCCMD:
 	mov_ds_cs					  ; Set DS=CS							
@@ -108,25 +157,6 @@ PCC_DoCommandErr:  ; Error :  State is PCC_PCS_ERROR and Quit
 	MOV byte CS:[PCCR_PCSTATE],PCC_PCS_ERROR
 	RET
 
-CMD_TABLE DW PCC_DoEndCommand       ;0
-          DW PCC_NoCMD              ;1
-          DW PCC_Do_Printf			;2
-          DW PCC_Do_GetScreenMode	;3
-		  DW PPC_Do_Getpos			;4
-		  DW PCC_Do_SetPos			;5
-		  DW PCC_NoCMD
-		  DW PCC_NoCMD
-		  DW PCC_NoCMD
-		  DW PCC_NoCMD
-		  DW PCC_Do_IN8	            ;10
-		  DW PCC_Do_IN16            ;11
-		  DW PCC_Do_OUT8            ;12
-		  DW PCC_Do_OUT16           ;13
-		  DW PCC_Do_MemCopyB        ;14
-		  DW PCC_Do_MemCopyW        ;15
-		  DW PCC_Do_MemCopyW_512b   ;16
-		  DW PCC_NoCMD
-
 PCC_DoEndCommand:
 	MOV byte CS:[PCCR_PCSTATE],PCC_PCS_NOTREADY
 	RET
@@ -137,7 +167,6 @@ PCC_NoCMD:
 ; * PCC_Printf
 ; * Param : Null terminated string to print
 PCC_Do_Printf: ;Ok
-    PUSH DS   ; Preserve DS
 	PUSH ES
 	PUSH SI
     PUSH CS
@@ -146,7 +175,7 @@ PCC_Do_Printf: ;Ok
     CALL BIOS_Printstr
 	POP SI
 	POP ES
-	POP DS
+	mov_ds_cs			  ; Restore DS
     JMP PCCMD_Completed
 
 ; * PCC_GetScreenMode
@@ -154,9 +183,10 @@ PCC_Do_Printf: ;Ok
 PCC_Do_GetScreenMode:
 	MOV AH,03h
 	INT 10h
-    MOV CS:[PCCR_Param],AL   ; Mode
-	MOV CS:[PCCR_Param+1],AH ; Columns
-	MOV CS:[PCCR_Param+2],BH ; Current Page	
+	mov_ds_cs			  ; Restore DS	
+    MOV [PCCR_Param],AL   ; Mode
+	MOV [PCCR_Param+1],AH ; Columns
+	MOV [PCCR_Param+2],BH ; Current Page	
     JMP PCCMD_Completed
 
 ; * PPC_Getpos
@@ -165,75 +195,294 @@ PPC_Do_Getpos:
 	MOV BH,0       ; Page 0
 	MOV AH,03h
 	INT 10h
-    MOV CS:[PCCR_Param],DH   ; Row
-	MOV CS:[PCCR_Param+1],DL ; Column
+	mov_ds_cs	   	         ; Restore DS
+    MOV [PCCR_Param],DH   ; Row
+	MOV [PCCR_Param+1],DL ; Column
     JMP PCCMD_Completed	
 ; ! CX already changed	
 
 ; * PCC_SetPos
 ; * Param : Cursor Position (Row, Column)
 PCC_Do_SetPos:
-    MOV DH,CS:[PCCR_Param]   ; Row
-	MOV DL,CS:[PCCR_Param+1] ; Column
+    MOV DH,[PCCR_Param]   ; Row
+	MOV DL,[PCCR_Param+1] ; Column
 	MOV BH,0       ; Page 0
 	MOV AH,02h
 	INT 10h
+	mov_ds_cs				  ; Restore DS
     JMP PCCMD_Completed
 
+; Do a 8Bit IN, change AX, DX
 PCC_Do_IN8:
     MOV DX,[PCCR_Param]   ; Port number
 	IN AL,DX
     MOV [PCCR_Param],AL   ; Return the result	
     JMP PCCMD_Completed
 
+; Do a 16Bit IN, change AX, DX
 PCC_Do_IN16:
     MOV DX,[PCCR_Param]   ; Port number
 	IN AX,DX
     MOV [PCCR_Param],AX   ; Return the result
     JMP PCCMD_Completed
 
+; Do a 8Bit OUT, change AX, DX
 PCC_Do_OUT8:
     MOV DX,[PCCR_Param]   ; Port number
     MOV AL,[PCCR_Param+2] ; Value
-	OUT DX,AX
+	OUT DX,AL
     JMP PCCMD_Completed
 
+; Do an 16Bit IN, change AX, DX
 PCC_Do_OUT16:
     MOV DX,[PCCR_Param]   ; Port number
     MOV AX,[PCCR_Param+2] ; Value
 	OUT DX,AX
     JMP PCCMD_Completed
 
+PCC_Do_MR16:
+    LES DI,[PCCR_Param]   ; Address
+    MOV AX,ES:[DI]        ; Read the data
+	MOV [PCCR_Param],AX   ; Send the result
+    JMP PCCMD_Completed
+
+PCC_Do_MW8:
+    LES DI,[PCCR_Param]   ; Address
+	MOV AL,[PCCR_Param+4] ; Data
+    MOV ES:[DI],AL        ; Write the data
+    JMP PCCMD_Completed
+	
+PCC_Do_MW16:
+    LES DI,[PCCR_Param]   ; Address
+	MOV AX,[PCCR_Param+4] ; Data
+    MOV ES:[DI],AX        ; Write the data
+    JMP PCCMD_Completed
+
 ; * PCC_MemCopyB : Copy a memory block from DS:SI to ES:DI (Bytes)
 ; *	Param: DS:SI, ES:DI and number of Bytes
 PCC_Do_MemCopyB:
+    LES DI,[PCCR_Param+4]  	      ; Read DI then ES (Targer Ptr)
+	MOV CX,word [PCCR_Param+8]    ; Read the Nb of Bytes to move (Target Ptr)
     LDS SI,CS:[PCCR_Param]    	  ; Read SI then DS
-    LES DI,CS:[PCCR_Param+4]  	  ; Read DI then ES
-	MOV CX,word CS:[PCCR_Param+8] ; Read the Nb of Byte to move
 	REP MOVSB
-	mov_ds_cs					  ; Restore DS							 
-    JMP PCCMD_Completed	
+	mov_ds_cs					  ; Restore DS
+    JMP PCCMD_Completed
 
 ; * PCC_MemCopyW : Copy a memory block from DS:SI to ES:DI (Word)
 ; *	Param: DS:SI, ES:DI and number of Word
 PCC_Do_MemCopyW:
+    LES DI,[PCCR_Param+4]  	      ; Read DI then ES
+	MOV CX,word [PCCR_Param+8]    ; Read the Nb of Word to move
     LDS SI,CS:[PCCR_Param]    	  ; Read SI then DS
-    LES DI,CS:[PCCR_Param+4]  	  ; Read DI then ES
-	MOV CX,word CS:[PCCR_Param+8] ; Read the Nb of Byte to move
 	REP MOVSW
-	mov_ds_cs					  ; Restore DS							 
-    JMP PCCMD_Completed	
-	
-; * PCC_MemCopyW_512b : Copy 512 Bytes from DS:SI to ES:DI
+	mov_ds_cs					  ; Restore DS
+    JMP PCCMD_Completed
+
+; * PCC_MemCopyW_Odd : Copy a memory block from DS:SI to ES:DI (Word plus one byte)
+; *	Param: DS:SI, ES:DI and number of Word
+PCC_Do_MemCopyW_Odd:
+    LES DI,[PCCR_Param+4]  	      ; Read DI then ES
+	MOV CX,word [PCCR_Param+8]    ; Read the Nb of Word to move
+    LDS SI,CS:[PCCR_Param]    	  ; Read SI then DS
+	REP MOVSW
+	MOVSB						  ; Move one aditionnal byte
+	mov_ds_cs					  ; Restore DS
+    JMP PCCMD_Completed
+
+; * PCC_MemCopyW_512b : Copy 512 Bytes from DS:SI to ES:DI > Used to copy sectors
 ; *	Param: DS:SI and ES:DI
 PCC_Do_MemCopyW_512b:
-    LDS SI,CS:[PCCR_Param]    ; Read SI then DS
-    LES DI,CS:[PCCR_Param+4]  ; Read DI then ES
-	MOV CX,256                ; Read the Nb of Byte to move
+    LES DI,[PCCR_Param+4]     ; Read DI then ES (Target Ptr)
+    LDS SI,CS:[PCCR_Param]    ; Read SI then DS (Source Ptr)
+	MOV CX,256                ; Set Nb of Word to move
 	REP MOVSW
-	mov_ds_cs					  ; Restore DS							 
+	mov_ds_cs				  ; Restore DS
     JMP PCCMD_Completed	
+
+
+PCC_Do_DMA_READ:  ; Get the DMA controller minimal info to perform a Data Transfer
+
+; Get the DMA number
+		XOR AX,AX
+        CLI
+		OUT 0Ch,AL           ; clear DMA flipflop (To read the values in the correct order)
+		CMP byte [PCCR_Param],1	 ; Read the DMA number
+		JNE READ_DMA3
+
+; Read the DMA Values (Address and Transfer size)
+
+; DMA 1
+; Read the DMA page
+        IN AL,83h
+		MOV [PCCR_Param+1],AL	; Return the page
+; Read the DMA offset
+        IN AL,02h	; LSB
+		XCHG AH,AL
+		IN AL,02h	; MSB
+		XCHG AH,AL
+		MOV [PCCR_Param+2],AX   ; Return the Offset
+; Read the length
+		IN AL,03h
+		XCHG AH,AL
+		IN AL,03h
+		XCHG AH,AL
+		MOV [PCCR_Param+4],AX   ; Return the length
+		
+	    STI
+		JMP PCCMD_Completed
+
+READ_DMA3:
+; Read the DMA page
+		IN AL,82h
+		MOV [PCCR_Param+1],AL	; Return the page
+		
+; Read the DMA offset
+        IN AL,06h	; LSB
+		XCHG AH,AL
+		IN AL,06h	; MSB
+		XCHG AH,AL
+		MOV [PCCR_Param+2],AX   ; Return the Offset
+; Read the length
+		IN AL,07h
+		XCHG AH,AL
+		IN AL,07h
+		XCHG AH,AL
+		MOV [PCCR_Param+4],AX   ; Return the length
+
+	    STI
+		JMP PCCMD_Completed
+
+PCC_Do_DMA_WRITE:
+		
+; Get the DMA number
+		XOR AX,AX
+        CLI
+		OUT 0Ch,AL               ; Clear DMA flipflop (To read the values in the correct order)
+		CMP byte [PCCR_Param],1	 ; Read the DMA number
+		JNE WRITE_DMA3
+
+; DMA 1
+; Don't update the  DMA page
+; Update the DMA offset
+		MOV AX,[PCCR_Param+2]
+        OUT 02h,AL	; LSB
+		XCHG AH,AL
+		OUT 02h,AL	; MSB
+		XCHG AH,AL
+; Update the length
+		MOV AX,[PCCR_Param+4]
+		OUT 03h,AL
+		XCHG AH,AL
+		OUT 03h,AL
+
+	    STI
+		JMP PCCMD_Completed
+
+WRITE_DMA3:
+; DMA 3
+; Don't update the  DMA page
+; Update the DMA offset
+		MOV AX,[PCCR_Param+2]
+        OUT 06h,AL	; LSB
+		XCHG AH,AL
+		OUT 06h,AL	; MSB
+		XCHG AH,AL
+; Update the length
+		MOV AX,[PCCR_Param+4]
+		OUT 07h,AL
+		XCHG AH,AL
+		OUT 07h,AL
+
+	    STI
+		JMP PCCMD_Completed
+
+PCC_Do_Checksum:
+		MOV CX,[PCCR_Param+2]
+		MOV AX,[PCCR_Param]
+		MOV DS,AX
+		XOR AX,AX
+		MOV SI,AX
+Do_ChecksumLoop:
+        ADD AL,[SI]
+		LOOP Do_ChecksumLoop
+		MOV [PCCR_Param],AL		; Return the checksum
+
+	    mov_ds_cs               ; Restore DS
+		JMP PCCMD_Completed
+		
+
 	
+PCC_Do_KeyPressed:
+        MOV AH,01h
+        INT 16h
+		MOV byte [PCCR_Param],1
+		JNZ PCC_Do_KeyPressed_key
+		MOV byte [PCCR_Param],0		
+PCC_Do_KeyPressed_key:
+        mov_ds_cs	   	         ; Restore DS
+		JMP PCCMD_Completed
+		
+PCC_Do_ReadKey:
+        CALL BIOS_ReadKey
+		MOV byte [PCCR_Param],AH    ;BIOS scan code
+		MOV byte [PCCR_Param+1],AL	;ASCII character	
+        mov_ds_cs	   	         ; Restore DS
+		JMP PCCMD_Completed
+		
+PCC_Do_SendKey:
+        mov_ds_cs	   	         ; Restore DS
+		JMP PCCMD_Completed
+
+; BIOS_StringInput
+; Input : 
+; CX : Number of char
+; ES:DI Pointer to a Memory zone, to store the string
+; DX : Screen Position
+; BL : Text Attribute
+; Output : DX:AX Value
+		
+PCC_Do_ReadString:
+        MOV DH,[PCCR_Param]   ; Row
+	    MOV DL,[PCCR_Param+1] ; Column
+		MOV BL,[PCCR_Param+2]
+		XOR CX,CX
+		MOV CL,[PCCR_Param+3]
+		PUSH CS
+		POP ES
+		MOV DI,PCCR_Param
+        CALL BIOS_StringInput
+		JC  PCC_Do_ReadString_ok
+        MOV byte [PCCR_Param],0	  ; If cancelled, Clean the string
+PCC_Do_ReadString_ok:
+        mov_ds_cs	   	          ; Restore DS
+		JMP PCCMD_Completed
+
+PCC_Do_SetRAMBlock16:
+		LES DI,[PCCR_Param+4]     ; Read DI then ES (Target Ptr)
+		MOV CX,[PCCR_Param+8]     ; Nb of Word to write
+		MOV AX,[PCCR_Param+10]
+		LDS SI,CS:[PCCR_Param]    ; Read SI then DS (Source Ptr)
+		REP STOSW
+		mov_ds_cs				  ; Restore DS
+		JMP PCCMD_Completed
+
+PCC_Do_MEMWR8:
+		LES DI,[PCCR_Param]   ; Address
+		MOV AL,[PCCR_Param+4] ; Data
+		MOV ES:[DI],AL        ; Write the data
+		MOV AL,ES:[DI]        ; Read the data	
+		MOV [PCCR_Param],AL
+		JMP PCCMD_Completed
+	
+PCC_Do_MEMWR16:
+		LES DI,[PCCR_Param]   ; Address
+		MOV AX,[PCCR_Param+4] ; Data
+		MOV ES:[DI],AX        ; Write the data
+		MOV AX,ES:[DI]        ; Read the data
+		MOV [PCCR_Param],AX	
+		JMP PCCMD_Completed
+		
+		
 ; DEBUG  Display
 ; MOV AL,CS:[PCCMD_SectNB]
 ; CMP AL,CS:[PM_I]

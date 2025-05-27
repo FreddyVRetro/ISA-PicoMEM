@@ -33,7 +33,6 @@
 Modifications for use with Pico by Kevin Moonlight (me@yyzkevin.com)
 */
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,17 +45,16 @@ Modifications for use with Pico by Kevin Moonlight (me@yyzkevin.com)
 #include "ne2000.h"
 
 #include "dev_ne2000.h"
-#include "..\pm_debug.h"
+#include "../pm_debug.h"
 #include "f_util.h"
 #include "ff.h"
+
+#include "../pm_libs/isa_irq.h"       // ISA/PC IRQ code
 
 //#include "../pm_defines.h"
 
 // Picomem defines
 #define IRQ_NE2000  20
-extern uint8_t PM_IRQ_Raise(uint8_t Source,uint8_t Arg);
-extern void PM_IRQ_Lower(void);
-
 
 uint8_t ne2000_asic_read(uint16_t offset, void *p) ;
 void ne2000_asic_write(uint16_t offset, uint8_t value, void *p);
@@ -99,9 +97,14 @@ void TrimString(char *str) {
 #define CYW43_LINK_NONET        (-2)    ///< No matching SSID found (could be out of range, or down)
 #define CYW43_LINK_BADAUTH      (-3)    ///< Authenticatation failure
 
-uint8_t dev_ne2000_install()
+bool dev_ne2000_install()
 {
-if (!NE2000_Enabled) nic = ne2000_init();
+if (nic==NULL) nic = ne2000_init();  // DOS ne2000 driver crash if not init
+if (nic==NULL)
+             {
+              PM_INFO(PM_Wifi.StatusStr,"NE2000 failed to initialized");
+              return false;
+             }
 NE2000_Enabled=true;
 }
 
@@ -110,6 +113,11 @@ uint8_t dev_ne2000_uninstall()
 if (NE2000_Enabled) ne2000_close(nic);
 NE2000_Enabled=false;
 }
+
+void dev_ne2000_setport(uint16_t port)
+{
+nic->base_address=port;
+}        
 
 //https://github.com/czietz/picowifi/blob/master/picowifi.c#L83
 
@@ -145,6 +153,7 @@ void PM_RetryWifi()
 
 //https://github.com/czietz/picowifi/blob/master/picowifi.c#L83
 
+// Started all the time
 uint8_t PM_ConnectWifi() 
 {
   FIL WifiConfigFile;
@@ -198,9 +207,8 @@ PM_INFO("cyw43_arch_enable_sta_mode();\n");
 //                   cyw43_wifi_pm(&cyw43_state,CYW43_PERFORMANCE_PM);   // Power management, Performance mode
 //                   cyw43_wifi_pm(&cyw43_state,CYW43_NO_POWERSAVE_MODE);   // Power management, Performance mode
 
-#if PM_PRINTF
                      PM_INFO("Joining SSID: %s\n",PM_Wifi.WIFI_SSID);                                                
-#endif
+
                      int ConnectErr=cyw43_arch_wifi_connect_async(PM_Wifi.WIFI_SSID, PM_Wifi.WIFI_KEY, CYW43_AUTH_WPA2_MIXED_PSK);
 //                   dhcp_stop(&cyw43_state.netif[0]);       // Added to prevent to ask for an IP
 //                   dhcp_stop(&cyw43_state.netif[1]);       // Not needed if no liwp
@@ -209,9 +217,7 @@ PM_INFO("cyw43_arch_enable_sta_mode();\n");
                      cyw43_wifi_pm(&cyw43_state,CYW43_NO_POWERSAVE_MODE);
                 }
                 else {
-#if PM_PRINTF
-                      PM_ERROR("WIFI: Missing SSID or Password %s %s",PM_Wifi.WIFI_SSID,PM_Wifi.WIFI_KEY);
-#endif                     
+                      PM_ERROR("WIFI: Missing SSID or Password %s %s",PM_Wifi.WIFI_SSID,PM_Wifi.WIFI_KEY);                   
                       sprintf(PM_Wifi.StatusStr,"Missing SSID or password");
                       return 3;
                      }
@@ -236,17 +242,14 @@ for (;;)
   printf("PM_Wifi.rate %d\n",PM_Wifi.rate);  
 }
 */
-
-#if PM_PRINTF                
+               
  PM_INFO("ne2000_init\n");
-#endif 
  if (nic==NULL) nic = ne2000_init();  // DOS ne2000 driver crash if not init
  if (nic==NULL) 
               {
                sprintf(PM_Wifi.StatusStr,"NE2000 failed to initialized");
                return 5;
-              }
-
+              } else NE2000_Enabled=true;
  return 0;
 }
 
@@ -285,32 +288,37 @@ Base Address: Range Used
 0x360 : 0x360 - 0x37F
 */
 
-uint8_t dev_ne2000_ior(uint8_t Addr) {    
+bool dev_ne2000_ior(uint32_t Addr,uint8_t *Data) {    
+   Addr=(Addr-nic->base_address) & 0x1F;
     if(Addr <= 0xF) {
-        return ne2000_read(Addr,nic);
+     *Data=ne2000_read(Addr,nic);
+     return true;
     }
     else if(Addr == 0x1F) {
-        ne2000_reset_read(Addr,nic);
+     ne2000_reset_read(Addr,nic);
     }
     else {
-        return ne2000_asic_read(Addr,nic);
-    }        
+     *Data=ne2000_asic_read(Addr,nic);
+      return true;
+    }
+return false;
 }
 
-void dev_ne2000_iow(uint8_t Addr,uint8_t Data) {      
-        if(Addr <= 0xF) {
-                ne2000_write(Addr,Data,nic);
-        }
-        else {
-                ne2000_asic_write(Addr,Data,nic);
-        }
+void dev_ne2000_iow(uint32_t Addr,uint8_t Data) { 
+ Addr=(Addr-nic->base_address) & 0x1F;             
+ if(Addr <= 0xF) {
+     ne2000_write(Addr,Data,nic);
+    }
+    else {
+     ne2000_asic_write(Addr,Data,nic);
+    }
 
 }
 
 void ne2000_initiate_send() {        
   cyw43_send_ethernet(&cyw43_state,CYW43_ITF_STA,nic->tx_bytes,&nic->mem[nic->tx_page_start * 256 - BX_NE2K_MEMSTART],false);                  
   sleep_us(100+nic->tx_bytes);   //1 microsecond per byte plus 100us safety?                                
-  ne2000_tx_done(nic);
+  ne2000_tx_done(nic); 
 }
              
 /*
@@ -327,10 +335,10 @@ void cyw43_cb_process_ethernet(void *cb_data, int itf, size_t len, const uint8_t
 }
 
 static void ne2000_raise_irq(ne2000_t *ne2000) {            
-  PM_IRQ_Raise(IRQ_NE2000,0);
+  isa_irq_raise(IRQ_NE2000,0,true);
 }
 static void ne2000_lower_irq(ne2000_t *ne2000) {
-  PM_IRQ_Lower();        
+  isa_irq_lower();        
 }
 
 //
@@ -364,15 +372,15 @@ static void ne2000_reset(int type, void *p) {
         ne2000->page_stop = 0;
         ne2000->bound_ptr = 0;
         ne2000->tx_page_start = 0;
-        ne2000->num_coll = 0;
+//        ne2000->num_coll = 0;
         ne2000->tx_bytes = 0;
         ne2000->fifo = 0;
         ne2000->remote_dma = 0;
         ne2000->remote_start = 0;
         ne2000->remote_bytes = 0;
-        ne2000->tallycnt_0 = 0;
-        ne2000->tallycnt_1 = 0;
-        ne2000->tallycnt_2 = 0;
+//        ne2000->tallycnt_0 = 0;
+//        ne2000->tallycnt_1 = 0;
+//        ne2000->tallycnt_2 = 0;
         ne2000->curr_page = 0;
         ne2000->rempkt_ptr = 0;
         ne2000->localpkt_ptr = 0;
@@ -526,7 +534,7 @@ uint8_t ne2000_read(uint16_t address, void *p) {
                                         (ne2000->TSR.tx_ok));
 
                         case 0x5: // NCR
-                                return ne2000->num_coll;
+                                return 0; //ne2000->num_coll;
 
                         case 0x6: // FIFO
                                   // reading FIFO is only valid in loopback mode
@@ -555,13 +563,13 @@ uint8_t ne2000_read(uint16_t address, void *p) {
                                         (ne2000->RSR.bad_falign << 2) | (ne2000->RSR.bad_crc << 1) | (ne2000->RSR.rx_ok));
 
                         case 0xd: // CNTR0
-                                return ne2000->tallycnt_0;
+                                return 0; //ne2000->tallycnt_0;
 
                         case 0xe: // CNTR1
-                                return ne2000->tallycnt_1;
+                                return 0; //ne2000->tallycnt_1;
 
                         case 0xf: // CNTR2
-                                return ne2000->tallycnt_2;
+                                return 0; //ne2000->tallycnt_2;
                         }
 
                         return 0;
@@ -897,7 +905,7 @@ void ne2000_write(uint16_t address, uint8_t value, void *p) {
                         case 0x4:
                         case 0x5:
                         case 0x6:
-                                ne2000->physaddr[address - 1] = value;
+                                ne2000->physaddr[address - 1] = value;  // Return MAC Address
                                 break;
 
                         case 0x7: // CURR
@@ -1147,31 +1155,27 @@ void ne2000_tx_done(void *p) {
 
 void *ne2000_common_init() {        
         int rc;
-//        unsigned int macint[6];
 
-        PM_INFO("NE2000: malloc : %d \n",sizeof(ne2000_t));
-//        busy_wait_ms(1000);
+        PM_INFO("ne2000 malloc : %d \n",sizeof(ne2000_t));
 
         ne2000_t *ne2000 = malloc(sizeof(ne2000_t));
         if (ne2000==NULL) 
           {
-           PM_ERROR("NE2000: Out of RAM : %d \n",sizeof(ne2000_t));
-//           busy_wait_ms(1000);
+           PM_ERROR("Out of RAM : %d \n",sizeof(ne2000_t));
+           return NULL;
           }
         memset(ne2000, 0, sizeof(ne2000_t));
                
         memcpy(ne2000->physaddr, PM_Wifi.cyw43_mac, 6);
 
-        ne2000_reset(BX_RESET_HARDWARE, ne2000);
-
-        PM_INFO("NE2000: Init end\n");
-//        busy_wait_ms(1000);        
-        
+        ne2000_reset(BX_RESET_HARDWARE, ne2000); 
+        PM_INFO("Init end\n");
         return ne2000;
 }
 
 ne2000_t *ne2000_init() {
         ne2000_t *ne2000 = ne2000_common_init();
+        if (ne2000==NULL) return NULL;
         ne2000->type = NE2000_NE2000;
         return ne2000;
 }

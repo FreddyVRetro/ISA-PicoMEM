@@ -91,10 +91,11 @@ static inline bool is_sony_ds4(uint8_t dev_addr)
   uint16_t vid, pid;
   tuh_vid_pid_get(dev_addr, &vid, &pid);
 
-  return ( (vid == 0x054c && (pid == 0x09cc || pid == 0x05c4)) // Sony DualShock4
-           || (vid == 0x0f0d && pid == 0x005e)                 // Hori FC4
-           || (vid == 0x0f0d && pid == 0x00ee)                 // Hori PS4 Mini (PS4-099U)
-           || (vid == 0x1f4f && pid == 0x1002)                 // ASW GG xrd controller
+  return ( (vid == 0x054c && (pid == 0x09cc || pid == 0x05c4 || pid == 0x0BA0 )) // Sony DualShock4
+           || (vid == 0x2563 && pid == 0x0357)    // MPOW Wired Gamepad (ShenZhen ShanWan)
+           || (vid == 0x0f0d && pid == 0x005e)    // Hori FC4
+           || (vid == 0x0f0d && pid == 0x00ee)    // Hori PS4 Mini (PS4-099U)
+           || (vid == 0x1f4f && pid == 0x1002)    // ASW GG xrd controller
          );
 }
 
@@ -222,7 +223,7 @@ void process_joy_report(uint8_t dev_addr, uint8_t instance, uint8_t const* repor
 
     // continue to request to receive report
     if (!tuh_hid_receive_report(dev_addr, instance)) {
-        printf("Error: cannot request to receive report\r\n");
+        PM_INFO("Error: cannot request to receive report\r\n");
     }
 }
 
@@ -243,7 +244,7 @@ inline void update_joystate_xinput(uint16_t wButtons, int16_t sThumbLX, int16_t 
     joystate_struct.joy2_x = ((int32_t)sThumbRX + 32768) >> 8;
     joystate_struct.joy2_y = ((-(int32_t)sThumbRY) + 32767) >> 8;
     joystate_struct.button_mask = (~(wButtons >> 12)) << 4;
-    /* printf("%04x %04x\n", wButtons, joystate_struct.button_mask); */
+    /* PM_INFO("%04x %04x\n", wButtons, joystate_struct.button_mask); */
 }
 
 void tuh_xinput_report_received_cb(uint8_t dev_addr, uint8_t instance, xinputh_interface_t const* xid_itf, uint16_t len)
@@ -277,7 +278,7 @@ void tuh_xinput_report_received_cb(uint8_t dev_addr, uint8_t instance, xinputh_i
 
 void tuh_xinput_mount_cb(uint8_t dev_addr, uint8_t instance, const xinputh_interface_t *xinput_itf)
 {
-    PM_INFO("PicoMEM : XINPUT MOUNTED %02x %d\n", dev_addr, instance);
+    PM_INFO("XINPUT MOUNTED %02x %d\n", dev_addr, instance);
 
     uint16_t vid, pid;
     char VendorName[14]="";

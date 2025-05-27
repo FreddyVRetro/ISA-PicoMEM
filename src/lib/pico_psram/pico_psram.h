@@ -29,7 +29,9 @@
 
 #pragma once
 
-#define __psram_start__ 0x11000000
+//#define __psram_start__ 0x11000000  // XIP Cache
+//#define __psram_start__ 0x15000000  // XIP Cache Translate
+#define __psram_start__ 0x1D000000    // XIP No Cache No translate
 
 extern size_t ps_size;
 extern size_t ps_heap_size;

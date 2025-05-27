@@ -99,7 +99,6 @@ BIOS_GetDriveParam:
 ;DX: New IRQ Offset
 ;Don't change DS
 BIOS_HookIRQ:
-
 	SHL AX,1
 	SHL AX,1       ; IRQ vector Offset
 	MOV DI,AX      

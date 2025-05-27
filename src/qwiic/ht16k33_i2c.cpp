@@ -145,6 +145,9 @@ static const uint16_t alphanumeric_segs[96]{
 	0b11111111111111, // Unknown character (DEL or RUBOUT)
 };
 
+bool ht16k33_detect() {
+return true;
+}
 
 void ht16k33_init() {
     pm_qwiic_writeb(I2C_addr,HT16K33_SYSTEM_RUN);

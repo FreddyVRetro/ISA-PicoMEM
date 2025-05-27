@@ -149,19 +149,25 @@ SeeAlso: #P0004,#P0486
 #include "../pm_defines.h"
 #include "dev_picomem_io.h"   // SetPortType / GetPortType
 
+#include "dev_dma.h"
+
 bool dev_dma_active =false;         // True if configured
 bool dev_dma_emulate=false;         // True if respond to IOR (For Tandy 1000 EX/HX)
 bool dma_flipflop   =false;
 #define dev_dma_baseport 0x0        // Port to the DMA controller registers
 #define dev_dma_pageport 0x80       // Port to the DMA pages
 
-typedef struct dma_regs_t {
-    volatile uint16_t baseaddr;
-    volatile uint16_t basecnt;
-    volatile uint8_t page;
-} dma_regs_t;
+volatile bool dma_ignorechange;
 
-dma_regs_t dmaregs[4];
+/*
+volatile uint8_t dma_status;
+volatile uint8_t dma_command;
+volatile uint8_t dma_request;
+volatile uint8_t dma_mask;
+volatile uint8_t dma_mode;
+*/
+volatile uint8_t dev_dma_mask;
+dma_regs_t dmachregs[4];
 
 // Need multiple mode :
 // Page Only (Read)
@@ -223,8 +229,9 @@ void dev_dma_iow(uint32_t CTRL_AL8,uint8_t Data)
   uint8_t addr=CTRL_AL8&0xFF;
   uint8_t channel;
 
-  printf("DMA %x,%x",CTRL_AL8,Data);
-
+//  PM_INFO("DMA %x,%x",CTRL_AL8,Data);
+ if (!dma_ignorechange)  // Ignore the change when the PicoMEM update the registers (in pm_pccmd.cpp)
+ {
   switch(addr)
       {
       // Base address
@@ -233,11 +240,12 @@ void dev_dma_iow(uint32_t CTRL_AL8,uint8_t Data)
           dma_flipflop=!dma_flipflop;
           if (dma_flipflop)
             {
-             dmaregs[channel].baseaddr=(uint16_t)((dmaregs[channel].baseaddr&0xff00)|Data);
+             dmachregs[channel].baseaddr=(uint16_t)((dmachregs[channel].baseaddr&0xff00)|Data);
             }
             else
             {
-             dmaregs[channel].baseaddr=(uint16_t)((dmaregs[channel].baseaddr&0x00ff)|(Data << 8));
+             dmachregs[channel].baseaddr=(uint16_t)((dmachregs[channel].baseaddr&0x00ff)|(Data << 8));
+             dmachregs[channel].changed=true;  
             }
           break;
       // Transfer count
@@ -246,30 +254,42 @@ void dev_dma_iow(uint32_t CTRL_AL8,uint8_t Data)
           dma_flipflop=!dma_flipflop;
           if (dma_flipflop)
             {
-             dmaregs[channel].basecnt=(uint16_t)((dmaregs[channel].basecnt&0xff00)|Data);
+             dmachregs[channel].basecnt=(uint16_t)((dmachregs[channel].basecnt&0xff00)|Data);
             }
             else
             {
-             dmaregs[channel].basecnt=(uint16_t)((dmaregs[channel].basecnt&0x00ff)|(Data << 8));
+             dmachregs[channel].basecnt=(uint16_t)((dmachregs[channel].basecnt&0x00ff)|(Data << 8));
+             dmachregs[channel].changed=true;              
             }
           break;
 		case 0x8:   // Command register
 		     break;
-	    case 0xc:	// Clear flip flop
-		    dma_flipflop=false;
+    case 0x0A:	// mask register (1 when stopped, 0 when running) ?
+            dmachregs[Data&0x03].mask=(Data & 0x4)>0;
+         break;         
+    case 0x0B:	// mode register
+            dmachregs[Data&0x03].autoinit=(Data & 0x10)>0;
+         break;         
+	  case 0xc:	// Clear flip flop
+		        dma_flipflop=false;
 		     break;
 		case 0x81:  // Channel 2 page
-            dmaregs[2].page=Data;
+            dmachregs[2].page=Data;
+            dmachregs[2].changed=true;            
             break;
 		case 0x82:  // Channel 3 page
-            dmaregs[3].page=Data;
+            dmachregs[3].page=Data;
+            dmachregs[3].changed=true;            
             break;
 		case 0x83:  // Channel 1 page
-            dmaregs[1].page=Data;
+            dmachregs[1].page=Data;
+            dmachregs[1].changed=true;
             break;
 		case 0x87:  // Channel 0 page
-            dmaregs[0].page=Data;
+            dmachregs[0].page=Data;
+            dmachregs[0].changed=true;
             break;
       }
+ }
 }
 //#endif

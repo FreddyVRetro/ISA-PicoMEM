@@ -1,0 +1,32 @@
+E: size
+total clusters: 16383
+available clusters: 4031
+sectors/cluster: 127
+bytes per sector: 512
+Run dir D:/
+.                    2025-02-06, 20:21 D----
+..                   2025-02-03, 18:40 D----
+DISK                 2024-12-16, 21:59 D----
+NETWORK              2025-01-24, 21:21 D----
+PMEMM                2024-12-16, 21:59 D----
+PMMOUSE              2024-12-16, 21:59 D----
+PMTOOLS              2025-02-06, 20:16 D----
+PMUMB                2025-01-19, 10:48 D----
+SB                   2025-01-19, 10:48 D----
+GITIGN~1             2024-12-16, 21:59 ----A
+MODMXT.CFG           2024-12-16, 21:59 ----A
+NETWORK.ZIP          2025-01-24, 20:45 ----A
+PM2000.COM           2025-01-24, 21:21 ----A
+PMINIT.EXE           2025-01-19, 10:48 ----A
+PMMOUSE.EXE          2024-12-16, 21:59 ----A
+TEST.TXT             2025-02-06, 20:23 ----A
+Total files: 16
+File functions test
+Open D:/TEST.TXT (O_RDWR): OK
+Add text to the file OK
+Read the file OK
+Read 26 bytes
+Content: Hello World
+2eme phrase
+
+Close the file 

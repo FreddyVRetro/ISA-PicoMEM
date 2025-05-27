@@ -14,8 +14,7 @@ You should have received a copy of the GNU General Public License along with thi
 If not, see <https://www.gnu.org/licenses/>.
 */
 
-// Had to change the DMA IRQ Number of uSD
-// rp2040_sdio line 775 : sd_card_p->sdio_if_p->DMA_IRQ_num = DMA_IRQ_1;  // Default
+// Simplified audio library based on the PicoSDK Audio, with I2S
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,6 +29,9 @@ If not, see <https://www.gnu.org/licenses/>.
 volatile pm_audio_t pm_audio;
 bool pm_i2s_active=false;
 bool pm_pool_initialized=false;
+
+bool pm_audio_init_i2s(uint32_t sample_freq);
+bool pm_audio_stop_i2s();
 
 void pm_audio_freepool()
 { 
@@ -54,13 +56,32 @@ bool pm_audio_initpool()
 
     pm_audio.playing_buffer=pm_audio.bufferpool;
     pm_audio.mixing_buffer=pm_audio.bufferpool;  
-	pm_audio.poolend=pm_audio.bufferpool+PM_AUDIO_POOLSIZE;
+	  pm_audio.poolend=pm_audio.bufferpool+PM_AUDIO_POOLSIZE;
     pm_audio.mixed_buffers=0;
     
     // Clean all the buffer, including the "Empty" buffer (pm_audio.poolend)
     memset(pm_audio.bufferpool,0,PM_AUDIO_POOLSIZE+PM_AUDIO_BUFFERSIZE);
     pm_pool_initialized=true;
     return true;
+}
+
+bool pm_audio_init(uint32_t sample_freq){
+
+ pm_audio_initpool();
+
+ //Provide 2 empty buffers
+ take_empty_buffer();
+ give_mixed_buffer(); 
+ take_empty_buffer();
+ give_mixed_buffer();
+
+ pm_audio.enabled=pm_audio_init_i2s(sample_freq);
+return pm_audio.enabled;
+}
+
+bool pm_audio_stop(){
+if (pm_audio.enabled) return pm_audio_stop_i2s();
+return true;
 }
 
 bool pm_audio_init_i2s(uint32_t sample_freq) {
@@ -78,6 +99,7 @@ bool pm_audio_init_i2s(uint32_t sample_freq) {
 
     if (!audio_i2s_setup(&config)) {
         PM_ERROR("! PicoAudio: Unable to open audio device.\n");
+        return false;
      }
 
     audio_i2s_set_enabled(true);
@@ -94,5 +116,4 @@ bool pm_audio_stop_i2s() {
     pm_i2s_active=false;
    }
   return true;
-}    
-
+}

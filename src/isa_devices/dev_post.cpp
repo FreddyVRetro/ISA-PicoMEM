@@ -29,11 +29,13 @@ hostio_t HostIO;
 
 void dev_post_install(uint16_t BasePort)
 {
+ PM_INFO("Install POST\n");
  SetPortType(BasePort,DEV_POST,1);
 }
 
 void dev_post_remove(uint16_t BasePort)
 {
+ PM_INFO("Unistall POST\n");   
  SetPortType(BasePort,DEV_NULL,1);
 }
 
@@ -54,7 +56,7 @@ if (HostIO.Port81h_Updated)
    HostIO.Port81h_Updated=false;
    char poststr[5];
    poststr[4]=0;
-   sprintf(&poststr[0],"Pp%X",HostIO.Port80h);
+   sprintf(&poststr[0],"Pp%X",HostIO.Port81h);
 //   PM_INFO("%s",poststr);
    qwiic_display_4char(poststr);    // Send the POST Code to the External LCD
   }  
@@ -62,14 +64,16 @@ if (HostIO.Port81h_Updated)
 
 void dev_post_iow(uint32_t Addr,uint8_t Data)
 {
- 	if ((Addr & 0x07)==0)
-			{
-			   HostIO.Port80h=Data;
+//   PM_INFO("p%x %x",Addr,Data);
+   switch (Addr & 0x07)
+   {
+    case 0: HostIO.Port80h=Data;
 			   HostIO.Port80h_Updated=true;
-			}
-  if ((Addr & 0x07)==1)
-     {
-			   HostIO.Port81h=Data;
-			   HostIO.Port81h_Updated=true;      
-     }
+            break;
+    case 1: HostIO.Port81h=Data;
+			   HostIO.Port81h_Updated=true;
+  //          PM_INFO("Ib%x",Data);       // Debug display for IRQ Begin/end
+            break;
+ //   case 2: PM_INFO("Ie%x",Data);
+   }
 }

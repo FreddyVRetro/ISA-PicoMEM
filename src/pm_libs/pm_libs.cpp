@@ -29,7 +29,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define DISPLAY_TIME 1
 //constexpr uint LED_PIN = PICO_DEFAULT_LED_PIN;
+#if BOARD_PM15
+#define LED_PIN 11
+#else
 #define LED_PIN 25
+#endif
 
 uint8_t pm_led_state;
 
@@ -111,5 +115,22 @@ if (!LEDBlink.blinking)
  LEDBlink.blinking=false;
 }
 
+}
+
+
+void gpio_move_5s (uint8_t pin)
+{
+  gpio_init(pin);
+  gpio_set_dir(pin, GPIO_OUT);
+  for (int i=0;i<5;i++) {
+    gpio_put(pin, 1);
+    sleep_ms(250);
+    gpio_put(pin, 0);
+    sleep_ms(250);
+    gpio_put(pin, 1);
+    sleep_ms(250);
+    gpio_put(pin, 0);
+    sleep_ms(250);
+  }
 }
 

@@ -44,7 +44,7 @@ struct {
 } shared_state;
 
 static void audio_i2s_update_frequency(uint32_t sample_freq) {
-    PM_INFO("Audio Init : Set PIO Freq: %d PIO: %d\n",sample_freq,audio_pio);
+    PM_INFO("Audio Init : Set PIO Freq: %d\n",sample_freq);
 
     uint32_t system_clock_frequency = clock_get_hz(clk_sys);
     assert(system_clock_frequency < 0x40000000);
@@ -78,7 +78,7 @@ bool audio_i2s_setup(const audio_i2s_config_t *config) {
     shared_state.dma_channel = dma_channel;     // Save the DMA Channel number
     shared_state.pio_sm = sm;                   // Save the pio sm number
 
-    PM_INFO(" %d\n, PIO SM:%d",dma_channel,sm);
+    PM_INFO(" %d, PIO SM:%d",dma_channel,sm);
 
     dma_channel_config dma_config = dma_channel_get_default_config(dma_channel);
 
@@ -129,12 +129,8 @@ void __isr __time_critical_func(audio_i2s_dma_irq_handler)() {
     if (dma_irqn_get_channel_status(PICO_AUDIO_I2S_DMA_IRQ, dma_channel)) {
         dma_irqn_acknowledge_channel(PICO_AUDIO_I2S_DMA_IRQ, dma_channel);
  //       DEBUG_PINS_SET(audio_timing, 4);
-
-        // free the buffer we just finished   *** To Check
-
         audio_start_dma_transfer();
        // printf("-PB:%x %x ",((uint32_t)pm_audio.playing_buffer)&0x0FFF,pm_audio.mixed_buffers);
-//        DEBUG_PINS_CLR(audio_timing, 4);
     }
 //    gpio_put(21,0);      
 #endif

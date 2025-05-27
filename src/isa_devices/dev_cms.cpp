@@ -26,6 +26,7 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "../pm_defines.h"
 #include "dev_picomem_io.h"   // SetPortType / GetPortType
 
+#include "dev_audiomix.h"
 #ifdef MAME_CMS
 #include "saa1099/saa1099.h"
 saa1099_device *saa0, *saa1; // CMS Emulation object
@@ -34,16 +35,15 @@ saa1099_device *saa0, *saa1; // CMS Emulation object
 cms_t *cms;                  // CMS Emulation object
 #endif  //MAME_CMS
 
-bool dev_cms_active=false;    // True if configured
-volatile bool dev_cms_playing=false;   // True if playing
-volatile uint8_t dev_cms_delay=0;      // counter for the Nb of second since last I/O
-uint16_t dev_cms_baseport;    // CMS use an address range of 0 to B
-uint8_t cms_detect;           // Used for CMS detection
+bool dev_cms_active=false;     // True if configured
+volatile uint8_t dev_cms_delay; // counter for the Nb of second since last I/O
+uint16_t dev_cms_baseport;     // CMS use an address range of 0 to B
+uint8_t cms_detect;            // Used for CMS detection
 
 uint8_t dev_cms_install(uint16_t baseport)
 {
  if (!dev_cms_active)   // Don't re enable if active
-  {  
+  {
    PM_INFO("Install CMS (%x)\n",baseport);
 
    if (GetPortType(baseport)!=DEV_NULL)
@@ -65,7 +65,8 @@ uint8_t dev_cms_install(uint16_t baseport)
    SetPortType(baseport,DEV_CMS,2);
    dev_cms_baseport=baseport;
    dev_cms_active=true;
-   dev_cms_playing=false;
+   dev_audiomix.dev_active = dev_audiomix.dev_active & ~AD_CMS;
+   dev_cms_delay=0;   
    cms_detect=0xFF;   
  }  
   else  // Check if the port need to be changed
@@ -85,7 +86,7 @@ void dev_cms_remove()
  if (dev_cms_active)   // Don't stop if not active
   {  
    dev_cms_active=false;
-   dev_cms_playing=false;   
+   dev_audiomix.dev_active = dev_audiomix.dev_active & ~AD_CMS;
    PM_INFO("Remove CMS (%X)\n",dev_cms_baseport);
 #ifdef MAME_CMS
    PM_INFO("Delete SAA1099 1\n");
@@ -171,7 +172,8 @@ void dev_cms_iow(uint32_t CTRL_AL8,uint8_t Data)
               } else {
               cms->write_data(addr, Data);
               }
-             dev_cms_playing=true;  // enable mixind, start the timer
+             // enable mixind, start the timer
+             dev_audiomix.dev_active = dev_audiomix.dev_active | AD_CMS;
              dev_cms_delay=0;
              break;
     case 0x6:

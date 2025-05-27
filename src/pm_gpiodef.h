@@ -17,13 +17,30 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 Define the GPIO not used in PIO
 */
 #pragma once
+#if BOARD_PM15
+
+#define SD_SPI_CS    5 // SD SPI Chip select
+#define SD_SPI_SCK   6 // SD SPI Clock  (And PSRAM)
+#define SD_SPI_MOSI  7 // SD SPI Output (And PSRAM)
+#define SD_SPI_MISO  4 // SD SPI Input  (And PSRAM)
+
+#define PIN_GP26  8  //
+#define PIN_GP27  9  //
+#define PIN_GP28  10  //
+
+#define PIN_QWIIC_SDA 2
+#define PIN_QWIIC_SCL 3
+
+//#define PIN_DEBUG 27  // Used for debug
+
+#else
 
 #define SD_SPI_CS    3 // SD SPI Chip select
 #define SD_SPI_SCK   6 // SD SPI Clock  (And PSRAM)
 #define SD_SPI_MOSI  7 // SD SPI Output (And PSRAM)
 #define SD_SPI_MISO  4 // SD SPI Input  (And PSRAM)
 
-#define PIN_GP26  26  // 
+#define PIN_GP26  26  //
 #define PIN_GP27  27  //
 #define PIN_GP28  28  //
 
@@ -31,3 +48,5 @@ Define the GPIO not used in PIO
 #define PIN_QWIIC_SCL 27
 
 #define PIN_DEBUG 27  // Used for debug
+
+#endif

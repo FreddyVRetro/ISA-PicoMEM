@@ -1,0 +1,147 @@
+; PIO Code for ISA Signals, Pico MEM Board, with multiplexer V2
+; By Freddy VETELE
+; For PicoMEM >= 1.5, RP2350B only
+
+; This use one SM
+; Control signals activation detection done by the CPU to Optimize the overall speed
+
+; Values for the Proto Board :
+;.define public PIN_IRQ    5
+;.define public PIN_AEN    6
+;.define public PIN_ALE    7
+
+; Values for the V1.0 Board: (Shift by 5 Pin).  
+.define public PIN_IRQ    41  // IRQ 7 Pin
+.define public PIN_BCK    10
+
+; Values for the PIO (Shifted by 16Bit)
+.define public PIN_AD0_S    4   //(+12 vs other boards)
+.define public PIN_A8_MR_S  12  // Ctrl bit 0 Mem Read
+.define public PIN_A9_MW_S  13  // Ctrl bit 1 Mem Write
+.define public PIN_A10_IR_S 14  // Ctrl bit 2 IO Read
+.define public PIN_A11_IW_S 15  // Ctrl bit 3 IO Write 
+.define public PIN_AD_S     16  // 1: Adress 0: Data
+.define public PIN_AS_S     17  // 0: A0-A7 IO/Mem R/W 1:A8-A19
+.define public PIN_IORDY_S  18  // Reversed : 1> Wait 0> Ok
+
+; Real gpio values
+.define public PIN_AD0      20  //(+12 vs other boards)
+.define public PIN_A8_MR    28  // Ctrl bit 0 Mem Read
+.define public PIN_A9_MW    29  // Ctrl bit 1 Mem Write
+.define public PIN_A10_IR   30  // Ctrl bit 2 IO Read
+.define public PIN_A11_IW   31  // Ctrl bit 3 IO Write
+
+
+.define public PIN_AD       32  // 1: Adress 0: Data
+.define public PIN_AS       33  // 1: A0-A7 IO/Mem R/W 0:A8-A19
+.define public PIN_IORDY    34  // Reversed : 1> Wait 0> Ok
+/*
+.define public PIN_AD       45  // 1: Adress 0: Data
+.define public PIN_AS       46  // 1: A0-A7 IO/Mem R/W 0:A8-A19
+.define public PIN_IORDY    47  // Reversed : 1> Wait 0> Ok
+*/
+
+.define public SEL_ADR    1   // Address Multiplexer active, Data buffer 3 States
+.define public SEL_DAT    0   // Select Data
+.define public SEL_ADL    0   // Select Address Low and A7-A0
+.define public SEL_CTRL   1   // Select Address High and I/O Mem Signals
+
+; 22 Instructions
+; The Pico Core detect when IOR, IOW, MEMR or MEMW Move.
+; Then, the Core ask the PIO to check if AEN is present and read A8-A19
+; Based on the Cycle type and Address, the core tell the PIO to enable or not IOCHRDY
+; The Core send the type of cycle to perform : Write, IOR or MEMR By sending 0 or a PIO instruction
+; If the core send 0, start from the begining
+; If the core send something else, perform a Read cycle, waiting for the Memory or IO Read pin to go Up.
+
+.program isa_bus
+.side_set 2 opt                      ; sideset AS / AD Initial value : 0b01 (0/ADL/ADR)
+; 0b11 : Read Command Signals and A19-A12
+; 0b01 : Read A10-A0
+; 0b10 : Read/Write Data and Read Command Signals 
+
+restart:
+.wrap_target
+;    out Y, 32           side 0b11
+    set pins,0          side 0b11    ; Disable IOCHRDY
+; 1> Wait for the CPU Go (Control Signal detected)
+    out X, 32           side 0b11    
+    in pins, 8          side 0b01   ; Read A19-A12                   > Switch A11-A0
+;Mux_Wait:
+;    jmp Y-- Mux_Wait
+    nop           [2]   side 0b01   ; Move mux to A10-A0, 3 Tick delay
+    nop           [2]   side 0b01   ; Move mux to A10-A0, 3 Tick delay
+    in pins, 12         side 0b10   ; Read Address Low (A10-A0)     > Switch to Read/Write Data
+; Data is read after by the Pico core (Not PIO)
+    out X, 32           side 0b10   ; 2> Put the value sent by the main code to X
+    jmp !X NoWaitState  side 0b10   ; If X=0 don't add Wait State
+    set pins,1          side 0b10   ; Enable IOCHRDY    
+NoWaitState:
+    out X, 32           side 0b10   ; 3> Read 0, or PIN_A18_IR or PIN_A16_MR Wait instruction
+    jmp !x restart      side 0b10   ; X=0 >  IOR/MEMR or nothing
+; Perform an IO or Memory Read
+    out pins, 8         side 0b10   ; Output data to be written
+    out pindirs, 8      side 0b10   ; Next 8 in pindirs is FF - set pindirs as output
+    set pins,0          side 0b10   ; Disable IOCHRDY (If active)  > Try to put it before ?
+; X is one of these 2 instructions : 
+;    wait 0 gpio 14  side 0b10      ; Wait for IOR lowering edge  *Ok
+;    wait 0 gpio 12  side 0b10      ; Wait for MEMR lowering edge *Ok
+    mov exec,X          side 0b10   ; Move the value to the exec register
+    in  null, 20        side 0b11   ; Tell the CPU that the Read is complete and Move back the Mux to Command Signals and A19-A12
+    out pins, 8         side 0b11   ; next 8 in pindirs is FF - reset data pins back to high
+    out pindirs, 8      side 0b11   ; next 8 in pindirs is 00 - set pindirs back as input
+.wrap
+
+% c-sdk {
+static inline void isa_bus_program_init(PIO pio, uint sm, uint offset) {
+
+    printf("isa_iomem_m2_v15 Start\n");
+//    pio_set_gpio_base(pio,16);          // This pio will start from the gpio 16
+//    printf("GPIO Base : %d\n",pio_get_gpio_base(pio));
+
+    pio_sm_config c = isa_bus_program_get_default_config(offset);
+
+// 133MHz: 4 Wait ([3]) 
+// 180MHz: 4 Wait 
+// 240MHz and 270MHz with 6 (3+2) Wait
+    float div = (float)clock_get_hz(clk_sys) / (280 * 1000000);  //100 MHz > 133 ?
+    sm_config_set_clkdiv(&c, div);
+
+    sm_config_set_in_shift (&c, false, true, 20);                 // Shift left,  Autopush 20 bits (20 addr) Ctrl and Data read by the CPU
+    sm_config_set_out_shift(&c, true, true /* autopull */, 32);   // Shift right, Autopull 32 bits (condition variables from CPU)
+
+    // ** Init and Configure AD0/AD8 as In/Out **
+
+    // Initialise the 12 Muxed pin 
+    for (int i = PIN_AD0; i < PIN_AD0 + 12; i++) {
+        pio_gpio_init(pio, i);    // Link the PIN to this PIO (All SM !)
+    }
+
+    sm_config_set_in_pins(&c, PIN_AD0);       // Set AD0 is the first Input pin (IN)
+    sm_config_set_out_pins(&c, PIN_AD0, 8);   // Set AD0 to AD7 as Output pins as well (OUT and PINDIRS)
+    sm_config_set_sideset_pins(&c, PIN_AD);   // First pin of the SideSet
+
+    // Init and set up IOCHRDY, AD and AS as Output
+    pio_gpio_init(pio, PIN_AD);    // Link the PIN to this PIO (All SM !)
+    pio_gpio_init(pio, PIN_AS);    // Link the PIN to this PIO (All SM !)
+    pio_gpio_init(pio, PIN_IORDY); // Link the PIN to this PIO (All SM !)
+    pio_sm_set_consecutive_pindirs(pio, sm, PIN_AD, 3, true);       // Output
+
+    // PIN_IORDY as SET Pin / AS and AD as sideset pins
+    sm_config_set_set_pins(&c, PIN_IORDY,1);                       // Set PIN_IORDY as SET pin
+  
+    pio_sm_set_consecutive_pindirs(pio, sm, PIN_AD0, 12, false);    // AD0-11 input
+
+/*
+    // Set the Output default values (Read Addr Low)
+    pio_sm_set_pins_with_mask(pio, sm, 0, 1u << PIN_IORDY);
+    pio_sm_set_pins_with_mask(pio, sm, 0, 1u << PIN_AS);
+    pio_sm_set_pins_with_mask(pio, sm, 1u << PIN_AD, 1u << PIN_AD);
+*/
+
+    // Load our configuration, and jump to the start of the program
+    pio_sm_init(pio, sm, offset, &c);
+    // Set the state machine running
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

@@ -110,15 +110,15 @@ typedef struct ne2000_t {
         uint8_t page_stop;     // 02h write ; page stop register
         uint8_t bound_ptr;     // 03h read/write ; boundary pointer
         uint8_t tx_page_start; // 04h write ; transmit page start register
-        uint8_t num_coll;      // 05h read  ; number-of-collisions register
+//        uint8_t num_coll;      // 05h read  ; number-of-collisions register
         uint16_t tx_bytes;     // 05,06h write ; transmit byte-count register
         uint8_t fifo;          // 06h read  ; FIFO
         uint16_t remote_dma;   // 08,09h read ; current remote DMA addr
         uint16_t remote_start; // 08,09h write ; remote start address register
         uint16_t remote_bytes; // 0a,0bh write ; remote byte-count register
-        uint8_t tallycnt_0;    // 0dh read  ; tally counter 0 (frame align errors)
-        uint8_t tallycnt_1;    // 0eh read  ; tally counter 1 (CRC errors)
-        uint8_t tallycnt_2;    // 0fh read  ; tally counter 2 (missed pkt errors)
+//        uint8_t tallycnt_0;    // 0dh read  ; tally counter 0 (frame align errors)
+//        uint8_t tallycnt_1;    // 0eh read  ; tally counter 1 (CRC errors)
+//        uint8_t tallycnt_2;    // 0fh read  ; tally counter 2 (missed pkt errors)
         
         //
         // Page 1
@@ -156,7 +156,7 @@ typedef struct ne2000_t {
         uint8_t mem[BX_NE2K_MEMSIZ]; // on-chip packet memory
 
         // ne2k internal state
-        uint32_t base_address;
+        uint16_t base_address;
         int base_irq;
         int tx_timer_index;
         int tx_timer_active;
@@ -165,13 +165,13 @@ typedef struct ne2000_t {
         ne2000_type type;
 
         /*PCI stuff*/
-        int is_pci;
-        int card;
-        uint32_t base_addr;
-        uint8_t pci_command;
-        uint8_t int_line;
+//        int is_pci;
+//        int card;
+//        uint32_t base_addr;
+//        uint8_t pci_command;
+//        uint8_t int_line;
 
-        /*RTL8029AS registers*/
+        /*RTL8029AS registers*/  // FV : Exist but not really used (Can be read/Write)
         uint8_t config0, config2, config3;
         uint8_t _9346cr;
 } ne2000_t;

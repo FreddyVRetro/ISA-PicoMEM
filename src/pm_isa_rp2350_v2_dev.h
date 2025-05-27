@@ -46,9 +46,9 @@ for (;;) {
 
      "DetectCtrlLoop:                \n\t"  // 2) Wait until a Control Signal is present
      "ldr %[DEV_T],[%[IOB],%[IOO]]   \n\t"  // Load the GPIO Values
-     "tst %[DEV_T],%[CM]             \n\t"  // Apply the mask to keep the ISA Control Signals Only    
+     "tst %[DEV_T],%[CM]             \n\t"  // Apply the mask to keep the ISA Control Signals Only
      "beq DetectCtrlLoop             \n\t"  // Loop if no Control signal detected
-     "str %[DEV_T],[%[PIOB],%[PIOT]] \n\t"  // pio->txf[0] = CTRL_AL8; Start the Cycle 
+     "str %[DEV_T],[%[PIOB],%[PIOT]] \n\t"  // pio->txf[0] = CTRL_AL8; Start the Cycle
 
 // %[DEV_T] contains A12 to A19, then MR, MW, IOR, IOW from the Bit 8 
      "lsl %[DEV_T],%[DEV_T],#12      \n\t" // ISA_CTRL=ISA_CTRL<<12   CAAxxxxx
@@ -72,11 +72,6 @@ for (;;) {
 /*
      "nop                            \n\t"   // Added to wait until the PIO Send the Address Value  
      "nop                            \n\t"
-     "nop                            \n\t"
-     "nop                            \n\t"
-     "nop                            \n\t"
-
-     "nop                            \n\t"     
 
 // Directly read the RX pipe : Be carefull about the timing
      "ldr %[ADDR],[%[PIOB],%[PIOR]]  \n\t"   // ISA_Addr = pio->rxf[sm]; Read ISA_Addr from the PIO (Address with Mask) 
@@ -169,7 +164,7 @@ ISA_Do_IO:  // Goto, from the assembly code
 
   ISA_IO_Addr = pio_sm_get_blocking(isa_pio, isa_bus_sm) & 0x3FF; // No need for Mask (Only the low 8Bit are used)
 
-  IO_Device = PORT_Table[ISA_IO_Addr>>3];  // <<9 to keep the Bit 13 as well, for DMA Detection
+  IO_Device = PORT_Table[ISA_Addr>>3];
   pio_sm_put(isa_pio, isa_bus_sm, IO_Device); // First pio put : No Wait State if 0
 
   asm volatile ("nop");
@@ -206,7 +201,7 @@ ISA_Do_IO:  // Goto, from the assembly code
           break;
 #endif
 #endif
-#if DEV_POST_Enable==1
+#if DEV_POST_Enable
 	      case DEV_POST :
            dev_post_iow(ISA_IO_Addr,ISAIOW_Data);
           break;
@@ -225,10 +220,15 @@ ISA_Do_IO:  // Goto, from the assembly code
           break;
         case DEV_TANDY :
            dev_tdy_iow(ISA_IO_Addr,ISAIOW_Data);
-          break;          
+          break;   
+        case DEV_MMB :
+          dev_mmb_iow(ISA_IO_Addr,ISAIOW_Data);
+         break; 
+#if USE_SBDSP                             
         case DEV_SBDSP :
            dev_sbdsp_iow(ISA_IO_Addr,ISAIOW_Data);
           break;
+#endif          
         case DEV_DMA :
            dev_dma_iow(ISA_IO_Addr,ISAIOW_Data);
           break;           
@@ -254,8 +254,8 @@ ISA_Do_IO:  // Goto, from the assembly code
           break;  //DEV_LTEMS  
 #if PM_PICO_W
 #if USE_NE2000
-        case DEV_NE2000:        
-           ISA_Data = dev_ne2000_ior((ISA_IO_Addr-PM_Config->ne2000Port) & 0x1F);
+        case DEV_NE2000:
+           dev_ne2000_ior(ISA_IO_Addr,&ISA_Data);
            pm_do_ior();
           break;          
 #endif          
@@ -274,11 +274,17 @@ ISA_Do_IO:  // Goto, from the assembly code
         case DEV_CMS:
            dev_cms_ior(ISA_IO_Addr,&ISA_Data);
            pm_do_ior();           
-          break;          
+          break;
+        case DEV_MMB:
+          dev_mmb_ior(ISA_IO_Addr,&ISA_Data);
+          pm_do_ior();           
+         break;      
+#if USE_SBDSP                 
         case DEV_SBDSP:
            dev_sbdsp_ior(ISA_IO_Addr,&ISA_Data);
            pm_do_ior();           
-          break;  
+          break;
+#endif            
 #endif          
 
    // *** Add Other device IOR here ***

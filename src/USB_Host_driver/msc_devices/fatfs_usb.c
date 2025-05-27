@@ -45,12 +45,16 @@ bool inquiry_complete_cb(uint8_t dev_addr, tuh_msc_complete_data_t const *cb_dat
     size = ceil(size * 10) / 10;
     if (msc_dev_addr=0xFF)
     {
-    usb_set_status(dev_addr, "USB %.1f %s %.8s %.16s rev %.4s",
+    usb_set_status(dev_addr, "USB Disk %.1f %s %.8s %.16s",
+                   size, xb,
+                   msc_inquiry_resp.vendor_id,
+                   msc_inquiry_resp.product_id);
+/*    usb_set_status(dev_addr, "USB %.1f %s %.8s %.16s rev %.4s",
                    size, xb,
                    msc_inquiry_resp.vendor_id,
                    msc_inquiry_resp.product_id,
                    msc_inquiry_resp.product_rev);
-
+*/
     char drive_path[3] = "1:";
     msc_dev_addr=dev_addr;
     FRESULT mount_result = f_mount(&msc_fatfs_volume, drive_path, 1);

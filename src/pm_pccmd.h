@@ -19,8 +19,29 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * pm_pccmd.h : PC Commands functions definition
  */ 
 
-extern void Send_PCC_CMD(uint8_t CommandNB);  // Send a Command, don't touch parameters and wait for its start
-extern void PCC_WaitCMDCompleted();
-extern void Send_PCC_End();
-extern void Send_PCC_Printf(char *StrToSend);							// The PC will Display the string using the BIOS
-extern void Send_PCC_MemCopyW_512b(uint32_t Src, uint32_t Dest);        // Copy 512 Bytes from Src to Dest Address  (PC RAM @)
+extern void Send_PC_CMD(uint8_t CommandNB);  // Send a Command, don't touch parameters and wait for its start
+extern bool PC_Wait_Ready_Timeout(uint32_t delay);
+extern bool PC_Wait_End_Timeout(uint32_t delay);
+extern void PC_WaitCMDCompleted();
+extern void PC_End();
+
+extern void PC_printstr(char *StrToSend);							// The PC will Display the string using the BIOS
+extern void PC_printf(const char *format, ...);
+extern void PC_Getpos(uint8_t *X, uint8_t *Y);
+extern void PC_Setpos(uint8_t X, uint8_t Y);
+extern void PC_GetDMARegs(uint8_t channel, uint8_t *Page, uint16_t *Offset, uint16_t *Size);
+extern void PC_SetDMARegs(uint8_t channel, uint16_t Offset, uint16_t Size);
+
+extern void PC_MW8(uint32_t addr, uint8_t data);
+extern void PC_MW16(uint32_t addr, uint16_t data);
+extern uint16_t  PC_MR16(uint32_t addr);
+
+extern uint8_t PC_IN8(uint16_t port);
+extern uint16_t PC_IN16(uint16_t port);
+extern void PC_OUT8(uint16_t port, uint8_t data);
+extern void PC_OUT16(uint16_t port, uint16_t data);
+
+extern void PC_MemCopy(uint32_t Src, uint32_t Dest, uint16_t Size); // Copy xx Bytes from Src to Dest Address  (PC RAM @)
+extern void PC_MemCopyW_512b(uint32_t Src, uint32_t Dest);          // Copy 512 Bytes from Src to Dest Address  (PC RAM @)
+
+uint8_t PC_Checksum(uint16_t segment, uint16_t size);

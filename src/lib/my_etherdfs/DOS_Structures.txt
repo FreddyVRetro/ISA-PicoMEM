@@ -1,0 +1,141 @@
+
+SFT :
+https://faydoc.tripod.com/structures/16/1640.htm
+
+https://pcdosretro.gitlab.io/sysvars.htm
+
+https://pcdosretro.gitlab.io/dosblks.txt
+
+DOS executable format:
+https://tuttlem.github.io/2015/03/28/mz-exe-files.html
+
+
+
+INT 21 - DOS 4.0+ - EXTENDED OPEN/CREATE
+	AX = 6C00h
+	BL = open mode as in AL for normal open (see also AH=3Dh)
+	    bit 7: inheritance
+	    bits 4-6: sharing mode
+	    bit 3 reserved
+	    bits 0-2: access mode
+		100 read-only, do not modify file's last-access time (DOS 7.0)
+	BH = flags
+	    bit 6 = auto commit on every write (see also AH=68h)
+	    bit 5 = return error rather than doing INT 24h
+	    bit 4 = (FAT32) extended size (allow 4GB files instead of 2GB)
+	CX = create attribute (see #01769)
+	DL = action if file exists/does not exist (see #01770)
+	DH = 00h (reserved)
+	DS:SI -> ASCIZ file name
+Return: CF set on error
+	   AX = error code (see #01680 at AH=59h/BX=0000h)
+	CF clear if successful
+	   AX = file handle
+	   CX = status (see #01768)
+Notes:	the PC LAN Program only supports existence actions (in DL) of 01h,
+	  10h with sharing=compatibility, and 12h
+	DR DOS reportedly does not support this function and does not return
+	  an "invalid function call" error when this function is used.
+	the documented bits of BX are stored in the SFT when the file is opened
+	  (see #01641,#01642)
+BUG:	this function has bugs (at least in DOS 5.0 and 6.2) when used with
+	  drives handled via the network redirector (INT 2F/AX=112Eh):
+	    - CX (attribute) is not passed to the redirector if DL=11h,
+	    - CX does not return the status, it is returned unchanged because
+	      DOS does a PUSH CX/POP CX when calling the redirector.
+SeeAlso: AH=3Ch,AH=3Dh,AX=6C01h,AX=7160h/CL=00h,INT 2F/AX=112Eh
+
+(Table 01768)
+Values for extended open function status:
+ 01h	file opened
+ 02h	file created
+ 03h	file replaced
+
+Bitfields for file create attribute:
+Bit(s)	Description	(Table 01769)
+ 6-15	reserved
+ 5	archive
+ 4	reserved
+ 3	volume label
+ 2	system
+ 1	hidden
+ 0	readonly
+
+Bitfields for action:
+Bit(s)	Description	(Table 01770)
+ 7-4	action if file does not exist
+	0000 fail
+	0001 create
+ 3-0	action if file exists
+	0000 fail
+	0001 open
+	0010 replace/open
+    
+
+System file table (35h bytes in 3.x, 3Bh bytes in 4.0+)
+00h Open count
+02h Open mode
+    Bit 0-2 access mode
+            000=read
+            001=write
+            010=read/write
+        4-6 sharing mode
+            000=compatibility
+            001=deny read/write
+            010=deny write
+            011=deny read
+            100=deny none
+         13 critical error handling
+            0=execute INT 24h
+            1=return error code
+         14 buffering
+            0=buffer writes
+            1=don't buffer writes
+         15 1=FCB SFT
+04h Attribute byte
+05h Device info
+    Character devices:          Block devices:
+    Bit 0 1=console input       Bit 0-5 drive code (0=A)
+        1 1=console output            6 0=file has been written
+        2 1=NUL device                7 0=block device
+        3 1=CLOCK device             12 1=no inherit
+        4 1=INT 29h output (CON)     14 1=date/time set
+        5 0=ASCII,1=binary           15 1=redirected file
+        6 0=EOF on input
+        7 1=character device
+       11 1=network spooler
+       12 1=no inherit
+       13 1=named pipe
+       15 1=redirected device
+07h Pointer to device driver or disk parameter block
+0Bh First cluster number
+0Dh Time
+0Fh Date
+11h File size
+15h File pointer
+19h Current relative cluster number
+1Bh 32-bit directory entry sector (4.0+)
+1Bh Current absolute cluster number (3.x)
+1Dh Directory entry sector (3.x)
+1Fh Directory entry position in sector
+20h Filename
+28h Extension
+2Bh Pointer to next SFT for the same file (SHARE only)
+2Fh Machine number
+31h PSP of owner
+33h SHARE file table offset
+35h Current absolute cluster number (4.0+)
+37h Reserved (4.0+)
+
+Current directory structure (51h bytes in 3.x, 58h bytes in 4.0+)
+00h Current directory
+43h Drive type
+    1000h=SUBSTed drive
+    2000h=JOINed drive
+    4000h=valid drive
+    8000h=redirected drive
+45h Pointer to disk parameter block
+49h Cluster number of current directory (0=root)
+4Bh Reserved
+4Fh Length of root directory name starting at offset 0
+51h Reserved (4.0+)

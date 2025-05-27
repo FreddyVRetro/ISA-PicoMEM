@@ -7,7 +7,7 @@
 #define PM_AUDIO_FREQUENCY 49716   // Adlib output frequency
 //#define PM_AUDIO_FREQUENCY 44100
 #define PM_SAMPLES_PER_BUFFER 64
-#define PM_AUDIO_BUFFERS  8
+#define PM_AUDIO_BUFFERS  4
 #define PM_SAMPLES_STRIDE 4        // (Nb of byte per sample 16Bit X 2)
 // 8*64*4 buffer (16Bit Stereo) is 2KB
 
@@ -29,30 +29,23 @@ typedef struct pm_audio
     uint8_t *playing_buffer;
     uint8_t *mixing_buffer;
     uint32_t mixed_buffers;     // Total Nb of mixed buffer
-    uint32_t played_buffers;    // Total Nb mixed buffer
+    uint32_t played_buffers;    // Total Nb buffer played
     bool enabled;
-    bool playing_nosound;      // Set to true if it is playing no sound
  } pm_audio_t;
 
 extern volatile pm_audio_t pm_audio;
-extern volatile bool PM_Audio_MixPause;
 
-extern bool pm_audio_initpool();
-extern bool pm_audio_init_i2s(uint32_t sample_freq);
-extern void pm_audio_update_frequency(uint32_t sample_freq);
+extern bool pm_audio_init(uint32_t sample_freq);
+extern bool pm_audio_stop();
+//extern void pm_audio_update_frequency(uint32_t sample_freq);
 //extern static void audio_i2s_update_frequency(uint32_t sample_freq);
 
-__force_inline void pm_audio_pause()
+// Get the number of mixed buffer present in the audio buffers pool
+__force_inline uint32_t get_mixed_buffer_nb()
 {
- PM_Audio_MixPause=true;
+  int32_t pm_buffers_ready=pm_audio.mixed_buffers-pm_audio.played_buffers;
+ return abs(pm_buffers_ready);
 }
-
-__force_inline void pm_audio_resume()
-{
- PM_Audio_MixPause=false;
-}
-// Be carefull with this code, it is used by interrupts !
-
 // Take a mixed buffer to give to the DMA (Always the buffer after the last played one)
 __force_inline uint8_t * take_mixed_buffer()
 {
@@ -89,10 +82,9 @@ return NULL;
 
 __force_inline void give_mixed_buffer()
 {
-uint32_t volatile test=pm_audio.mixed_buffers;
+//uint32_t volatile test=pm_audio.mixed_buffers;
 pm_audio.mixed_buffers++;
 //printf("+GB %d ",pm_audio.mixed_buffers);
-//printf("+%d ",pm_audio.mixed_buffers);
 }
 
 #define AUDIO_BUFFER_FORMAT_PCM_S16 1          ///< signed 16bit PCM

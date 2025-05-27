@@ -9,8 +9,9 @@ extern uint8_t PM_ConnectWifi();
 extern void PM_Wifi_GetStatus();
 extern void PM_RetryWifi();
 
-extern uint8_t dev_ne2000_ior(uint8_t Addr);
-extern void dev_ne2000_iow(uint8_t Addr,uint8_t Data);
+void dev_ne2000_setport(uint16_t port);
+extern bool dev_ne2000_ior(uint32_t Addr,uint8_t *Data);
+extern void dev_ne2000_iow(uint32_t Addr,uint8_t Data);
 
 //ne2000 functions used by the PicoMEM Code
 extern uint8_t ne2000_read(uint16_t address, void *p);

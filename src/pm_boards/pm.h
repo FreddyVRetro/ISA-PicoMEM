@@ -1,10 +1,13 @@
 
+// File for (PicoMEM 1.0 to 1.14 and PicoMEM 1.2A with AEN)
 
 #ifdef PIMORONI_PICO_PLUS2_RP2350
 #define MAX_PMRAM 8         // 256Kb "Fast RAM"
 #else
 #define MAX_PMRAM 16        // 128KB "Fast RAM"
 #endif
+
+#define ISA_SM_INCLUDE "isa_iomem_m1.pio.h"        // The ISA PIO code to use for this board
 
 // PSRAM SPI - defined in the CMakeLists.txt
 /*
@@ -21,6 +24,13 @@
 #define SD_SPI_SCK   6 // SD SPI Clock  (And PSRAM)
 #define SD_SPI_MOSI  7 // SD SPI Output (And PSRAM)
 #define SD_SPI_MISO  4 // SD SPI Input  (And PSRAM)
+
+/*
+#define PSRAM_PIN_CS=5         // Chip Select (SPI0 CS )
+#define PSRAM_PIN_SCK=6        // Clock       (SPI0 SCK)
+#define PSRAM_PIN_MOSI=7       // Output      (SPI0 TX )
+#define PSRAM_PIN_MISO=4       // Input       (SPI0 RX ) 
+*/
 
 #define PIN_GP26  26  // 
 #define PIN_GP27  27  //

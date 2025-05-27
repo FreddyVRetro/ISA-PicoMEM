@@ -26,15 +26,18 @@ cmake_minimum_required(VERSION 3.13)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
           
-# for TinyUSB
-#set(FAMILY rp2040)
-#set(BOARD pico_sdk)
-
 # Declare the Pi Pico Board used
-set(PICO_BOARD pico_w CACHE STRING "Board type")
+
+#set(PICO_BOARD pico_w CACHE STRING "Board type")
 #set(PICO_BOARD PICO)
 #set(PICO_BOARD PICO2)
-#set(PICO_BOARD PIMORONI_PICO_PLUS2_RP2350)
+set(PICO_BOARD pico_w CACHE STRING "Board type")
+
+# Declare the PicoMEM Board
+
+set(PICOMEM_BOARD "PICOMEM")
+#set(PICOMEM_BOARD "PICOMEM_LP")
+#set(PICOMEM_BOARD "PICOMEM_15")
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include(pico_sdk_import.cmake)
@@ -55,11 +58,14 @@ set(PROJECT_TYPE "TEST")
 # Tell the Pico SDK to use our local tinyusb instead of the one included in the SDK
 # This is needed to support tusb_xinput
 set(PICO_TINYUSB_PATH ${CMAKE_CURRENT_LIST_DIR}/lib/tinyusb)
+#set(PICO_TINYUSB_PATH ${CMAKE_CURRENT_LIST_DIR}/lib/tinyusb_midi)
+#> https://github.com/rppicomidi/tinyusb
+#set(TINYUSB_PATH ${CMAKE_CURRENT_LIST_DIR}/lib/tinyusb)
 
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
   
-# Add the Sub directories containing libraries
+####### Add the Sub directories containing libraries  ########
 
 add_subdirectory(lib/FatFs_SPI)
 add_subdirectory(rom)                       # PicoMEM BIOS binary
@@ -68,6 +74,9 @@ add_subdirectory(qwiic)
 add_subdirectory(audio_devices)
 add_subdirectory(audio_devices/opl)
 add_subdirectory(lib/pm_audio/pm_audio_i2s)
+add_subdirectory(lib/my_etherdfs)
+add_subdirectory(pm_libs)
+add_subdirectory(lib/picoOled)
 
 add_subdirectory(lib/rp2040-psram)          # rp2040 PSRAM with DMA
 
@@ -100,16 +109,58 @@ include_directories(
 add_executable(picomem picomem.cpp
                pm_cmd.cpp
                pm_pccmd.cpp 
-               pm_libs/pm_libs.cpp 
+               pm_libs/pico_rtc.cpp                
                dosbox/bios_disk.cpp
-               pm_disk/pm_disk.cpp      # Disk code
-               pm_disk/hw_config.c      # For uSD Driver in SPI
-#               hw_config_pio.c         # For uSD Driver in PIO
                )
 
 target_compile_options(picomem PRIVATE -save-temps -fverbose-asm) 
 
+if (PICOMEM_BOARD STREQUAL "PICOMEM_15")
+# PicoMEM 1.5 + Parameters
 target_compile_definitions(picomem PRIVATE
+
+        BOARD_PM15=1
+        MUX_V2=1
+
+        MAX_PMRAM=16            # Maximum Nb of 16Kb RAM for the Pico emulated RAM (Reduce to allow all, for test) (8 for 128Kb maximum)
+
+        DO_FAST_RAM=0           # Fast RAM disable all the RAM emulation based on PSRAM
+        USE_PSRAM=0             # 1 To enable PSRAM Support ! (Put to 0 if Fast RAM)  0 for Pimoroni pico plus 2
+        USE_PSRAM_DMA=0         # 1 to use the new code with DMA
+
+        USE_AUDIO_I2S=1
+        PICO_AUDIO_I2S_DATA_PIN=8        #DIN
+        PICO_AUDIO_I2S_CLOCK_PIN_BASE=9  #LCK
+        PICO_AUDIO_I2S_PIO=1
+        PICO_AUDIO_I2S_SM=3
+        PICO_AUDIO_I2S_DMA_IRQ=1        
+
+# ! ASYNC UART values defined in picomem.cpp        
+        PICO_DEFAULT_UART=1
+        PICO_DEFAULT_UART_TX_PIN=36
+        PICO_DEFAULT_UART_RX_PIN=37
+
+        PICO_STDIO_USB_CONNECT_WAIT_TIMEOUT_MS=5000000
+
+        USE_DEV_IRQ=1       # IRQ Debug display
+        DBG_PIN_AUDIO=1
+        ENABLE_CDROM_LOG=1  # Comment to disable CD LOG
+
+        USE_SBDSP=1
+        USE_CDROM=1
+        )
+
+else()  # PicoMEM Boards < 1.5
+ 
+target_compile_definitions(picomem PRIVATE
+
+        MUX_V2=0
+
+        MAX_PMRAM=8             # Maximum Nb of 16Kb RAM for the Pico emulated RAM (Reduce to allow all, for test) (8 for 128Kb maximum)
+
+        DO_FAST_RAM=0           # Fast RAM disable all the RAM emulation based on PSRAM
+        USE_PSRAM=1             # 1 To enable PSRAM Support ! (Put to 0 if Fast RAM)  0 for Pimoroni pico plus 2
+        USE_PSRAM_DMA=1         # 1 to use the new code with DMA
 
         USE_AUDIO_I2S=1
         PICO_AUDIO_I2S_DATA_PIN=26
@@ -124,9 +175,17 @@ target_compile_definitions(picomem PRIVATE
         PICO_DEFAULT_UART_RX_PIN=-1
 
         PICO_STDIO_USB_CONNECT_WAIT_TIMEOUT_MS=5000000
-)
+
+        USE_DEV_IRQ=0   # IRQ Debug display    
+        DBG_PIN_AUDIO=0
+
+        USE_SBDSP=0
+        USE_CDROM=0
+        )
+
+endif()
     
-if (PROJECT_TYPE STREQUAL "TEST")
+if (PROJECT_TYPE STREQUAL "TEST")      # Common to all the PicoMEM version
     target_sources(picomem PRIVATE)
 
     target_compile_definitions(picomem PRIVATE
@@ -141,21 +200,14 @@ if (PROJECT_TYPE STREQUAL "TEST")
 # Don't use C000 Segment (0xC0000u) if the PC is configured to use an external video BIOS
 # To Configure the ROM, Be carefull that the XTIDE ROM is 32Kb, even if only 16Kb is used
     USEROM0=1
-    ROM_BIOS=0x0D0000u     # @ of the PM BIOS           12Kb
+    ROM_BIOS=0x0D0000u      # @ of the PM BIOS           12Kb
 
-    MAX_PMRAM=8             # Maximum Nb of 16Kb RAM for the Pico emulated RAM (Reduce to allow all, for test) (8 for 128Kb maximum)
+    USE_RTC=1
 
-    MUX_V2=0
-    
     USE_SDCARD=1            # 1 To enable SD Support   
     USE_SDIO=0              # To remove SDIO form the SD Code (Save space and RAM)
     SD_SPI_PIO=0            # 1 To use the uSD driver with PIO
     SD_CRC_ENABLED=0        # Disable CRC checking for SPI-attached cards.
-
-    DO_FAST_RAM=0           # Fast RAM disable all the RAM emulation based on PSRAM
-
-    USE_PSRAM=1             # 1 To enable PSRAM Support ! (Put to 0 if Fast RAM)  0 for Pimoroni pico plus 2
-    USE_PSRAM_DMA=1
 
     # defines for the rp2040 psram library (ian scott)
     PSRAM_ASYNC=1
@@ -165,7 +217,7 @@ if (PROJECT_TYPE STREQUAL "TEST")
     PSRAM_PIN_MOSI=7        # Output      (SPI0 TX )
     PSRAM_PIN_MISO=4        # Input       (SPI0 RX )    
 
-# - Audio Defines -    
+# - Audio Defines -
     USE_AUDIO=1
  
 # Adlib defs  
@@ -180,19 +232,20 @@ if (PROJECT_TYPE STREQUAL "TEST")
 # To compile with EMU8950_LINEAR, Needed to comment this in OPL Code (2 Times) if (hack_ch == 0 && s == 12)
 
 # Debug variables (Debug)
-    PM_ENABLE_STDIO=1      # Enable the Serial Display to the defined serial device (ASYNC_UART)
+    PM_ENABLE_STDIO=0      # Enable the Serial Display to the defined serial device (ASYNC_UART)
     UART_PIN0=0            # Use PIN0 (IRQ) instead of Pin 28
 
     CFG_TUSB_DEBUG=0      # TinyUSB: 0 :Off / 1:Error / 2:Warning / 3:Info
     SD_DEBUG=0            # 1 To enable the DBG_PRINTF in the SD/FatFs spi
     USE_PRINTF=0          # Remove for no SD Debug Printf
     USE_DBG_PRINTF=0      # Remove for no SD Debug Printf
-    PM_PRINTF=1           # 1 To enable the Debug Printf
+    PM_PRINTF=0           # 1 To enable the Debug Printf
     DISP32=0
     
     # Test Code activation
     TEST_PSRAM=0
     TEST_SDCARD=0
+    TEST_DFS=0    
     TEST_OTHER=0            # Other various test added temporarily
  
     )
@@ -265,22 +318,24 @@ if (PROJECT_TYPE STREQUAL "TEST")
 endif()  #(PROJECT_TYPE STREQUAL "TEST")
 
 pico_set_program_name(picomem "picomem")
-pico_set_program_version(picomem "0.1")
+pico_set_program_version(picomem "0.5")
 
 # "Compile" the PIO Code    
-pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/psram_spi2.pio)      # Old PSRAM code (Without DMA)
-pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/isa_iomem.pio)
-pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/isa_iomem_v2.pio)    # PicoMEM With Multiplexer V2 
-pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/pm_test.pio)
+pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/psram_spi2.pio)          # Old PSRAM code (Without DMA)
+pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/isa_iomem_m1.pio)
+pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/isa_iomem_m2.pio)        # PicoMEM With Multiplexer V2 
+pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/isa_iomem_m2_v15.pio)    # PicoMEM 1.5 With Multiplexer V2 
+#pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/pm_test.pio)
 
 # BUILD Library list
 
-# Add the standard library to the build
 target_link_libraries( picomem
 
 #    pico_cyw43_arch_none    
     pico_stdlib
     pico_multicore
+    pico_util
+#    hardware_rtc
     hardware_pio
     hardware_pll
     hardware_i2c
@@ -292,6 +347,7 @@ target_link_libraries( picomem
 
     # ** PicoMEM libs
     pmbios
+    pm_libs
     isa_devices
     qwiic
 
@@ -299,6 +355,12 @@ target_link_libraries( picomem
     pm_audio_i2s
     audio_devices
     opl  
+
+# etherdfs server
+    pm_etherdfs
+
+#PicoMEM 1.5 libs
+    picoOled
 ) 
  
 # Add other libraries based on the needs

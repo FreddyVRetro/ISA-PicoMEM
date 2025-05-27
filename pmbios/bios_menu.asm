@@ -17,20 +17,20 @@ Profile_2 DB  4,7,23,48,63,112,113,0
 
 I_R_BK  EQU 0
 I_G_BK  EQU 1
-I_G_B   EQU 2  ;Grey on Blue
-I_BL_LB EQU 3  ;Blue on Light Blue
-I_W_LB  EQU 4  ;White on Light Blue 
-I_BK_G  EQU 5  ;Black on Grey
-I_BL_G  EQU 6  ;Blue on Grey  Not working on most of the Mono screens
-I_R_G   EQU 7  ;Red on Grey
+I_G_B   EQU 2   ;Grey on Blue
+I_BL_LB EQU 3   ;Blue on Light Blue
+I_W_LB  EQU 4   ;White on Light Blue 
+I_BK_G  EQU 5   ;Black on Grey
+I_BL_G  EQU 6   ;Blue on Grey  Not working on most of the Mono screens
+I_R_G   EQU 7   ;Red on Grey
 
-R_BK  EQU 4    ; Red on Black  (not used in menu)
-G_BK  EQU 7    ; Grey on Black (not used in menu)
-G_B   EQU 23   ;Grey on Blue
-BL_LB EQU 48   ;Blue on Light Blue
-W_LB  EQU 63   ;White on Light Blue 
-BK_G  EQU 0x70 ;Black on Grey
-BL_G  EQU 0x71 ;Blue on Grey    Not working on most of the Mono screens
+R_BK  EQU 4     ; Red on Black  (not used in menu)
+G_BK  EQU 7     ; Grey on Black (not used in menu)
+G_B   EQU 23    ;Grey on Blue
+BL_LB EQU 48    ;Blue on Light Blue
+W_LB  EQU 63    ;White on Light Blue 
+BK_G  EQU 0x70  ;Black on Grey
+BL_G  EQU 0x71  ;Blue on Grey    Not working on most of the Mono screens
 ;BL_G  EQU 0x70 ;Blue on Grey :  Fix to Black on grey for mono screens
 R_G   EQU 0x74  ;Red on Grey
 
@@ -43,7 +43,7 @@ BIOS_MainScreen_TopBott DB 0,0,BL_LB,0,80,' '
   DB 0,23,BL_LB,0,80*2,' '
   DB 0xFF,0xFF
 
-BIOS_TopBar DB 1,0,BL_LB,1,'V0.6',0
+BIOS_TopBar DB 1,0,BL_LB,1,'V0.8',0
             DB 30,0,BL_LB,1,'PicoMEM Setup Utility',0
 			DB 69,0,BL_LB,1,'By FreddyV',0,0xFF,0xFF
 
@@ -53,6 +53,7 @@ BIOS_Menu1   DB 11,1,G_B,1,'Memory ',0
 BIOS_Menu2   DB 21,1,G_B,1,'Disk ',0
 BIOS_Menu3   DB 29,1,G_B,1,'Audio ',0
 BIOS_Menu4   DB 38,1,G_B,1,'Other ',0
+BIOS_Menu5   DB 46,1,G_B,1,'Tools ',0
 			 DB 0xFF,0xFF
 
 BIOS_BotKey  DB 2,23,W_LB,1,'Esc',0
@@ -78,7 +79,6 @@ BIOS_SubMenu0 DB 3,4,BK_G,1,'BIOS Build: ',__DATE__,' ',__TIME__,0
               DB 22,6,BL_G,1,'- Floppy Drives:',0			  
               DB 41,6,BL_G,1,'- Hard Disks:',0
               DB 3,7,BL_G,1,'PicoMEM IRQ:',0
-;              DB 3,10,BL_G,1,'Force Reboot:',0
 
               DB 3,9,BK_G,1,'- PicoMEM Base Settings -',0
 			  
@@ -99,7 +99,6 @@ PMHDD_XY         EQU 256*6+55
 PMIRQ_XY         EQU 256*7+16
 
 FastBoot_XY      EQU 256*11+16
-
 
 ; Selection menu code and Data changed
 BIOS_SelectSub0 DW SEL_OnOff_Main
@@ -256,8 +255,10 @@ BIOS_SubMenu3 DB 2,4,BK_G,1,'Global Audio',0
               DB 3,10,BL_G,1,'Adlib:',0
               DB 3,11,BL_G,1,'CMS  :',0
               DB 3,12,BL_G,1,'Tandy:',0
+			  DB 3,13,BL_G,1,'Mindscape:',0
 
 			  DB 30,10,BK_G,1,'> Port 388h',0
+			  DB 30,13,BK_G,1,'> May conflict with XTIDE and NE2000',0
 
 
 ;			  DB 40,5,BK_G,1,'- XTIDE Default port is 300h',0
@@ -266,32 +267,36 @@ BIOS_SubMenu3 DB 2,4,BK_G,1,'Global Audio',0
 
               DB 0xFF,0xFF
 
-BIOS_SubMenu3_Nb EQU 3  ; Nb of Sub menu we can select -1
+BIOS_SubMenu3_Nb EQU 4  ; Nb of Sub menu we can select -1
 
-BIOS_Sub3_Braket DB 12,6,1,4
-				 DB 12,10,1,3
-				 DB 12,11,1,3				 
-				 DB 12,12,1,3				 
+BIOS_Sub3_Braket DB 14,6,1,4
+				 DB 14,10,1,3
+				 DB 14,11,1,3				 
+				 DB 14,12,1,3				 
+				 DB 14,13,1,3				 
 				 DB 0xFF,0xFF
 
-BIOS_Sub3_Coord  DB 11,6
-                 DB 11,10
-				 DB 11,11
-				 DB 11,12
+BIOS_Sub3_Coord  DB 13,6
+                 DB 13,10
+				 DB 13,11
+				 DB 13,12
+				 DB 13,13
 
+Enable_Output_XY  EQU 256*6+15
+Enable_Adlib_XY   EQU 256*10+15
+CMS_Port_XY       EQU 256*11+15
+TANDY_Port_XY     EQU 256*12+15
+MMB_Port_XY       EQU 256*13+15
 
-Enable_Output_XY  EQU 256*6+13
-Enable_Adlib_XY   EQU 256*10+13
-CMS_Port_XY       EQU 256*11+13
-TANDY_Port_XY     EQU 256*12+13
-CMS_Port_Sel_XY   EQU 256*10+18
-TANDY_Port_Sel_XY EQU 256*10+18
+CMS_Port_Sel_XY   EQU 256*10+20
+TANDY_Port_Sel_XY EQU 256*10+20
 
-CMS_PortList   DW 5,0,0x220,0x230,0x240,0x250
-TANDY_PortList DW 4,0,0x1E0,0x2C0,0x0C0
+CMS_PortList    DW 5,0,0x220,0x230,0x240,0x250
+TANDY_PortList  DW 4,0,0x1E0,0x2C0,0x0C0
+MMB_PortList    DW 6,0,0x300,0x220,0x2F0,0x310,0x320
 
-BIOS_SelectSub3 DW SEL_OnOff_Audio,SEL_OnOff_Audio,SEL_CMS_Port,SEL_TDY_Port
-BIOS_Sub3Data   DW PMCFG_AudioOut,PMCFG_Adlib,PMCFG_CMSPort,PMCFG_TDYPort
+BIOS_SelectSub3 DW SEL_OnOff_Audio,SEL_OnOff_Audio,SEL_CMS_Port,SEL_TDY_Port,SEL_MMB_Port
+BIOS_Sub3Data   DW PMCFG_AudioOut,PMCFG_Adlib,PMCFG_CMSPort,PMCFG_TDYPort,PMCFG_MMBPort
 
 
 ;*********************************************
@@ -304,14 +309,16 @@ BIOS_SubMenu4 DB 2,4,BK_G,1,'Wifi: ',0
 
 			  DB 2,10,BK_G,1,'Other',0
               DB 3,11,BL_G,1,'USB Host :',0
-              DB 3,12,BL_G,1,'USB Joystick :',0
+              DB 3,12,BL_G,1,'USB Joystick  :',0
+              DB 3,13,BL_G,1,'MM58167AN RTC :',0
 			  
-              DB 3,14,BL_G,1,'SD  Speed (MHz) :',0
-              DB 3,15,BL_G,1,'RAM Speed (MHz) :',0
+;              DB 3,14,BL_G,1,'SD  Speed (MHz) :',0
+;              DB 3,15,BL_G,1,'RAM Speed (MHz) :',0
 
 			  DB 40,7,BK_G,1,'- XTIDE Default port is 300h',0
 			  DB 40,12,BK_G,1,'- PC Joystick is on Port 201h',0			  
-			  DB 40,14,BK_G,1,'- SD/RAM Speed not implemented',0
+			  DB 40,13,BK_G,1,'- Port 2C0, SixPakPlus V1',0
+;			  DB 40,14,BK_G,1,'- SD/RAM Speed not implemented',0
 
               DB 0xFF,0xFF
 
@@ -340,20 +347,22 @@ NE2000_PortList DW 6,0,0x300,0x320,0x340,0x360,0x380
 SD_Speed_List  DB 3,12,24,36  ; ! In Decimal
 RAM_Speed_List DB 4,80,100,120,130
 
-BIOS_SubMenu4_Nb EQU 5  ; Nb of Sub menu we can select -1
+BIOS_SubMenu4_Nb EQU 4 ; Nb of Sub menu we can select -1
 
 BIOS_Sub4_Braket DB 11,7,1,4
                  DB 11,8,1,3
 				 DB 15,11,1,3
-				 DB 19,12,1,3				 
-				 DB 22,14,1,3
-				 DB 22,15,1,3
+				 DB 20,12,1,3				 
+				 DB 20,13,1,3
+;				 DB 22,14,1,3
+;				 DB 22,15,1,3
 				 DB 0xFF,0xFF
 
 BIOS_Sub4_Coord  DB 10,7
                  DB 10,8
                  DB 14,11
-                 DB 18,12				 
+                 DB 19,12				 
+                 DB 19,13				 
                  DB 21,14
 				 DB 21,15
 
@@ -363,19 +372,42 @@ ne2k_Port_Sel_XY  EQU 256*4+30
 ne2k_IRQ_XY       EQU 256*8+13
 Wifi_IRQ_Sel_XY   EQU 256*4+30
 EnableUSB_XY      EQU 256*11+16
-EnableJoy_XY      EQU 256*12+20 
+EnableJoy_XY      EQU 256*12+21 
+EnableRTC_XY      EQU 256*13+21
+
 SD_Speed_XY       EQU 256*14+23
 SD_Speed_rect_XY  EQU 256*12+30
 RAM_Speed_XY      EQU 256*15+23
 RAM_Speed_rect_XY EQU 256*12+30
 
-BIOS_SelectSub4 DW SEL_NE2000_Port,SEL_Wifi_IRQ,SEL_OnOff_Sub4,SEL_OnOff_Sub4,SEL_SD_Speed,SEL_RAM_Speed ; SEL_RAM_Speed
-BIOS_Sub4Data   DW 0,0,PMCFG_EnableUSB,PMCFG_EnableJOY,PMCFG_SD_Speed,PMCFG_RAM_Speed
+BIOS_SelectSub4 DW SEL_NE2000_Port,SEL_Wifi_IRQ,SEL_OnOff_Sub4,SEL_OnOff_Sub4,SEL_OnOff_Sub4 ;,SEL_SD_Speed,SEL_RAM_Speed
+BIOS_Sub4Data   DW 0,0,PMCFG_EnableUSB,PMCFG_EnableJOY,PMCFG_RTC ;PMCFG_SD_Speed,PMCFG_RAM_Speed
 
 
-Menu_Max EQU 4
-MenuTopList    DW BIOS_Menu0,BIOS_Menu1,BIOS_Menu2,BIOS_Menu3,BIOS_Menu4
-SubMenuDisplay DW Display_Sub0,Display_Sub1,Display_Sub2,Display_Sub3,Display_Sub4
+;*********************************************
+;**** Sub Menu 5 Definitions (Other)      ****
+;*********************************************
+
+BIOS_SubMenu5 DB 3,4,BK_G,1,'Show Infos',0
+;              DB 3,5,BK_G,1,'Other',0
+              DB 0xFF,0xFF
+
+BIOS_Sub5_Coord  DB 2,4
+                 DB 2,5
+
+
+BIOS_SubMenu5_Nb EQU 0  ; Nb of Sub menu we can select -1
+BIOS_SelectSub5  DW SEL_FROM_PICO,SEL_FROM_PICO
+BIOS_Sub5Data    DW 0,0
+
+
+;*******************************
+;**** Menu Definitions      ****
+;*******************************
+
+Menu_Max       EQU 5
+MenuTopList    DW BIOS_Menu0,BIOS_Menu1,BIOS_Menu2,BIOS_Menu3,BIOS_Menu4,BIOS_Menu5
+SubMenuDisplay DW Display_Sub0,Display_Sub1,Display_Sub2,Display_Sub3,Display_Sub4,Display_Sub5
 
 D_Any   EQU 0
 S_YesNo Equ 1
@@ -525,7 +557,26 @@ Wait_Key_Menu:
 	MOV BL,7
 	CALL BIOS_ReadKey
 
+;D : Test/Debug
+M_TestKeyD:
+	CMP AL,'D'
+	JE M_DPressed
+	CMP AL,'d'
+	JNE M_TestKeyRight
+M_DPressed:
+
+	CALL PM_WaitCMDEnd		  ; Check if previous command ended
+
+    MOV AH,CMD_PCINFO
+	CALL PM_SendCMD           ; Do CMD_Int13h Command	(Don't wait previous command end)
+	CALL BIOS_DoPCCMD         ; The PicoMEM Will send commands to the BIOS (Copy data Block, return)
+    PUSH CS
+	POP DS
+
+	JMP Wait_Key_Menu
+
 ; Keys for the navigation	
+M_TestKeyRight:
 	CMP AL,KeyRight
 	JNE M_TestKeyLeft
 	JMP Do_NextMenu
@@ -564,7 +615,6 @@ M_TestKeyMinus:
 	JNE M_TestKey3
 	JMP M_DoSubMenuAction  
 
-	
 M_DoSubMenuAction:
     MOV SI,Word [SubMenu_Select]
 	XOR BH,BH
@@ -1028,6 +1078,11 @@ Disp_Sub3Ports:
 	MOV AX,CS:[PMCFG_TDYPort]
     call DISPLAY_12bit_Hex_xy
 
+	MOV DX,MMB_Port_XY
+	MOV AX,CS:[PMCFG_MMBPort]
+    call DISPLAY_12bit_Hex_xy
+	
+
 	RET ; Disp_Sub3Ports End
 
 
@@ -1041,7 +1096,7 @@ Display_Sub4:
     CALL Draw_Brackets
 
 	CALL Disp_Sub4OnOff
-	CALL Disp_Sub4Speed
+;	CALL Disp_Sub4Speed
 	CALL Disp_Sub4Wifi
 	
 ; Initialize the Sub Menu variables
@@ -1051,6 +1106,26 @@ Display_Sub4:
 	MOV Word [SubMenu_Select],BIOS_SelectSub4
 	MOV Word [SubMenu_Data],BIOS_Sub4Data	
 	RET	;Display_Sub4 End
+	
+Display_Sub5:
+    MOV SI,BIOS_SubMenu5
+    CALL BIOS_PrintScreenBloc
+	
+;	MOV BL,BK_G ; Black on Grey
+;  MOV SI,BIOS_Sub4_Braket
+;  CALL Draw_Brackets
+
+;	CALL Disp_Sub4OnOff
+;	CALL Disp_Sub4Speed
+;	CALL Disp_Sub4Wifi
+
+; Initialize the Sub Menu variables
+	MOV Byte [SubMenu_Current],0
+	MOV Byte [SubMenu_Nb],BIOS_SubMenu5_Nb	
+	MOV Word [SubMenu_Coord],BIOS_Sub5_Coord
+	MOV Word [SubMenu_Select],BIOS_SelectSub5
+	MOV Word [SubMenu_Data],BIOS_Sub5Data
+	RET	;Display_Sub4 End
 
 Disp_Sub4OnOff:
 	MOV DX,EnableUSB_XY
@@ -1059,6 +1134,10 @@ Disp_Sub4OnOff:
 
 	MOV DX,EnableJoy_XY
 	MOV AL,CS:[PMCFG_EnableJOY]
+	CALL DISPLAY_OnOff_xy
+
+	MOV DX,EnableRTC_XY
+	MOV AL,CS:[PMCFG_RTC]
 	CALL DISPLAY_OnOff_xy
 
 	RET ; Disp_Sub4OnOff End
@@ -1568,7 +1647,7 @@ SEL_CMS_Port_Cancelled:
 	CALL Display_SubMenuCursor
 	RET
 
-; Select the CMS port number from a word list
+; Select the Tandy port number from a word list
 SEL_TDY_Port:
 
 	MOV DX,TANDY_Port_Sel_XY
@@ -1584,6 +1663,22 @@ SEL_Tandy_Port_Cancelled:
 	CALL Display_SubMenuCursor
 	RET
 
+; Select the Tandy port number from a word list
+SEL_MMB_Port:
+
+	MOV DX,TANDY_Port_Sel_XY
+	MOV SI,MMB_PortList
+	MOV AL,5
+	CALL Do_Select_12Bit_List
+	JNC SEL_MMB_Port_Cancelled
+
+	MOV CS:[PMCFG_MMBPort],AX
+	CALL Disp_Sub3Ports
+
+SEL_MMB_Port_Cancelled:
+	CALL Display_SubMenuCursor
+	RET	
+	
 ; ** Selection : SD Speed
 ; Select from a Byte List
 SEL_SD_Speed:
@@ -1620,6 +1715,15 @@ SEL_RAM_Speed_Cancelled:
 	CALL Display_SubMenuCursor
 	RET	; SEL_RAM_Speed End
 
+SEL_FROM_PICO:
+	CALL PM_WaitCMDEnd		  ; Check if previous command ended
+
+    MOV BH,CS:[Menu_Current]
+    MOV BL,CS:[SubMenu_Current]
+    MOV AH,CMD_BIOS_MENU
+	CALL PM_SendCMD           ; Do CMD_Int13h Command	(Don't wait previous command end)
+	CALL BIOS_DoPCCMD         ; The PicoMEM Will send commands to the BIOS (Copy data Block, return)
+	RET
 
 STR_DiskSize   DB 32,13,BL_G,1,'New Disk Size (MB):',0
 STR_DiskName   DB 32,14,BL_G,1,'Disk Name:',0

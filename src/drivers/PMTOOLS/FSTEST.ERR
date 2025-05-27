@@ -1,0 +1,9 @@
+FSTEST.C(32): Warning! W202: Symbol 'buf' has been defined, but not referenced
+FSTEST.C(37): Warning! W202: Symbol 'ddate' has been defined, but not referenced
+FSTEST.C(38): Warning! W202: Symbol 'dtime' has been defined, but not referenced
+FSTEST.C(158): Warning! W131: No prototype found for function 'disksize'
+FSTEST.C(132): Warning! W202: Symbol 'handle' has been defined, but not referenced
+FSTEST.C(184): Warning! W202: Symbol 'buf' has been defined, but not referenced
+FSTEST.C(186): Warning! W202: Symbol 'test_dir' has been defined, but not referenced
+FSTEST.C(198): Warning! W304: Return type 'int' assumed for function 'main'
+FSTEST.C(211): Warning! W107: Missing return value for function 'main'

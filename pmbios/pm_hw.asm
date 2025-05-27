@@ -42,15 +42,18 @@
 %assign CMD_TDY_Init      0x0A   ;// Initialize the Tandy RAM emulation
 %define CMD_Test_RAM      0x0B   ;// Write the sent value to the BIOS RAM Test Address, Return the value that was present
 
-;// 2x Debug/Test CMD
-%assign CMD_SetMEM        0x22   ;// Set the First 64Kb of RAM to the SetRAMVal
-%assign CMD_TestMEM       0x23 
-%assign CMD_StartUSBUART  0x28   ; Avoid using it in the BIOS
+
 
 %assign CMD_SendIRQ       0x30   ;// Generate one IRQ
 %assign CMD_IRQAck        0x31   ;// Acknowledge IRQ
 
 %assign CMD_LockPort      0x37
+
+;// 4x Debug/Test CMD
+%assign CMD_SetMEM        0x42   ;// Set the First 64Kb of RAM to the SetRAMVal
+%assign CMD_TestMEM       0x43   ;// Compare the First 64Kb of RAM
+%assign CMD_PCINFO        0x44   ;// Get PC informations from PCCMD (And test PCCMD)
+%assign CMD_BIOS_MENU	  0x45   ;// A BIOS Menu/submenu is selected
 
 %assign CMD_USB_Enable    0x50
 %assign CMD_USB_Disable   0x51
@@ -72,14 +75,24 @@
 %assign CMD_FDD_Mount     0x85  ;// Map a disk image
 %assign CMD_HDD_NewImage  0x86  ;// Create a new HDD Image
 %assign CMD_Int13h        0x88  ;// Perform the Int13h command, registers need to be copied to the BIOS RAM Before
+%assign CMD_EthDFS_Send   0x89  ;// Send a packet to EthDFS server emulator and wait answer
 
-%assign STAT_READY         00h;
-%assign STAT_CMDINPROGRESS 01h;
-%assign STAT_CMDERROR      02h;
-%assign STAT_CMDNOTFOUND   03h;
-%assign STAT_INIT          04h;
-%assign STAT_WAITCOM       05h; 
-%assign STAT_LAST          05h;
+%assign CMD_Int21h        0x8A  ;//
+%assign CMD_Int21End      0x8B  ;//
+%assign CMD_Int2Fh        0x8C  ;//
+%assign CMD_Int2FEnd      0x8D  ;//
+
+%assign STAT_READY         00h  ;
+%assign STAT_CMDINPROGRESS 01h  ;
+%assign STAT_CMDERROR      02h  ;
+%assign STAT_CMDNOTFOUND   03h  ;// Error : command not found
+%assign STAT_INIT          04h  ;
+%assign STAT_WAITCOM       05h  ;// Wait for the USB Serial to be connected
+%define STAT_DATA_READ     10h
+%define STAT_DATA_WRITE    11h
+%define STAT_DATA_READ_W   12h
+%define STAT_DATA_WRITE_W  13h
+%assign STAT_LAST          05h  ;// Last possible command number
 
 
 ERR_WRITE    	DB 'Write to file failed'
@@ -361,7 +374,6 @@ PM_Reset:
 	printstr_w STR_RESET	; Display Reset Error
 .Reset_Ok:
 	MOV byte CS:[PCCR_PCSTATE],PCC_PCS_NOTREADY
-	
 ;	printstr_w STR_ResetEnd
 	RET  
 

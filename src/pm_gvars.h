@@ -16,9 +16,9 @@ If not, see <https://www.gnu.org/licenses/>.
 // Used by bios_disk.cpp, picomem.cpp
 #pragma once
 
-// Exported functions //
-extern bool PM_EnablePSRAM();
-extern bool PM_EnableSD();
+// Exported functions // (For CPP and C)
+extern "C" bool PM_EnablePSRAM();
+extern "C" bool PM_EnableSD();
 
 // Exported variables //
 extern volatile uint8_t PM_Command;    // Write at port 0 > Command to send to the Pico (Can be changed only if status is 0 Success)

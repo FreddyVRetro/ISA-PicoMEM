@@ -94,7 +94,7 @@ void hid_app_task(void)
 }
 
 //--------------------------------------------------------------------+
-// TinyUSB Callbacks
+// TinyUSB "Generic" Callbacks
 //--------------------------------------------------------------------+
 
 // Invoked when device with hid interface is mounted
@@ -155,7 +155,6 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_re
   USB_GetVendorName(VendorName,vid,pid);
 
 PM_INFO (" - V:%s M:%d K:%d J:%d R:%d",VendorName,has_mouse,has_keyboard,has_joystick,other_reports);
-
 /*    if (has_keyboard && has_mouse && other_reports)
         usb_set_status(dev_addr,"%sUSB keyboard, mouse, and %d other reports",VendorName, other_reports);
     else if (has_keyboard && other_reports)
@@ -179,13 +178,10 @@ PM_INFO (" - V:%s M:%d K:%d J:%d R:%d",VendorName,has_mouse,has_keyboard,has_joy
   usb_print_status();
 
   // request to receive report
-  // tuh_hid_report_received_cb() will be invoked when report is available
-//  printf("** tuh_hid_receive_report\n");
   if ( !tuh_hid_receive_report(dev_addr, instance) )
   {
     PM_INFO("Error: cannot request to receive report\r\n");
   }
-//  printf("** tuh_hid_mount_cb End:\n");  
 }
 
 // Invoked when device with hid interface is un-mounted
@@ -205,18 +201,18 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
     case HID_ITF_PROTOCOL_KEYBOARD:
       TU_LOG2("HID receive boot keyboard report\r\n");
       process_kbd_report( (hid_keyboard_report_t const*) report );
-    break;
+      break;
 
     case HID_ITF_PROTOCOL_MOUSE:
       TU_LOG2("HID receive boot mouse report\r\n");
       process_mouse_report( (hid_mouse_report_t const*) report );
-    break;
+      break;
 
     default:
       // Generic report requires matching ReportID and contents with previous parsed report info
-      process_joy_report(dev_addr, instance, report, len);      
+      process_joy_report(dev_addr, instance, report, len);
  //     process_generic_report(dev_addr, instance, report, len);
-    break;
+      break;
   }
 
   // continue to request to receive report
@@ -256,6 +252,8 @@ static void process_mouse_report(hid_mouse_report_t const * report)
   // Declare a mouse event only if the result value change to reduce the number of IRQ going to the PC
  
   pm_mouse.buttons=report->buttons;
+//  pm_mouse.x+=report->x;
+//  pm_mouse.y+=report->y;
   pm_mouse.x=report->x;
   pm_mouse.y=report->y;
   pm_mouse.event=true;

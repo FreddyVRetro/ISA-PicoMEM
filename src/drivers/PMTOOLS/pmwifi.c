@@ -11,7 +11,7 @@
 bool SaveCFG=false;
 
 void banner(void) {
-    printf("PicoMEM Wifi Rev 0.1 by FreddyV, 2024\n\n");
+    printf("PicoMEM Wifi Rev 0.1 by FreddyV, 2025\n\n");
 }
 
 void usage()

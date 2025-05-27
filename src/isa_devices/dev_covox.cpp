@@ -27,7 +27,7 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "dev_picomem_io.h"   // SetPortType / GetPortType
 
 
-bool dev_cvx_active=false;    // True if configured
+bool dev_cvx_active=false;             // True if configured
 volatile bool dev_cvx_playing=false;   // True if playing
 volatile uint8_t dev_cvx_delay=0;      // counter for the Nb of second since last I/O
 uint16_t dev_cvx_baseport=0x378;       // Port to LPT1

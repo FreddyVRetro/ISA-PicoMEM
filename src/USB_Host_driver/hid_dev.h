@@ -13,7 +13,6 @@ typedef struct pm_mouse_t {
      uint8_t buttons;
      } pm_mouse_t;
 
-
 typedef struct {
     uint8_t joy1_x;
     uint8_t joy1_y;

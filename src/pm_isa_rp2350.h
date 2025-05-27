@@ -54,7 +54,6 @@ asm volatile goto (
 
      "lsl %[DEV_T],%[DEV_T],#12       \n\t"  // ISA_CTRL=ISA_CTRL<<12   CAAxxxxx
      "lsr %[DEV_T],%[DEV_T],#28       \n\t"  // ISA_CTRL=ISA_CTRL>>28   -> ISA_CTRL is now correct
-//   "ubfx %[CTRL],%[CTRL],#16,#4    \n\t"          // Get 4bit from the bit 16
 
      "cmp %[DEV_T],#1                \n\t"  // Is it a MEM Read ?
      "beq  ISA_Do_MEMR               \n\t"  // Jump must be <200 bytes
@@ -197,7 +196,7 @@ ISA_Do_IO:  // Goto, from the assembly code
           break;
 #endif
 #endif
-#if DEV_POST_Enable==1
+#if DEV_POST_Enable
 	      case DEV_POST :
            dev_post_iow(ISA_IO_Addr,ISAIOW_Data);
           break;
@@ -240,7 +239,7 @@ ISA_Do_IO:  // Goto, from the assembly code
 #if PM_PICO_W
 #if USE_NE2000             
         case DEV_NE2000:        
-           ISA_Data = dev_ne2000_ior((ISA_IO_Addr-PM_Config->ne2000Port) & 0x1F);
+           dev_ne2000_ior(ISA_IO_Addr,&ISA_Data);
            pm_do_ior();
           break;          
 #endif          

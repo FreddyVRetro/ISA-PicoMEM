@@ -26,6 +26,8 @@ hid_dev.h : PicoMEM hid devices structures
 
 https://github.com/OpenStickCommunity/GP2040-CE ?
 https://github.com/wiredopposite/OGX-Mini/
+https://github.com/wiredopposite/OGX-Mini/blob/master/Firmware/RP2040/src/USBHost/HardwareIDs.h#L72
+
 https://github.com/necroware/gameport-adapter
 
 USB Ethernet: (Device mode :( )

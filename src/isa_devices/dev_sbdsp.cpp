@@ -25,12 +25,19 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "../pm_gvars.h"
 #include "../pm_defines.h"
 #include "dev_picomem_io.h"   // SetPortType / GetPortType
-
+#include "dev_audiomix.h"
+#include "opl.h"
 
 extern bool sbdsp_write(uint8_t address, uint8_t value);
 extern uint8_t sbdsp_read(uint8_t address);
-extern void sbdsp_init();
+extern void sbdsp_init(uint8_t sbirq);
 extern void sbdsp_process();
+extern void sbdsp_ml_command();
+
+// Adlib part of the SB definitions
+extern "C" void OPL_Pico_PortWrite(opl_port_t, unsigned int);
+extern "C" unsigned int OPL_Pico_PortRead(opl_port_t);
+extern volatile uint8_t dev_adlib_delay;      // counter for the Nb of second since last I/O
 
 bool dev_sbdsp_active=false;    // True if configured
 volatile bool dev_sbdsp_playing=false;   // True if playing
@@ -38,7 +45,7 @@ volatile uint8_t dev_sbdsp_delay=0;      // counter for the Nb of second since l
 uint64_t dev_sbdsp_lastaccess;  // Last access time (For Audo mute)
 uint16_t dev_sbdsp_baseport;
 
-uint8_t dev_sbdsp_install(uint16_t baseport)
+uint8_t dev_sbdsp_install(uint16_t baseport,uint8_t sbirq)
 {
  if (!dev_sbdsp_active)   // Don't re enable if active
   {
@@ -48,6 +55,11 @@ uint8_t dev_sbdsp_install(uint16_t baseport)
       PM_ERROR("Port already used (%d)\n",GetPortType(baseport));
       return 1;
      }
+   if (sbirq==BV_IRQ)
+     {
+      PM_ERROR("SBIRQ = PicoMEM IRQ (%d)\n",sbirq);
+      return 1;
+     }
 
 //   OPL_Pico_Init(0x388);
 
@@ -55,6 +67,7 @@ uint8_t dev_sbdsp_install(uint16_t baseport)
 
    dev_sbdsp_active=true;
    dev_sbdsp_playing=false;   // It is enabled at the first sbdsp IOW
+   dev_audiomix.dev_active = dev_audiomix.dev_active & ~AD_SBDSP;
   }
   else  // Check if the port need to be changed
     if (baseport!=dev_sbdsp_baseport)
@@ -64,7 +77,7 @@ uint8_t dev_sbdsp_install(uint16_t baseport)
       SetPortType(baseport,DEV_SBDSP,2);
      } 
   dev_sbdsp_baseport=baseport;
-  sbdsp_init();
+  sbdsp_init(sbirq);
   return 0;
 }
 
@@ -74,6 +87,7 @@ void dev_sbdsp_remove()
   {
    dev_sbdsp_active=false;
    dev_sbdsp_playing=false;
+   dev_audiomix.dev_active = dev_audiomix.dev_active & ~AD_SBDSP;
    PM_INFO("Remove SB (%x)\n",dev_sbdsp_baseport);
   
 //   DSP Stop ?
@@ -90,22 +104,55 @@ bool dev_sbdsp_installed()
 // Started in the Main Command Wait Loop
 void dev_sbdsp_update()
 {
+  sbdsp_ml_command();  
 }
 
 bool dev_sbdsp_ior(uint32_t Port,uint8_t *Data )
 {
-  sbdsp_process();
- *Data=sbdsp_read((uint8_t) Port&0x0F);        
-  sbdsp_process();
-  //   PM_INFO("SBR %x>%x",Port,Data);
-  return true;
+
+  if ((Port&0x0F)==8) // Adlib part of SB Status
+   {
+    *Data = (uint8_t) OPL_Pico_PortRead(OPL_REGISTER_PORT); 
+  //  printf("OPLR %x-",*Data);
+    return true;
+   } 
+   else
+   {
+    sbdsp_process();
+    *Data=sbdsp_read((uint8_t) Port&0x0F);        
+     sbdsp_process();
+ //    PM_INFO("SBR %x>%x",Port,Data);
+     return true;
+   }
 }
 
 void dev_sbdsp_iow(uint32_t Port,uint8_t Data)
 {
   //   PM_INFO("SBW %x>%x",Port,Data);
   sbdsp_process();
+  dev_sbdsp_playing=true;  // enable mixind, start the timer
+  dev_audiomix.dev_active = dev_audiomix.dev_active | AD_SBDSP;
+  dev_sbdsp_delay=0;
+  
   if (sbdsp_write((uint8_t) Port&0x0F, Data))
      sbdsp_process();  // Doesn't process if nothing written
+    else  // If not SB, May be adlib
+     switch (Port&0x0F)
+     {
+     case 8:
+    //   PM_INFO("OPLR 0,%x-",Data);
+       OPL_Pico_PortWrite(OPL_REGISTER_PORT, (unsigned int) Data);
+       dev_audiomix.dev_active = dev_audiomix.dev_active | AD_ADLIB;   // enable the mixing       
+       dev_adlib_delay=0;     
+       return;
+       break;
+     case 9:
+     //  PM_INFO("OPLR 1,%x-",Data);
+       OPL_Pico_PortWrite(OPL_DATA_PORT, (unsigned int) Data);
+       dev_audiomix.dev_active = dev_audiomix.dev_active | AD_ADLIB;   // enable the mixing       
+       dev_adlib_delay=0;  
+       return;
+       break;     
+     }
 }
 #endif

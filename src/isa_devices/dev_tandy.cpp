@@ -26,11 +26,11 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "../pm_defines.h"
 #include "dev_picomem_io.h"   // SetPortType / GetPortType
 
+#include "dev_audiomix.h"
 #include "square/square.h"
 tandysound_t *tandysound;   // Tandy Emulation object
 
 bool dev_tdy_active=false;             // True if configured
-volatile bool dev_tdy_playing=false;   // True if playing
 volatile uint8_t dev_tdy_delay=0;      // counter for the Nb of second since last I/O
 uint16_t dev_tdy_baseport;
 
@@ -49,7 +49,7 @@ uint8_t dev_tdy_install(uint16_t baseport)
 
    SetPortType(baseport,DEV_TANDY,1);
    dev_tdy_active=true;
-   dev_tdy_playing=false;
+   dev_audiomix.dev_active = dev_audiomix.dev_active & ~AD_TDY;
   }
   else  // Check if the port need to be changed
     if (baseport!=dev_tdy_baseport)
@@ -67,7 +67,7 @@ void dev_tdy_remove()
  if (dev_tdy_active)   // Don't stop if not active
   {  
    dev_tdy_active=false;
-   dev_tdy_playing=false;   
+   dev_audiomix.dev_active = dev_audiomix.dev_active & ~AD_TDY;   
    PM_INFO("Remove TDY (%d)\n",dev_tdy_baseport);
 
    delete tandysound;
@@ -97,7 +97,7 @@ void dev_tdy_iow(uint32_t CTRL_AL8,uint8_t Data)
   if ((CTRL_AL8&0x07)==0) 
    {  
     tandysound->write_register(0, Data);    
-    dev_tdy_playing=true;  // Enable mixind
+    dev_audiomix.dev_active = dev_audiomix.dev_active | AD_TDY; // Enable mixind
     dev_tdy_delay=0;       // Reset the last access delay
 //    PM_INFO("TDYW %x ",(uint8_t) Data);    
    }

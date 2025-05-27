@@ -1,0 +1,55 @@
+History file of ethersrv-linux
+
+20180203:
+ - fixed file truncation when writing to offset 0 (patch by Peter De Wachter),
+ - added the '-f' option (patch by Philip Linde),
+ - dummy support for lock/unlock operations: always answers with success,
+ - debug output prints FCB filenames without trailing garbage.
+
+20170415:
+ - added support for EtherDFS frames with embedded length information.
+
+20170406:
+ - added support for EtherDFS frames with embedded cksum.
+
+20170401:
+ - FindFirst listings are cached so FindNext always iterates correctly even
+   if the application deletes files at the same time,
+ - if trying to open file in directory that doesn't exist, returns 'path not
+   found' (err 3) instead of 'file not found' (err 2),
+ - purging old entries from cache if not used for more than one hour,
+ - ethersrv-linux turns itself into a daemon at start time,
+ - returns 'access denied' (err 5) when trying to delete a read-only file.
+
+20170304:
+ - ability to expose multiple drives (up to 24, i.e. from C: to Z:),
+ - return '.' and '..' in file searches (expected by MS-DOS 'tree'),
+ - support for wildcard file removals (as in 'del *.txt'),
+ - fixed DISKSPACE calls so MS-DOS is able to understand disk space correctly,
+ - forcing all file and directory names to lower case to avoid troubles when
+   running over a case-sensitive file system,
+ - added support for 'seek from end' (SKFMEND),
+ - RENAME aborts if destination already exists (was overwriting it),
+ - a failing FFirst call returns err 12h (no more files) instead of 02h (file
+   not found) - this mimics MS-DOS 5/6/7 and is required by LapLink 5,
+ - ethersrv uses a lock file to avoid being launched twice.
+
+20170211:
+ - added support for 'enhanced open' (SPOPNFIL) - used by COPY in MS-DOS,
+ - changed FFirst/FNext so FNext doesn't need to know the directory each time.
+
+20170207:
+ - implemented a lost-frames-recovery algorithm to avoid corrupting data on
+   congested networks (thanks to Ulrich Hansen for extensive testing),
+ - fixed attributes matching on FindFirst/FindNext,
+ - fixed writing to files at arbitrary offset (different than zero and end).
+
+20170205:
+ - added support for 'CLOSE FILE', 'RENAME FILE' and 'SET ATTRIBS' actions,
+ - fixed a file descriptor leak while fetching file attributes.
+
+20170202:
+ - fixed a crash due to realpath() being called on an undersized char array.
+
+20170131:
+ - first public release.

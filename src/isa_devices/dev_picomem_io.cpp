@@ -20,6 +20,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 #include <stdio.h>
 #include "pico/stdlib.h"
+#include "../pm_debug.h"
 #include "../pm_gvars.h"
 #include "../pm_defines.h"
 #include "pico/multicore.h"
@@ -66,7 +67,7 @@ void dev_pmio_do_rw(uint8_t * buffer,uint16_t size,bool isread, bool do16bit)
 
 // Buffer pointer and size
 
-printf("Transfer %d : ",size);
+PM_INFO("Transfer %d : ",size);
 
 
 // Transfer type
@@ -92,7 +93,7 @@ if (do16bit)
      if (PM_CmdReset) continue;
     } while ((PM_TR_CNT_L!=0)||(PM_TR_CNT_H!=0));
 
-printf("Transfer End\n");
+PM_INFO("Transfer End\n");
 
 }
 
@@ -111,7 +112,8 @@ bool dev_pmio_ior(uint32_t CTRL_AL8,uint8_t *Data )
 //                 printf("r%x",ISA_Data);
                  return true;
     case PORT_TEST:            // Test port, Return Test value +1            
-                 *Data=PM_TestRead++;                 
+                 *Data=PM_TestRead++; 
+                // printf("t");
                  return true;
     case PORT_TR_L:
                  if ((PM_TR_CNT_L!=0)&&(PM_RE_ISREAD)) // counter of 
@@ -119,7 +121,7 @@ bool dev_pmio_ior(uint32_t CTRL_AL8,uint8_t *Data )
                     PM_TR_CNT_L--;
                     *Data=*PM_TR_PTR;
                     PM_TR_PTR++;
-                    printf("CR %d, %X",PM_TR_CNT_L,*Data);
+                    //printf("CR %d, %X",PM_TR_CNT_L,*Data);
                     return true;
                    }
                  break;
@@ -171,9 +173,17 @@ void dev_pmio_iow(uint32_t CTRL_AL8,uint8_t Data)
                     PM_TR_CNT_L--;
                     *PM_TR_PTR=Data;
                     PM_TR_PTR++;
-                    printf("CW %d, %X",PM_TR_CNT_L,Data);
+                    PM_INFO("CW %d, %X",PM_TR_CNT_L,Data);
                    }
-                 break;                 
+                 break;  
+        case 5: if (Data==8) DBG_ON_INT_SB();
+                if (Data==3) DBG_ON_INT_DMA();
+            //    PM_INFO("b%x,%d",Data,BV_IRQ_Cnt);       // Debug display for IRQ Begin/end
+                break;
+        case 6: //PM_INFO("e%x",Data);
+                if (Data==8) DBG_OFF_INT_SB();
+                if (Data==3) DBG_OFF_INT_DMA();
+                break;
       default: break;
     } // PicoMEM Register Switch
 }

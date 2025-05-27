@@ -36,8 +36,11 @@ uint32_t EMS_PCBaseAddress;   // 0xD0000 or 0XE0000 (For QSPI PSRAM EMS)
 
 extern uint8_t  EMS_Bank[4];
 extern uint32_t EMS_Base[4];
-
 volatile uint16_t PM_BIOSADDRESS=0;
+
+#if BOARD_PM15
+
+#endif
 
 // Debug
 void display_memmap()
