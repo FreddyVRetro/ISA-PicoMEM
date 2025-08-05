@@ -154,7 +154,7 @@ Thanks to a modified EtherDFS driver and an embedded EtherDFS server, the MicroS
 Another particularity is that it use Memory to perform the Data transfer, this allow for the maximum possible transfer speed, even on 8088 CPU. <br />
 Anyway, single sector read is slower than multiple sector read as the PicoMEM need to read the sector from the SD, then send the data to the PC Memory. <br />
 With multiple sector Read, the Pico read the next sector while the data is copied to the PC Memory. <br />
-**NEW: Fast Seek added: ** It is under test in the October Firmware.
+**NEW: Fast Seek added:** It is under test in the October Firmware.
 
 It is highly recommended to use reasonable disk image size, below 500Mb. <br /> 
 100 or 200Mb are ideal size, as it will be recognized and usable by DOS 6 and DOS 3.31 <br />
