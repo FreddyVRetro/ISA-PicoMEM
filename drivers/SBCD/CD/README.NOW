@@ -1,0 +1,82 @@
+
+                 CD-ROM INSTALLATION LATEST INFORMATION
+                 ======================================
+
+This file contains information not available  during the  printing  of
+the manual.  Please read them before you proceed with any installation 
+procedure.
+
+
+This file contains the following sections:
+
+   1. Lock/Unlock Utility
+   2. Errata
+
+
+1. LOCK/UNLOCK UTILITY
+
+   The new Creative CD-ROM drive has a software lock/unlock feature.
+   The lock function allows you to disable the  "EJECT" button while
+   the unlock function enables it.  By locking the CD-ROM  drive, you
+   can prevent accidental ejection of the CD.
+
+   The LOCKCD and UNLOCKCD utilities are provided for this purpose.
+
+        LOCKCD.EXE     - use for locking the CD-ROM drive
+        UNLOCKCD.EXE   - use for unlocking the CD-ROM drive
+
+
+   i)   LOCKING THE CD-ROM DRIVE
+
+        Usage: LOCKCD d1: [d2: d3: ... ]
+
+        Type LOCKCD  followed by the name of the  CD-ROM  drive to  be
+        locked.  More than one drive can be locked at the same time by
+        typing  LOCKCD,  followed  by the  drive  names, with  a space
+        separating each drive name.
+
+        Example: To lock drives D, E and F, type LOCKCD D: E: F:
+
+        Type LOCKCD /? at the DOS prompt for a brief on-line usage
+        description.
+
+   ii)  UNLOCKING THE CD-ROM DRIVE
+
+        Usage: UNLOCKCD d1: [d2: d3: ... ]
+
+        Type UNLOCKCD  followed by the name of the CD-ROM  drive to be
+        un-locked.  More than  one drive can be  unlocked at the  same
+        time by typing  UNLOCKCD, followed  by the drive names, with a
+        space separating each drive name.
+
+        Example: To unlock drives D, E and F, type UNLOCKCD D: E: F:
+
+        Type UNLOCKCD /?  at the DOS prompt for a brief on-line usage
+        description.
+
+
+2. ERRATA
+
+   Note : If you cannot find the following errors in your manual,
+          please ignore this section.
+
+   CD-ROM Drive User's Guide
+
+   Chapter 4-4, line 5.
+   "dragging the slider with the mouse" has been changed to 
+   "click the left or right mouse  button to increase or decrease 
+   the volume". 
+
+   Appendix A-3, line 13.
+   "Access Time : 350 Msec (Normal Velocity) and 450 Msec (Double
+   Velocity)" has been changed to
+   "Access Time : 320 Msec (Normal Velocity) and 350 Msec (Double
+   Velocity)"
+
+    CD16 Getting Started
+
+    Pg 3, line 13.
+    "Base I/O Address : 220H to 233H" has been changed to
+    "Audio interface I/O addresses : 220H to 233H"
+
+                      ********** End of README.TXT **********

@@ -7,6 +7,3 @@
 [submodule "src/lib/rp2040-psram"]
 	path = src/lib/rp2040-psram
 	url = https://github.com/polpo/rp2040-psram
-[submodule "src/lib/tinyusb"]
-	path = src/lib/tinyusb
-	url = https://github.com/hathach/tinyusb

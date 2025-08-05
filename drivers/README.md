@@ -58,6 +58,12 @@ PMINIT /k
 /j x      - Enable/Disable the Joystick     (0:Off 1:On)<br />
 /diag     - Start in Diagnostic Mode <br />
 
+### Rev 0.7 <br /> (October 2025)
+
+- + Added the covox setup (fFr Oct test firmware)
+- + Added all the port list when typing pminit /?
+- + Improved the error display.
+
 ### Rev 0.4 <br /> (May 2025)
 - + Added the Mindscape Music Board parameter (mmb)<br />
 

@@ -1,0 +1,148 @@
+						CREATIVE SOFTWARE LICENSE
+					       
+
+This Agreement sets forth the license terms and conditions for using the 
+enclosed software Driver/Program ("Software").
+
+This License is effective until terminated. You may terminate it at any 
+time by destroying the Software together with any copies currently in 
+your posession. The License also terminates if you fail to comply with 
+the terms and conditions of this agreement, and additionally you need 
+to destroy any copies or variations of the software.
+
+
+1.      GRANT OF LICENSE.  Creative Technology Limited ("Creative"),
+	grants to you the right to use all or a portion of this 
+ 	Software provided that (i) the Software is not distributed
+	for profit; (ii) the Software is used only in conjunction
+	with Creative's family of products; (iii) the Software may
+	NOT be modified; (iv) all copyright notices are maintained
+	on the Software; and (v) the licensee/end user agrees to be
+	bound by the terms of this Agreement.
+
+2.      COPYRIGHT.  The Software is owned by Creative and is
+	protected by United States copyright laws and international
+	treaty provisions. You may not remove the copyright notice
+	from any copy of the Software or any copy of the written
+	materials, if any, accompanying the Software.
+
+3.      OTHER RESTRICTIONS.  This License Agreement is your proof
+	of license to exercise the rights granted herein and must
+	be retained by you.  You may not rent or lease the Software.
+	You may not reverse engineer, decompile or disassemble the
+	Software.
+
+	NO WARRANTY.  ANY USE BY YOU OF THE SOFTWARE IS AT YOUR
+	OWN RISK.  THE SOFTWARE IS PROVIDED FOR USE ONLY WITH 
+	CREATIVE'S HARDWARE AND RELATED SOFTWARE.  THE SOFTWARE
+	IS PROVIDED FOR USE "AS IS" WITHOUT WARRANTY OF ANY KIND.
+	TO THE MAXIMUM EXTENT PERMITTED BY LAW, CREATIVE DISCLAIM
+	ALL WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+	INCLUDING, WITHOUT LIMITATION, IMPLIED WARRANTIES OF
+	MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+	CREATIVE IS NOT OBLIGATED TO PROVIDE ANY UPDATES TO THE
+	SOFTWARE.
+
+	NO LIABILITY FOR CONSEQUENTIAL DAMAGES.  In no event shall
+	Creative be liable for any damages whatsoever (including,
+	without limitation, incidental, direct, indirect special and
+	consequential damages, damages for loss of business profits,
+	business interruption, loss of business information, or other
+	pecuniary loss) arising out of the use or inability to use
+	this Creative product, even if Creative has been advised of
+	the possibility of such damages.  Because some states/
+	countries do not allow the exclusion or limitation of
+	liability for consequential or incidental damages, the above
+	limitation may not apply to you.
+
+	INDEMNIFICATION BY YOU.  If you distribute the Software in
+	violation of this Agreement, you agree to indemnify, hold
+	harmless and defend Creative from and against any claims or
+	lawsuits, including attorney's fees that arise or result from
+	the use or distribution of the Software in violation of this
+	Agreement.
+
+
+This Agreement shall be construed, interpreted and governed by the laws 
+of the State of California,  except the federal laws which govern the 
+copyrights and registered trademarks. You agree that this is the complete 
+and exclusive statement of the Agreement between you and Creative which 
+supersedes any proposal or prior agreement, oral or written, and any other 
+communications between us regarding the subject of this Agreement. If any 
+provision of this Agreement is found unenforceable, it will not affect 
+the validity of this Agreement, which shall remain valid and enforceable 
+according to its terms.
+
+                        	***
+
+
+Should you have any questions concerning this Agreement, Or if you desire 
+to contact Creative for any reason, please contact your local Creative 
+subsidiary or write to:
+
+
+
+Inside U.S.A., Canada and South America, contact:       
+               Creative Labs, Inc.  Technical Support
+	         1523 Cimarron Plaza,
+		 Stillwater, OK 74075 U.S.A.
+		 	TEL (405) 742-6622 
+		 	FAX (405) 742-6633
+		 	BBS (405) 742-6660 
+
+	  	 Operating Hours (U.S.A. Central Time)
+		 Mon-Sun  8:00am-12:00am (16 hours)
+		 Public Holiday	Closed
+	         BBS 24 hours operational
+
+
+
+Inside Europe, contact:       
+               Creative Labs (IRELAND) Ltd.  Technical Support
+	         Blanchardstown Industrial Park,
+		 Blanchardstown, Dublin 15,
+		 IRELAND
+
+		 Ireland
+		 	TEL (353) 1-820-7555
+		 	FAX (353) 1-820-5052
+
+		 France
+		 	TEL (33) 1.39.20.04.21
+
+		 UK
+		 	TEL (44) 734-344744
+		 	BBS (44) 743-360287
+
+		 Germany
+		 	TEL (49) 2131-102838  
+		 	BBS (49) 2131-919820
+
+		Note: Inside Europe, please direct all faxes to Ireland.
+
+
+
+Inside Asia, contact:
+	       Creative Technology Ltd.  Technical Support
+	  	 67 Ayer Rajah Crescent #03-18
+		 Singapore 0513
+		 	TEL (065) 870-0433
+		 	FAX (065) 773-0353
+		 	BBS (065) 776-2423 
+
+	  	 Operating Hours (Singapore Time)
+		 Mon-Fri  9:00am-6:00pm
+		 Sat	  9:00am-1:00pm
+		 Sun & Public Holiday Closed
+	         BBS 24 hours operational
+
+
+
+CompuServe: 	GO BLASTER
+Internet E-mail address:  72662.1602@compuserve.com
+
+
+컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+Copyright (C) 1994, Creative Labs, Inc., Creative Technology Ltd. All rights 
+reserved. All other products are trademarks or registered trademarks of their 
+respective owners.

@@ -31,6 +31,14 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 
 ## Firmwares Revision History :
 
+### PM_Aug25_Test: Test firmware with added Covox  (August 2025 Test)
+    !!  Firmware released as test, can be found under the test sub folder. !!
+- New : Covox support added, enable it using PMININT
+- New : Disk access now use the FatFS Fast Seek, for a huge disk access speedup.
+        Disk image must not be fragmented : Backup the SD, Format and re copy the Disk image.
+- ! Fix the Disk image creation menu from the BIOS
+- ! Audio mixing (Adlib) has almost no more cut during disk Access
+
 ### PM_x_5_36_25_x: Mindscape sound card, RTC  (May 26, 2025)
 - New: The rare Mindscape Music Board with dual AY-3-8910 is now emulated.
 - New: MM58167AN RTC (AST Six Pack Plus Real Time Clock) added. (Thanks to Matthew Dovey)

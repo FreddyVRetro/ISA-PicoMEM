@@ -46,6 +46,8 @@ Please go to the Wiki page : https://github.com/FreddyVRetro/ISA-PicoMEM/wiki
 
 The PicoMEM exist in 4 Versions : 1.0, 1.1, 1.11, 1.14 and 1.2A<br />
 
+**PicoMEM variant : **
+
 PicoMEM 1.2A : It is a PicoMEM 1.14 with the DAC Added on Board, DAC Added by Serdaco.<br />
 PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the Sinclair PC200.<br />
 
@@ -61,7 +63,7 @@ PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the 
   - One IRQ Line that can be connected to IRQ 3 or 5 for Rev 1.0, 2,5 or 7 for Rev 1.1.
   - QwiiC Connector (SPI) (Added to V1.1)
 
-**NEW** PicoMEM LP 1.0 the Low profile variant of the PicoMEM will soon be available !
+
 
 **Software :**
   - A Full BIOS with a "Phoenix BIOS Like" text interface in assembly.
@@ -88,10 +90,15 @@ PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the 
 - **USB Mouse** support through a USB OTC Adapter. (Micro USB to USB A or USB Hub)
 - **POST Code** (Port 80 Display in Hexa) via the QwiiC connector: https://www.sparkfun.com/products/16916
 - **ne2000 network card** emulation via Wifi (Pico W PicoMEM only)
-- **USB Joystick** for PS4 and Xinput controllers.
-- **Adlib** using a PCM5102 I2S module.
-- **CMS/Game Blaster and Tandy** sound chip are now supported.
-- **Tandy 1000** (Old models with Tandy Graphic) now supported, even for RAM upgrade.
+- **USB Joystick** for PS4 and Xinput controllers.<br />
+- **Tandy 1000** (Old models with Tandy Graphic) now supported, even for RAM upgrade.<br />
+
+** Audio/Sound cards emulation : **<br />
+
+- **Adlib** using a PCM5102 I2S module.<br />
+- **CMS/Game Blaster and Tandy** sound chip emulation.<br />
+- **NEW : The extremely rare Mindscape Music Board** sound card is now emulated. (Dual AY-3-8910)<br />
+- **NEW : Covox (8Bit DAC on parallel port) ** sound device emulated. (LPT1/LPT2)<br />
 
 ## Future Functionality
 
@@ -140,9 +147,14 @@ It can also mount Floppy image as A: or B:
 The PicoMEM does not emulate disk, it send the BIOS Disk access commands to the Pi Pico. <br />
 Then, it is more a "Disk BIOS" emulator than a Disk emulator. <br />
 
+**NEW : Full SD and USB Disk access**
+The PicoMEM can access the full MicroSD and USB drive connected to it, even if formatted in FAT32, from DOS 3.2 !<br />
+Thanks to a modified EtherDFS driver and an embedded EtherDFS server, the MicroSD and any USB key can be seen as a network drive.<br />
+
 Another particularity is that it use Memory to perform the Data transfer, this allow for the maximum possible transfer speed, even on 8088 CPU. <br />
-Anyway, single sector read is slower than multiple sector reas as the PicoMEM need to read the sector from the SD, then send the data to the PC Memory. <br />
-With multiple sector Read, the Pico read the next sector while the data is copied to the PC Memory.
+Anyway, single sector read is slower than multiple sector read as the PicoMEM need to read the sector from the SD, then send the data to the PC Memory. <br />
+With multiple sector Read, the Pico read the next sector while the data is copied to the PC Memory. <br />
+**NEW: Fast Seek added: ** It is under test in the October Firmware.
 
 It is highly recommended to use reasonable disk image size, below 500Mb. <br /> 
 100 or 200Mb are ideal size, as it will be recognized and usable by DOS 6 and DOS 3.31 <br />
@@ -153,7 +165,7 @@ As you can add 4 Disk with 4 partitions, you can create diferent disk images for
 ## ne2000 emulation via Wifi
 
 The PicoMEM can emulate a ne2000 network card via Wifi.<br />
-The wifi code is preliminary, the PicoMEM can't see if the access point is connected or not, code improvement in progress.
+Warning : As the Wifi antenna is inside the PC case, the connection quality may be low.
 
 **How to use it :**
 - Create a wifi.txt file with the SSID in the first line and the Password in the 2nd line.<br />
@@ -168,7 +180,7 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 - **New : Tandy 1000** : Now tested on a Tandy 1000 SX, EX and HX other to confirm. (October 2024 firmware)
 - Tandy 1000 RLX Rev B Need a new BIOS to work.
 - Amstrad PC1512, PC1640, Sinclair PC200 (It is my DEV Machine)
-- Schneider Euro PC1 (Fast RAM Firmware), EuroPC2, Olivetti M21, Olivetti M24, Sega TeraDrive.
+- Schneider EuroPC1 (PSRAM/EMS Not working), EuroPC2, Olivetti M21, Olivetti M24, Sega TeraDrive.
 - Commodore PC1, PC10/PC20. (Need Fast RAM Firmware)
 - Worked on Various 486, 386, 286 (Has more chance to work with lower ISA Clocks)
 - Tested with some Pentium, Pentium MMX, Pentium 2, AMD K6 ...<br />
@@ -188,7 +200,7 @@ The wifi code is preliminary, the PicoMEM can't see if the access point is conne
 - Pocket386 : A BUG on this machine ISA BUS prevent the PicoMEM and any BIOS Based board to boot.
 
 ## Known bug :
-- The PC may crash when using a PS/2 Mouse (Except with Windows 95)
+- The PicoMEM may miss some mouse click in the laterst firmwares.
 
 ## License
 
