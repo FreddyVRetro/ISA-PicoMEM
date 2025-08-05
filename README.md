@@ -46,7 +46,7 @@ Please go to the Wiki page : https://github.com/FreddyVRetro/ISA-PicoMEM/wiki
 
 The PicoMEM exist in 4 Versions : 1.0, 1.1, 1.11, 1.14 and 1.2A<br />
 
-**PicoMEM variant : **
+**PicoMEM variant :**
 
 PicoMEM 1.2A : It is a PicoMEM 1.14 with the DAC Added on Board, DAC Added by Serdaco.<br />
 PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the Sinclair PC200.<br />
@@ -83,22 +83,22 @@ PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the 
 
 - **ROM Emulation** for its internal BIOS and custom ROM loaded from the MicroSD. (Custom ROM not implemented yet)<br />
    The Board has its own BIOS, used to automatically detect/Extend/Configure the RAM emulation and select Floppy/Disk images.
-- **Floppy and Disk** "emulation" from .img files stored in uSD through FasFs and DosBOX int13h emulation code.<br />
+- **Floppy and Disk** "emulation" from .img files stored in uSD through FasFs and DosBOX int13h emulation code.
    Emulate 2 Floppy and 4 Disk (80h to 83h), Disk up to 4Gb (More later)
-- **NEW : SD and USB disk direct access** A Network redirector driver allow full access to the SD and USB for DOS 3.2 +<br />
-   As it is a network redirector, the SD and USB filesystem can be anything (Even FAT32/ExtFS)<br />
+- **NEW : SD and USB disk direct access** A Network redirector driver allow full access to the SD and USB for DOS 3.2 +
+   As it is a network redirector, the SD and USB filesystem can be anything (Even FAT32/ExtFS)
 - **USB Mouse** support through a USB OTC Adapter. (Micro USB to USB A or USB Hub)
 - **POST Code** (Port 80 Display in Hexa) via the QwiiC connector: https://www.sparkfun.com/products/16916
-- **ne2000 network card** emulation via Wifi (Pico W PicoMEM only)
-- **USB Joystick** for PS4 and Xinput controllers.<br />
-- **Tandy 1000** (Old models with Tandy Graphic) now supported, even for RAM upgrade.<br />
+- **ne2000 network card** emulation via Wifi. (Pico W PicoMEM only)
+- **USB Joystick** for PS4 and Xinput controllers.
+- **Tandy 1000** (Old models with Tandy Graphic) now supported, even for RAM upgrade.
 
-** Audio/Sound cards emulation : **<br />
+**Audio/Sound cards emulation :**<br />
 
 - **Adlib** using a PCM5102 I2S module.<br />
 - **CMS/Game Blaster and Tandy** sound chip emulation.<br />
 - **NEW : The extremely rare Mindscape Music Board** sound card is now emulated. (Dual AY-3-8910)<br />
-- **NEW : Covox (8Bit DAC on parallel port) ** sound device emulated. (LPT1/LPT2)<br />
+- **NEW : Covox (8Bit DAC on parallel port)** sound device emulated. (LPT1/LPT2)<br />
 
 ## Future Functionality
 
