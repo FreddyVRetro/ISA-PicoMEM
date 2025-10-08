@@ -1,9 +1,10 @@
-[submodule "tinyusb"]
-	path = src/lib/tinyusb
-	url = https://github.com/hathach/tinyusb
-[submodule "tusb_xinput"]
-	path = src/lib/tusb_xinput
-	url = https://github.com/Ryzee119/tusb_xinput.git
 [submodule "src/lib/rp2040-psram"]
 	path = src/lib/rp2040-psram
-	url = https://github.com/polpo/rp2040-psram
+	url = https://github.com/polpo/rp2040-psram.git
+[submodule "src/lib/tinyusb"]
+	path = src/lib/tinyusb
+	url = https://github.com/wbcbz7/tinyusb
+	branch = rp2040-epx-only
+[submodule "src/lib/tusb_xinput"]
+	path = src/lib/tusb_xinput
+	url = https://github.com/Ryzee119/tusb_xinput
