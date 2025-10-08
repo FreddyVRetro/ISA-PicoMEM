@@ -71,7 +71,7 @@ jobs:
           mkdir -p $OUTPUT_DIR
           cmake $GITHUB_WORKSPACE/src -DCMAKE_BUILD_TYPE=$BUILD_TYPE
           cmake --build . --config $BUILD_TYPE --parallel $(nproc)
-          cp picogus.uf2 $OUTPUT_DIR/picogus.uf2
+          cp picomem.uf2 $OUTPUT_DIR/picomem.uf2
 
       # will generate PicoGUS Firmwares.zip as downloadable artifact with all .uf2 files
       - name: Upload All Firmwares
@@ -113,5 +113,5 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           body_path: release-body.md
-          files: picogus-v${{ steps.tag.outputs.version }}.zip
+          files: picomem-v${{ steps.tag.outputs.version }}.zip
           draft: true
