@@ -1,6 +1,7 @@
 [submodule "tinyusb"]
 	path = src/lib/tinyusb
-	url = https://github.com/hathach/tinyusb
+	url = https://github.com/wbcbz7/tinyusb
+	branch = rp2040-epx-only
 [submodule "tusb_xinput"]
 	path = src/lib/tusb_xinput
 	url = https://github.com/Ryzee119/tusb_xinput.git
