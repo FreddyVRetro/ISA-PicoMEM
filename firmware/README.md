@@ -31,13 +31,25 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 
 ## Firmwares Revision History :
 
-### PM_Aug25_Test: Test firmware with added Covox  (August 2025 Test)
-    !!  Firmware released as test, can be found under the test sub folder. !!
+### PM_x_11_16_25_x : Sound Blaster, Covox, ROM Dump....  (Nov 16, 2025)
+- New : Sound Blaster emulation with DMA emulation (Not working on Slow PC/XT, check Wiki for more infos)
 - New : Covox support added, enable it using PMININT
 - New : Disk access now use the FatFS Fast Seek, for a huge disk access speedup.
-        Disk image must not be fragmented : Backup the SD, Format and re copy the Disk image.
+      Disk image must not be fragmented : Backup the SD, Format and re copy the Disk image.
+- New : Added swap for B: Floppy (Need to add a Floppy in B: in the BIOS first)
+- New : Added ROM / RAM Dump in the BIOS Tools menu
+- + Improved USB Speed x4 (thanks to wbcbz7 code)
+- + Popup menu can now use Right Shift (Correction for Tandy 1000 Keyboards)
+- + Completely new IRQ multiplexing code : More reactive Mouse and maybe NE2000
+- ! Corrected Floppy SWAP when the disk size is different
+- ! Disk read to PSRAM based RAM bugged > moved to Copy via CPU
+- ! Bug fix for Disk access on PSRAM emulated RAM
+- ! Disk crash when PSRAM is used to emulate conventional memory on Tandy 1000 (Bug added from January firmware)
+- ! Correct display error on the BIOS image creation menu
 - ! Fix the Disk image creation menu from the BIOS
 - ! Audio mixing (Adlib) has almost no more cut during disk Access
+
+- Warning : Need the New PMINIT (that has lot of bug fix)
 
 ### PM_x_5_36_25_x: Mindscape sound card, RTC  (May 26, 2025)
 - New: The rare Mindscape Music Board with dual AY-3-8910 is now emulated.

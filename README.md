@@ -92,6 +92,7 @@ PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the 
 - **ne2000 network card** emulation via Wifi. (Pico W PicoMEM only)
 - **USB Joystick** for PS4 and Xinput controllers.
 - **Tandy 1000** (Old models with Tandy Graphic) now supported, even for RAM upgrade.
+- **NEW** First Pico controlled application : RAMP/ROM Dump.
 
 **Audio/Sound cards emulation :**<br />
 
@@ -99,11 +100,12 @@ PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the 
 - **CMS/Game Blaster and Tandy** sound chip emulation.<br />
 - **NEW : The extremely rare Mindscape Music Board** sound card is now emulated. (Dual AY-3-8910)<br />
 - **NEW : Covox (8Bit DAC on parallel port)** sound device emulated. (LPT1/LPT2)<br />
+- **NEW : Sound Blaster**  Done via a DMA emulation (Memory copy via an interrupt), the compatibility is low<br />
 
 ## Future Functionality
 
 - There is already a mechanism implemented, so that the Pi Pico can send command to the PC, we can have the Pi Pico taking "Virtually" the control of the PC.
-  > This can be used to perform ROM/RAM dump, Disk/Floppy DUMP/Write, display/kb redirection....
+  > This can be used to perform ROM/RAM dump, Disk/Floppy DUMP/Write, display/kb redirection.... (RAM/ROM DUMP is done)
 - More USB Host to be added  (Keyboard, MIDI...)
 - Bluetooth support for device like Gamepad may be added.
 - Use of the Qwiic connector for more information display (OLED), maybe RTC and other.
@@ -132,8 +134,8 @@ The PicoMEM is then more suitable to extend a **512KB PC to 640KB**, Add some UM
 
 ### Memory emulation limitations :
 
-- Memory emulation with PSRAM is quite slow for the moment, but multiple mechanism like a 32bit cache will improve this. (And Maybe DMA)
-- **The emulated Memory does not support DMA**, Add support for it may be done in one or two months (May/June 2024) <br />
+- Memory emulation with PSRAM is quite slow.
+- **The emulated Memory does not support DMA**, Will be corrected in future PicoMEM HW Release.<br />
   Then :
     - As the real floppy use DMA, **you should disable temporarily the RAM emulation** if the real Disk access are not working.
     - For SoundCard, if the PC has 512Kb of base RAM, it is really unlikely that the DMA Buffer will be placed in emulated RAM, it may work 90% of the time.
@@ -154,7 +156,7 @@ Thanks to a modified EtherDFS driver and an embedded EtherDFS server, the MicroS
 Another particularity is that it use Memory to perform the Data transfer, this allow for the maximum possible transfer speed, even on 8088 CPU. <br />
 Anyway, single sector read is slower than multiple sector read as the PicoMEM need to read the sector from the SD, then send the data to the PC Memory. <br />
 With multiple sector Read, the Pico read the next sector while the data is copied to the PC Memory. <br />
-**NEW: Fast Seek added:** It is under test in the October Firmware.
+**NEW: Fast Seek added:** Disk Seek time is now more than 10x faster, it improve a lot the disk "reactivity".
 
 It is highly recommended to use reasonable disk image size, below 500Mb. <br /> 
 100 or 200Mb are ideal size, as it will be recognized and usable by DOS 6 and DOS 3.31 <br />
@@ -165,7 +167,7 @@ As you can add 4 Disk with 4 partitions, you can create diferent disk images for
 ## ne2000 emulation via Wifi
 
 The PicoMEM can emulate a ne2000 network card via Wifi.<br />
-Warning : As the Wifi antenna is inside the PC case, the connection quality may be low.
+Warning : As the Wifi antenna is inside the PC case, the connection quality may be low.<br />
 
 **How to use it :**
 - Create a wifi.txt file with the SSID in the first line and the Password in the 2nd line.<br />
@@ -197,7 +199,7 @@ Warning : As the Wifi antenna is inside the PC case, the connection quality may 
 - Amiga 2000 with a A2088.
 - Tandy 1000 RXS Fail, but work if the BIOS is updated (See the Wiki)
 - Pocket8086 : IO Port error
-- Pocket386 : A BUG on this machine ISA BUS prevent the PicoMEM and any BIOS Based board to boot.
+- Pocket386  : A BUG on this machine ISA BUS prevent the PicoMEM and any BIOS Based board to boot.
 
 ## Known bug :
 - The PicoMEM may miss some mouse click in the laterst firmwares.
@@ -214,7 +216,9 @@ Hardware is currently closed. <br />
 * [FatFS by Chan](http://elm-chan.org/fsw/ff/00index_e.html) : ExFS Library for microcontrollers.
 * [FatFS SD by Carl J Kugler III](https://github.com/carlk3/no-OS-FatFS-SD-SPI-RPi-Pico) : FatFS for SD Access in SPI with a Pi Pico
 * DOSBox (www.dosbox.com): DosBOX BIOS Int13h Code, heavily modified for ExFS support and PicoMEM Interface, with bug correction.
-* ne2000 Emulation code, adapted by yyzkevin.
+* Most of the Sound Blaster code and ne2000 emmulation code port to Pico by yyzkevin.
 * [XInput library](https://github.com/Ryzee119/tusb_xinput.git) : XInput USB Joystick.
 * [Mitsutaka Okazaki / Graham Sanderson emu8950 v1.1.0] (https://github.com/digital-sound-antiques/emu8950) : Adlib/OPL2 emulation
 * Aaron Giles DREAMM / SCUMM Games emulator : CMS / Tandy emulation
+* Fast disk access TinyUSB branch by Artem Vasilev (wbcbz7) (https://github.com/wbcbz7/tinyusb/)
+* Etherdfs by Mateusz Viste. (https://mateusz.fr/etherdfs/)

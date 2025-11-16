@@ -17,6 +17,8 @@ The IRQ can be changed in the BIOS Menu (Default is IRQ 3)<br />
 Same driver as NE2000 for the PicoMEM : IRQ and Port are Auto detected.<br />
 Does not start if the PicoMEM is not detected<br />
 
+To start, Type PM2000 0x60<br />
+
 ### Rev 0.4 <br /> (January 24, 2025) 
 - ! Corrected a bug occuring when a received packet has an odd size.<br />
 - PM2000 has now less bug than NE2000 !<br />
@@ -51,16 +53,26 @@ I will regularly update the tools to add init fonctions when DOS is Booted.<br /
 To enable the Key Shortcut: (Left Shift + Ctrl + F1 for information and F2 For A: Floppy change)<br />
 PMINIT /k
 
-/adlib x  - Enable/Disable the Adlib output (0:Off 1:On)<br />
-/cms x    - Enable/Disable the CMS output   (0:Off 1:220 x:Port)<br />
-/tdy x    - Enable/Disable the Tandy output (0:Off 1:2C0 x:Port)<br />
-/mmb x    - Enable/Disable the Tandy output (0:Off 1:300 x:Port)<br />
+/adlib x  - Adlib sound      (0:Off 1:On)\n")<br />
+/cms x    - CMS sound        (0:Off 1:220 or 210,230,240,250)<br />
+/tdy x    - Tandy sound      (0:Off 1:2C0 or 1E0,C0)<br />
+/cvx x    - Covox DAC sound  (0:Off 1:LPT1 2:LPT2 or 300)<br />
+/mmb x    - Mindscape sound  (0:Off 1:300 or 220,2F0,310,320)<br />
+/sb x     - Sound Blaster    (0:Off 1:On) use the BLASTER values
 /j x      - Enable/Disable the Joystick     (0:Off 1:On)<br />
 /diag     - Start in Diagnostic Mode <br />
 
+### Rev 0.8 <br /> (November 2025)
+- + Added more error code, like when there is a ressource conflict (Same port for 2 audio devices)
+- + Added Port 210h and 260h to the Covox
+- + Added the Sound Blaster initialisation
+- ! Corrected the CMS default port display (Value was correct)
+- ! Corrected a bug in the Covox port selection
+- ! Initialisation of some audio devices was bugged...
+
 ### Rev 0.7 <br /> (October 2025)
 
-- + Added the covox setup (fFr Oct test firmware)
+- + Added the covox setup (for Oct test firmware)
 - + Added all the port list when typing pminit /?
 - + Improved the error display.
 
@@ -105,5 +117,5 @@ ASTCLOCK can set the DOS date to the PicoMEM time and can update it if kept resi
 
 Usage : ASTCLOCK /R  (/R for resident)<br />
 
-**WARNING :** The PicoMEM RTC initially set the date to May 22 2025 and stay saved only if th ePicoMEM is kept powered on, via the USB port.<br />
+**WARNING :** The PicoMEM RTC initially set the date to May 22 2025 and stay saved only if the PicoMEM is kept powered on, via the USB port.<br />
 Time is saved after a PC soft reboot.<br />
