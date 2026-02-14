@@ -110,6 +110,41 @@ PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the 
 - Bluetooth support for device like Gamepad may be added.
 - Use of the Qwiic connector for more information display (OLED), maybe RTC and other.
 
+## PicoMEM 2
+
+PicoMEM 2 work is in progress, it will not be released before April/May 2026
+
+** Differences with the PicoMEM 1.14 :**
+
+Hardware:
+- Use the RP2350B chip directly soldered on board
+- PSRAM is connected in QSPI, for faster access
+- Real time Clock with battery
+- Integrated Audio DAC With Jack
+- 4 independant Interrupt lines (Can use the 4 at the same time) vs 1
+- One DMA Channel is now supported, can chose between DMA 1 or 3
+- New multiplexer and correction (DMA support on emulated RAM)
+- QwiiC connector and Serial are no more shared with Audio (Work all the time)
+- New Connectors : USB A, 3.5mm Audio Jack, LED Header, Serial TX/RX Header, Expansion Header for front panel/Other
+
+Fonctionality added to the PicoMEM1: (As of begining of Feb 2026):
+- 256Kb No Wait state RAM emulation
+- Faster PSRAM : One Wait state (or no depending on the PC) EMS
+- Faster disk access time (Thanks to the faster CPU)
+- Much more compatible Sound Blaster emulation with the help of Hardware DMA
+- Gravis UltraSound emulation (Seems to work on most of the games)
+- General MIDI audio rendering
+- No sound cut during disk access, thanks to the faster CPU
+- Real Time Clock emulation (RTC BIOS to add)
+
+Planned:
+- CD ROM emulation
+- More sound cards (SBPro/16, other )
+- .SF2 Sound font Loader for General MIDI rendering
+- OPL2 or other devices connected to the General MIDI
+- MIDI over USB, or the Serial port header
+
+
 ## Compatibility/Limitations
  
 The Board can't be used for Video emulation, as it require a way for the Pico to actually display something, and only 3 pins are "Free".
