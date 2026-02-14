@@ -114,9 +114,9 @@ PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the 
 
 PicoMEM 2 work is in progress, it will not be released before April/May 2026
 
-** Differences with the PicoMEM 1.14 :**
+**Differences with the PicoMEM 1.14 :**
 
-Hardware:
+**Hardware:**
 - Use the RP2350B chip directly soldered on board
 - PSRAM is connected in QSPI, for faster access
 - Real time Clock with battery
@@ -127,7 +127,7 @@ Hardware:
 - QwiiC connector and Serial are no more shared with Audio (Work all the time)
 - New Connectors : USB A, 3.5mm Audio Jack, LED Header, Serial TX/RX Header, Expansion Header for front panel/Other
 
-Fonctionality added to the PicoMEM1: (As of begining of Feb 2026):
+**Fonctionality added to the PicoMEM1: (As of begining of Feb 2026):**
 - 256Kb No Wait state RAM emulation
 - Faster PSRAM : One Wait state (or no depending on the PC) EMS
 - Faster disk access time (Thanks to the faster CPU)
@@ -137,7 +137,7 @@ Fonctionality added to the PicoMEM1: (As of begining of Feb 2026):
 - No sound cut during disk access, thanks to the faster CPU
 - Real Time Clock emulation (RTC BIOS to add)
 
-Planned:
+**Planned:**
 - CD ROM emulation
 - More sound cards (SBPro/16, other )
 - .SF2 Sound font Loader for General MIDI rendering
