@@ -127,7 +127,7 @@ PicoMEM 2 work is in progress, it will not be released before April/May 2026
 - QwiiC connector and Serial are no more shared with Audio (Work all the time)
 - New Connectors : USB A, 3.5mm Audio Jack, LED Header, Serial TX/RX Header, Expansion Header for front panel/Other
 
-**Fonctionality added to the PicoMEM1: (As of begining of Feb 2026):**
+**Fonctionality added to the PicoMEM 2: (As of begining of Feb 2026):**
 - 256Kb No Wait state RAM emulation
 - Faster PSRAM : One Wait state (or no depending on the PC) EMS
 - Faster disk access time (Thanks to the faster CPU)
