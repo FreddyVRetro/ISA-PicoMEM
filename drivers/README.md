@@ -19,6 +19,9 @@ Does not start if the PicoMEM is not detected<br />
 
 To start, Type PM2000 0x60<br />
 
+### Rev 0.5 <br /> (May 5, 2026)
+- Corrected error message when ne2000 is not enabled<br />
+
 ### Rev 0.4 <br /> (January 24, 2025) 
 - ! Corrected a bug occuring when a received packet has an odd size.<br />
 - PM2000 has now less bug than NE2000 !<br />
@@ -62,7 +65,11 @@ PMINIT /k
 /j x      - Enable/Disable the Joystick     (0:Off 1:On)<br />
 /diag     - Start in Diagnostic Mode <br />
 
-### Rev 0.8 <br /> (November 2025)
+## Rev 1.0.1 (April 2026)
+- + Improved the error display
+- + Added Gravis UltraSound initialisation (PicoMEM 2 Only)
+
+### Rev 0.8  (November 2025) <br />
 - + Added more error code, like when there is a ressource conflict (Same port for 2 audio devices)
 - + Added Port 210h and 260h to the Covox
 - + Added the Sound Blaster initialisation
@@ -70,13 +77,13 @@ PMINIT /k
 - ! Corrected a bug in the Covox port selection
 - ! Initialisation of some audio devices was bugged...
 
-### Rev 0.7 <br /> (October 2025)
+### Rev 0.7 (October 2025) <br />
 
 - + Added the covox setup (for Oct test firmware)
 - + Added all the port list when typing pminit /?
 - + Improved the error display.
 
-### Rev 0.4 <br /> (May 2025)
+### Rev 0.4 (May 2025) <br /> 
 - + Added the Mindscape Music Board parameter (mmb)<br />
 
 ### Rev 0.3 <br /> (December 2024)

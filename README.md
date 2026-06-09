@@ -112,38 +112,47 @@ PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the 
 
 ## PicoMEM 2
 
-PicoMEM 2 work is in progress, it will not be released before April/May 2026
+PicoMEM 2 work is in progress, it should be released in June 2026
 
 **Differences with the PicoMEM 1.14 :**
 
-**Hardware:**
-- Use the RP2350B chip directly soldered on board
-- PSRAM is connected in QSPI, for faster access
-- Real time Clock with battery
-- Integrated Audio DAC With Jack
-- 4 independant Interrupt lines (Can use the 4 at the same time) vs 1
-- One DMA Channel is now supported, can chose between DMA 1 or 3
-- New multiplexer and correction (DMA support on emulated RAM)
-- QwiiC connector and Serial are no more shared with Audio (Work all the time)
-- New Connectors : USB A, 3.5mm Audio Jack, LED Header, Serial TX/RX Header, Expansion Header for front panel/Other
+**Performance increase / New hardware:**
 
-**Fonctionality added to the PicoMEM 2: (As of begining of Feb 2026):**
-- 256Kb No Wait state RAM emulation
-- Faster PSRAM : One Wait state (or no depending on the PC) EMS
-- Faster disk access time (Thanks to the faster CPU)
-- Much more compatible Sound Blaster emulation with the help of Hardware DMA
-- Gravis UltraSound emulation (Seems to work on most of the games)
-- General MIDI audio rendering
-- No sound cut during disk access, thanks to the faster CPU
-- Real Time Clock emulation (RTC BIOS to add)
+- Global performance increase thanks to the RP2350 at 360MHz (Vs RP2040 at 240MHz)
+- Zero wait RAM emulation moved from 128KB to 256KB
+- IOCHRDY Signal generation (used for PSRAM Memory emulation) moved from 120ns to 50ns, allowing for more PC to support EMS.
+- Global RAM/IO performance increase for more PC compatibility.
+- Now use QSPI PSRAM, for faster RAM/EMS emulation (only 1 Wait state)
+- Support DMA from PicoMEM emulated RAM (Except when the PicoMEM does DMA)
+- Multi IRQ support : IRQ 3,5,6,7 are independant
+- DMA Support : Can select DMA 1 or 3 Via jumper on board
+- New : Real Time Clock with a battery for RTC support
+- New : Wifi antenna is now "outside" for improved Wifi signal. (More than 10dB better)
+
+**Connectivity / panels:**
+
+- New : USB A Connector for direct Joystick/Mouse/USB drive connection, or USB Hub
+- New : Serial port (TX/RX) + LED Connector foe external LED connection or HDDClicker.
+- New : 2x QwiiC connectors that can be used at any moment for possible Upgrade.
+- New : 1x Front Panel connector for OLED + 5 Buttons
+- New : SSD1306 128x32 OLED Screen on the front panel now display POST Code / Logos
+
+**Audio improvements:**
+
+ - New : DAC is now onboard, with better sound quality (4 Layers routing) and Jack connector
+ - Sound Blaster code now use Hardware DMA for greatly improved compatibility.
+ - New: Gravis UltraSound support Added, 1MB RAM, DMA and IRQ.
+ - New: MPU / General MIDI via a modified TinySoundFont implementation (https://github.com/schellingb/TinySoundFont)
+ - As all emulation can be active at the same time, you can configure General MIDI + GUS on DOOM for example.
+ - Audio : Now generate Stereo OPL3 instead of OPL2
+
+**Other updates:** (possible on PicoMEM 1)
+ - More Joystick supported (DirectInput, PS4/PS5, Switch/Switch2... )  (https://github.com/joypad-ai/joypad-os)
+ - Added support for variable disk geometry (CHS) via a "imagename".chs file
+ - Load images from a sub Folder added
 
 **Planned:**
 - CD ROM emulation
-- More sound cards (SBPro/16, other )
-- .SF2 Sound font Loader for General MIDI rendering
-- OPL2 or other devices connected to the General MIDI
-- MIDI over USB, or the Serial port header
-
 
 ## Compatibility/Limitations
  
@@ -169,12 +178,16 @@ The PicoMEM is then more suitable to extend a **512KB PC to 640KB**, Add some UM
 
 ### Memory emulation limitations :
 
-- Memory emulation with PSRAM is quite slow.
+**PicoMEM 1:**<br />
+- Memory emulation with PSRAM is quite slow.<br />
 - **The emulated Memory does not support DMA**, Will be corrected in future PicoMEM HW Release.<br />
   Then :
     - As the real floppy use DMA, **you should disable temporarily the RAM emulation** if the real Disk access are not working.
     - For SoundCard, if the PC has 512Kb of base RAM, it is really unlikely that the DMA Buffer will be placed in emulated RAM, it may work 90% of the time.
     - Boot/Use of MFM / XT Hard Drive with DMA will fail.
+
+**PicoMEM 2:**<br />
+ - One Wait State for PSRAM emulated memory (RAM above 256Kb or EMS)<br />
 
 ## Disk "emulation"
 
@@ -197,7 +210,9 @@ It is highly recommended to use reasonable disk image size, below 500Mb. <br />
 100 or 200Mb are ideal size, as it will be recognized and usable by DOS 6 and DOS 3.31 <br />
 As you can add 4 Disk with 4 partitions, you can create diferent disk images for different usage, like a partition with games, another with music ... <br />
 
-**Warning :** You may have compatibility problem with some uSD, even if the compatibility has been greatly improved in the November 2023 firmware.<br />
+**Warning :** 
+- You may have compatibility problem with some uSD, even if the compatibility has been greatly improved in the November 2023 firmware.<br />
+- Support only SDHC SD Cards.<br />
 
 ## ne2000 emulation via Wifi
 
@@ -207,22 +222,22 @@ Warning : As the Wifi antenna is inside the PC case, the connection quality may 
 **How to use it :**
 - Create a wifi.txt file with the SSID in the first line and the Password in the 2nd line.<br />
 - Use ne2000.com 8Bit (command line : ne2000 0x60 0x3 0x300) or pm2000 (command line : pm2000 0x60)<br />
-- The PicoMEM can't tell if the connection fail and does not try to re connect.<br />
 - The Wifi Access point need to be relatively close to increase the chance of connection success. The IRQ Can be changed in the BIOS Menu (Default is IRQ 3)<br />
 
 ## Tested machines :
 - IBM 5150, 5160, 5170
 - IBM PS/1, IBM PS/2 30 286, PS2 8535 (Warning : As its HDD use DMA, does not boot if emulated RAM is added)
-- Compaq Portable 2 (286): Ok
-- **New : Tandy 1000** : Now tested on a Tandy 1000 SX, EX and HX other to confirm. (October 2024 firmware)
-- Tandy 1000 RLX Rev B Need a new BIOS to work.
-- Amstrad PC1512, PC1640, Sinclair PC200 (It is my DEV Machine)
-- Schneider EuroPC1 (PSRAM/EMS Not working), EuroPC2, Olivetti M21, Olivetti M24, Sega TeraDrive.
-- Commodore PC1, PC10/PC20. (Need Fast RAM Firmware)
-- Worked on Various 486, 386, 286 (Has more chance to work with lower ISA Clocks)
+- Compaq Portable 2 (286): Ok<br />
+- **New : Tandy 1000** : Now tested on a Tandy 1000 SX, EX and HX other to confirm. (October 2024 firmware)<br />
+- Tandy 1000 RLX Rev B Need a new BIOS to work.<br />
+- Amstrad PC1512, PC1640, Sinclair PC200 (It is my DEV Machine)<br />
+- Schneider EuroPC1 (PSRAM/EMS Not working), EuroPC2, Olivetti M21, Olivetti M24, Sega TeraDrive.<br />
+- Commodore PC1, PC10/PC20. (Need Fast RAM Firmware)<br />
+- Worked on Various 486, 386, 286 (Has more chance to work with lower ISA Clocks)<br />
 - Tested with some Pentium, Pentium MMX, Pentium 2, AMD K6 ...<br />
-- Amiga 2000 with a A2286/A2386 SX Board. (Use the BIOS in C800)
-- Book8088 (At 4.77MHz and 8MHz with the latest firmware), **The Power need to be connected at 8MHz**. EMS/PSRAM based RAM is failing.
+- Amiga 2000 with a A2088 (PC Config A000) A2286/A2386 SX Board. (Use the BIOS in C800)
+- Book8088 (At 4.77MHz and 8MHz with the latest firmware), **The Power need to be connected at 8MHz**. 
+  EMS/PSRAM based RAM is failing. (Working with PicoMEM 2)
 
 ## Failing Machines :
 - The number of failing machines is decreasing, if it does not work on your machine, you can post an issue in this GitHub repository.
@@ -231,13 +246,11 @@ Warning : As the Wifi antenna is inside the PC case, the connection quality may 
 - Amstrad PPC512 /PPC640 : Problem on some PPC (Can't Boot) Not sure if it depends on the external ISA connectors boards used. <br />
   > Problem identified on some ISA expantion boards, 100uF Low ESR filtering capacitors may be needed.
 - NuXT / EMM8088 homebrew computers seems to have problem. (NEW: EMM8088 working with the last GlaBIOS) <br />
-- Amiga 2000 with a A2088.
 - Tandy 1000 RXS Fail, but work if the BIOS is updated (See the Wiki)
 - Pocket8086 : IO Port error
 - Pocket386  : A BUG on this machine ISA BUS prevent the PicoMEM and any BIOS Based board to boot.
 
 ## Known bug :
-- The PicoMEM may miss some mouse click in the laterst firmwares.
 
 ## License
 
