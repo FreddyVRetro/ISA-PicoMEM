@@ -13,3 +13,9 @@
 Connect the Board with the USB C to a PC/Laptop and press the BOOT Button at the same time
 
 ## Firmwares Revision History :
+
+### PM2-5-15-26: First Public Firmware release
+ - Firmware provided for the first PicoMEM testers, I will update it here quite soon.
+  To be used with the latest PMINIT to be able to enable the SB and GUS Modes.
+ - General MIDI is enabled if you enable the Audio in the BIOS, and use Port 330
+   General MIDI Sound font : GMGSx.sf2 is in the firmware ROM
