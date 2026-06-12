@@ -31,7 +31,7 @@ To see my other projects, here is my Youtube Channel:<br />
 **The PicoMEM at Serdashop (Europe / World)**
 [Serdashop PicoMEM](https://www.serdashop.com/PicoMEM)
 
-**The PicoMEM at Flamelily Shop (UK /World) - BOARDS On SALE**
+**The PicoMEM at Flamelily Shop (UK /World)**  PicoMEM 2 Available !
 [Flamelily PicoMEM link](https://shop.flamelily.co.uk/picomem)
 
 You can have one from me (Mainly for Europe, with wait time), on my form:
@@ -112,7 +112,11 @@ PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the 
 
 ## PicoMEM 2
 
-PicoMEM 2 work is in progress, it should be released in June 2026
+PicoMEM 2 is the evolution of the PicoMEM with on board RP2350B chip.<br />
+It can be used like a PicoMEM 1.
+
+<a href="url"><img src="https://github.com/FreddyVRetro/ISA-PicoMEM/blob/main/jpg/PM202_Close.jpg" align="middle" height=40% width=40% ></a>
+
 
 **Differences with the PicoMEM 1.14 :**
 
