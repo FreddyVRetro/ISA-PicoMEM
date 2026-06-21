@@ -1,10 +1,8 @@
 # ISA PicoMEM HDD Images
 
-The 2 images are DOS 3.31 and DOS 6.22 Bootable images with no application.<br />
+The images are DOS 3.31 and DOS 6.22 Bootable images.<br />
 
-**NEW :** D33_200M_EN Image with some utilities, MTCP, MicroWEB and PicoMEM Drivers
-
-If you want to have more complex/pre generated images, wou can now use DOSForge:<br />
+If you want to have more complex/pre generated images, you can now use DOSForge:<br />
 https://github.com/flynnsbit/dosforge
 
 
@@ -28,8 +26,9 @@ Example for a 245MB Disk: 985,16,32<br />
 14/6/2026 :
 
 - Add a 2GB DOS 6.22 "blank" image (D62_2G_B)
+- Add D62_500M with the same content as D33_200M
 
-D33_200M_EN:
+D33_EN:
  - Update PMINIT for PicoMEM 2 Support and PM2000
  - Add default BLASTER/GUS environment variable with default values (IRQ5, DMA1)
  - Added the sub folder MUSIC with the latest Mod Master XT and some music examples
