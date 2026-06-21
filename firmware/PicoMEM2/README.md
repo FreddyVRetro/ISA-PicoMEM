@@ -16,16 +16,16 @@ Connect the Board with the USB C to a PC/Laptop and press the BOOT Button at the
 
 ### PM2-6-21-26: First Public Firmware release
 
- + .VHD Hard drive image support (Fixed size only)
- + HDD and Floppy images sorted alphabetically.
- + OLED parameter in config.txt : Select 3 type of OLED screen
- - MPU is now enabled via PMINIT
- - SB DSP commands E2 and 24 added.
- ! Now display RP2350 on the info page.
- ! Display bug from image selection when None is selected.
- ! Corrected support of sub folder from Floppy BIOS selection.
- ! IRQ 3 detection was not working, IRQ6 was not enabled.
- ! Corrected a BUG in IRQ detection (prevented some PC to BOOT)
+ + .VHD Hard drive image support (Fixed size only)<br />
+ + HDD and Floppy images sorted alphabetically.<br />
+ + OLED parameter in config.txt : Select 3 type of OLED screen<br />
+ - MPU is now enabled via PMINIT<br />
+ - SB DSP commands E2 and 24 added.<br />
+ ! Now display RP2350 on the info page.<br />
+ ! Display bug from image selection when None is selected.<br />
+ ! Corrected support of sub folder from Floppy BIOS selection.<br />
+ ! IRQ 3 detection was not working, IRQ6 was not enabled.<br />
+ ! Corrected a BUG in IRQ detection (prevented some PC to BOOT)<br />
 
 "Bug" : PicoMEM IRQ is still hard coded, Jumper on IRQ7 is mandatory.
 
