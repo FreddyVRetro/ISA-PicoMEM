@@ -159,12 +159,21 @@ It can be used like a PicoMEM 1.
 - CD ROM emulation
 
 ## Compatibility/Limitations
- 
-The Board can't be used for Video emulation, as it require a way for the Pico to actually display something, and only 3 pins are "Free".
+
+**PicoMEM 1 limitations:** 
+
+The Board can't be used for Video emulation, as it require a way for the Pico to actually display something, and only 3 pins are "Free".<br />
+Update (06/2026) : Th ePicoGraph is a PicoMEM 1.14 firmware to transform it to a Video card (Require a Pico2 to replace the existing Pico module)<br />
+Link: https://github.com/ianhan/picograph<br />
+
 The Pi Pico is limmited in its speed, this is excellent and bad at the same time:
 - Multiple complex function can't be emulated at the same time, choices need to be done.
 - We can still program the Pico and Feel like doing coding on a "Retro" Machine, so we don't have the effect "Look, it is easy, he put a processor in the PC that can emulate the full PC"
 - There are still problems on various machines.
+
+**PicoMEM 2 limitations:**<br />
+
+Mostr of the PicoMEM 1.14 limitations are now gone with the PicoMEM 2<br />
 
 ## Memory emulation details :
 
