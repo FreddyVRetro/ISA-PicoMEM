@@ -1,6 +1,7 @@
 #pragma once
 
-#include "pico/platform.h"
+//#include "pico/platform.h"
+#include "pico.h"
 
 typedef uint32_t	Bitu;
 

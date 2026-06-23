@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pm_board.h"     // PicoMEM Board Definitions (GPIO) (MUX_V2 defined here)
+
 #define PORT_PM_CMD_STATUS 0  // Write Command, Read Status
 #define PORT_PM_CMD_DATAL  1  // Command Data L
 #define PORT_PM_CMD_DATAH  2  // Command Data H
@@ -13,10 +15,10 @@
 __force_inline uint8_t GetPortType(uint32_t port)
 {
 #if MUX_V2
-if (port<0x3FF) return PORT_Table[(port^0x0300)>>3];
+if (port<0x3FF) return IO_Index_T[(port^0x0300)>>3];
      else return 0xFF;
 #else
- if (port<0x3FF) return PORT_Table[port>>3];
+ if (port<0x3FF) return IO_Index_T[port>>3];
      else return 0xFF;
 #endif
 }
@@ -26,10 +28,10 @@ __force_inline void SetPortType(uint32_t port,uint8_t Type, uint8_t Size)
 {
 #if MUX_V2
   for (int i=0;i<Size;i++) 
-  { PORT_Table[((port^0x0300)>>3)+i] = Type; }
+  { IO_Index_T[((port^0x0300)>>3)+i] = Type; }
 #else
   for (int i=0;i<Size;i++) 
-  { PORT_Table[(port>>3)+i] = Type; }
+  { IO_Index_T[(port>>3)+i] = Type; }
 #endif
 }
 
@@ -37,7 +39,7 @@ __force_inline void SetPortType(uint32_t port,uint8_t Type, uint8_t Size)
 __force_inline void DelPortType(uint8_t Type)
 {
   for (int i=0;i<128;i++)
-  { if (PORT_Table[i]==Type) PORT_Table[i]=DEV_NULL; }
+  { if (IO_Index_T[i]==Type) IO_Index_T[i]=DEV_NULL; }
 }
 
 extern void test_pmio_transfer();

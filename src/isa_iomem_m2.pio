@@ -6,14 +6,12 @@
 ; Control signals activation detection done by the CPU to Optimize the overall speed
 
 ; Values for the Proto Board :
-;.define public PIN_IRQ    5
 ;.define public PIN_AEN    6
 ;.define public PIN_ALE    7
 
 ; Values for the V1.0 Board: (Shift by 5 Pin).  
-.define public PIN_IRQ    0
-.define public PIN_AEN    1   //DREQ
-.define public PIN_ALE    2   //DACK
+.define public PIN_AEN    1   //DREQ on 1.3
+.define public PIN_ALE    2   //DACK on 1.3
 ; Pin 3 to 7 are for SD/PSRAM
 .define public PIN_AD0    8
 .define public PIN_A8_MR  16
@@ -27,6 +25,8 @@
 .define public SEL_ADL    0   // Select Address Low and I/O Mem Signals
 .define public SEL_ADH    1   // Select Address High and A16-A19
 .define public PIN_IORDY  22  // Reversed : 1> Wait 0> Ok
+
+.define public SEL_CTRL   1   // Select Address High and I/O Mem Signals
 
 ; 22 Instructions
 ; The Pico Core detect when IOR, IOW, MEMR or MEMW Move.
@@ -56,8 +56,7 @@ restart:
     jmp !X NoWaitState  side 0b10    ; If X=0 don't add Wait State
     set pins,1          side 0b10    ; Enable IOCHRDY    
 NoWaitState:
-    out X, 32           side 0b10    ; 3> Read 0, or PIN_A18_IR or PIN_A16_MR Wait instruction
-;    jmp !x restart      side 0b00   ; X=0 >  IOR/MEMR or nothing
+    out X, 32           side 0b10    ; 3> Read 0 or 1 (IRQ) or 2 (MEMR)
     jmp x-- Do_IO_MEM_Read
     jmp restart
 Do_IO_MEM_Read:

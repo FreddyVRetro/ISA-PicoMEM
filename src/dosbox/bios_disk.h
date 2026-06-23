@@ -35,7 +35,9 @@
 #include "ff.h"
 
 /* The Section handling Bios Disk Access */
-#define BIOS_MAX_DISK 10
+//#define BIOS_MAX_DISK 10
+
+#define SZ_TBL 32 // For FatFS FastSeek
 
 // Structure for the pre defined disk geometry list (Floppy)
 #define MAX_SWAPPABLE_DISKS 20
@@ -47,6 +49,59 @@ struct diskGeo {
 	Bit16u biosval;   /* Type to return from BIOS */
 };
 extern const diskGeo DiskGeometryList[];
+
+// VHD Files Footer
+enum VHDTypes : uint32_t
+	{
+		VHD_TYPE_NONE = 0,
+		VHD_TYPE_FIXED = 0x02000000,
+		VHD_TYPE_DYNAMIC = 0x03000000,
+		VHD_TYPE_DIFFERENCING = 0x04000000
+	};
+
+struct Geometry {
+        uint16_t cylinders;
+        uint8_t heads;
+        uint8_t sectors;
+    };
+
+struct __attribute__((packed)) VHDFooter {
+        char cookie[8];
+        uint32_t features;
+        uint32_t fileFormatVersion;
+        uint64_t dataOffset;
+        uint32_t timeStamp;
+        char creatorApp[4];
+        uint32_t creatorVersion;
+        uint32_t creatorHostOS;
+        uint64_t originalSize;
+        uint64_t currentSize;
+        Geometry geometry;
+        VHDTypes diskType;
+        uint32_t checksum;
+		// remove the rest of the fields, as we don't need them
+    };
+
+// Root sector / Partition structure
+struct  __attribute__((packed)) partTable {
+	uint8_t booter[446];
+	struct __attribute__((packed)) partentry_t {
+		uint8_t bootflag;
+		uint8_t beginchs[3];
+		uint8_t parttype;
+		uint8_t endchs[3];
+		uint32_t absSectStart;
+		uint32_t partSize;
+	} pentry[4];
+	uint8_t  magic1; /* 0x55 */
+	uint8_t  magic2; /* 0xaa */
+#ifndef SECTOR_SIZE_MAX
+# pragma warning SECTOR_SIZE_MAX not defined
+#endif
+#if SECTOR_SIZE_MAX > 512
+    uint8_t  extra[SECTOR_SIZE_MAX - 512];
+#endif
+};
 
 class imageDisk  {
 public:
@@ -73,27 +128,7 @@ public:
 
 	Bit32u sector_size;
 	Bit32u heads,cylinders,sectors;
-};
-
-// Master Boot Record (MBR)
-struct partTable {
-	uint8_t booter[446];
-	struct partentry_t {
-		uint8_t bootflag;
-		uint8_t beginchs[3];
-		uint8_t parttype;
-		uint8_t endchs[3];
-		uint32_t absSectStart;
-		uint32_t partSize;
-	} pentry[4];
-	uint8_t  magic1; /* 0x55 */
-	uint8_t  magic2; /* 0xaa */
-#ifndef SECTOR_SIZE_MAX
-# pragma warning SECTOR_SIZE_MAX not defined
-#endif
-#if SECTOR_SIZE_MAX > 512
-    uint8_t  extra[SECTOR_SIZE_MAX - 512];
-#endif
+	Bit32u clmt[SZ_TBL];          // FATFS FastSeek
 };
 
 void updateDPT(void);

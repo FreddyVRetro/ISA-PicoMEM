@@ -31,7 +31,18 @@ If not, see <https://www.gnu.org/licenses/>.
 #define DEV_TANDY  10
 #define DEV_SBDSP  11
 #define DEV_RTC    12
-#define DEV_MMB    13
+#define DEV_MMB    13  // Mindscape
+#define DEV_CDR    14  // CD ROM
+#define DEV_CVX    15
+#define DEV_MPU    16
+#define DEV_GUS    17
+
+#ifdef BOARD_WM10
+#define DEV_MCA_POS 18
+#define DEV_TOTAL  19  // Total number of devices
+#else
+#define DEV_TOTAL  18  // Total number of devices
+#endif
 
 
 // * Status and Commands definition
@@ -55,14 +66,19 @@ If not, see <https://www.gnu.org/licenses/>.
 #define CMDERR_DISKFULL   0x06
 #define CMDERR_DISK       0x07  // Any other Disk Error
 #define CMDERR_FILEREAD   0x08  // Can't open/Read file (image)
-#define CMDERR_MOUTFAIL   0x09  // Disk image mount fail
+#define CMDERR_MOUNTFAIL  0x09  // Disk image mount fail
+#define CMDERR_PORTUSED   0x10  // Port already used
+#define CMDERR_MEM_ERR    0x11  // Not enaugh memory
+#define CMDERR_AMIX_FAIL  0x12  // Audio mixer init fail
+#define CMDERR_NOIRQ	  0x13  // No IRQ detected/Available
+#define CMDERR_NOTSUPP    0xFF  // Command not supported
 
 // 0x 1x General / Configuration Commands
 #define CMD_Reset         0x00   // Put back the status to 0, after an error
-#define CMD_GetBasePort   0x01
-#define CMD_SetBasePort   0x02
-#define CMD_GetDEVType    0x03   // Read the device associated with an I/O range     (Not used)
-#define CMD_SetDEVType    0x04   // Enable the decoding of a device, on an I/O range (Not used)
+#define CMD_PMIRQ_ACK     0x01   // PicoMEM multiplexed interrupt acknowledge
+#define CMD_DMACPY_ACK    0x02   // DMA Copy Acknowledge
+#define CMD_Reserved2     0x03
+#define CMD_Reserved3     0x04   //
 #define CMD_GetMEMType    0x05   // Read the type of Memory mapped to a memory range
 #define CMD_SetMEMType    0x06   // Set the type of Memory mapped to a memory range
 #define CMD_MEM_Init      0x07   // Configure the memory based on the Config table
@@ -71,6 +87,8 @@ If not, see <https://www.gnu.org/licenses/>.
 #define CMD_TDY_Init      0x0A   // Initialize the Tandy RAM emulation
 #define CMD_Test_RAM      0x0B   // Write the sent value to the BIOS RAM Test Address, Return the value that was present
 #define CMD_TESTIO        0x0C   // Test Data transfer via IO > To remove when done
+#define CMD_GetBasePort   0x0D
+#define CMD_SetBasePort   0x0E
 
 #define CMD_GetPMString   0x10   // Read the PicoMEM Firmware string
 #define CMD_ReadConfig    0x12   // Read the Config variables from I/O
@@ -103,24 +121,29 @@ If not, see <https://www.gnu.org/licenses/>.
 // 7x Audio commands
 #define CMD_AudioOnOff    0x70  // Full audio rendering 0: Off 1:On
 
+#define CMD_PS1OnOff      0x72  // PS1 Audio : 0 : Off 1: On default
 #define CMD_AdlibOnOff    0x73  // Tandy Audio : 0 : Off 1: On default
 #define CMD_TDYOnOff      0x74  // Tandy Audio : 0 : Off 1: On default or port
 #define CMD_CMSOnOff      0x75  // CMS Audio   : 0 : Off 1: On default or port
-#define CMD_CovoxOnOff    0x76  // Covox Audio : 0 : Off 1: On default or port
+#define CMD_CVXOnOff      0x76  // Covox Audio : 0 : Off 1: On default or port
 #define CMD_SetSBIRQDMA   0x77  // Set Sound Blaster IRQ
 #define CMD_SBOnOff       0x78  // Sound Blaster Audio : 0 : Off 1: On default or port
-#define CMD_SetGUSIRQDMA     0x79  // Set GUS IRQ
+#define CMD_SetGUSIRQDMA  0x79  // Set GUS IRQ
 #define CMD_GUSOnOff      0x7A  // GUS Audio : 0 : Off 1: On default or port
 #define CMD_MMBOnOff      0x7B  // Mindscape Audio : 0 : Off 1: On default or port
+#define CMD_DSSOnOff      0x7C  // Disney Audio
+#define CMD_MPUOnOff      0x7D  // MPU/General MIDI : 0 : Off 1: On default or port
+
 
 // 8x Disk Commands
 #define CMD_HDD_Getlist   0x80  // Write the list of hdd images into the Disk memory buffer
 #define CMD_HDD_Getinfos  0x81  // Write the hdd infos in the Disk Memory buffer
-#define CMD_HDD_Mount     0x82  // Map a disk image
+#define CMD_HDD_Mount     0x82  // Map disk images
 #define CMD_FDD_Getlist   0x83  // Write the list of file name into the Disk memory buffer
 #define CMD_FDD_Getinfos  0x84  // Write the disk infos to the Disk Memory buffer
-#define CMD_FDD_Mount     0x85  // Map a disk image
+#define CMD_FDD_Mount     0x85  // Map a floppy image
 #define CMD_HDD_NewImage  0x86  // Create a new HDD Image
+#define CMD_Image_Select  0x87  // Copy the selected image to the given drive config entry (HDD or FDD)
 
 #define CMD_Int13h        0x88  // Emulate the BIOS Int13h
 #define CMD_EthDFS_Send   0x89  // Send a packet to EthDFS server emulator and wait answer
@@ -146,147 +169,122 @@ If not, see <https://www.gnu.org/licenses/>.
 
 #define CMD_DMA_TEST       0xAA
 
+#define INIT_DONE          0x00
 #define INIT_SKIPPED       0xFC  // Skipped or Error to initialize  ! Hardcoded in the ASM BIOS
-#define INIT_INPROGRESS    0xFE
-#define INIT_DISABLED      0xFE
+#define INIT_INPROGRESS    0xFD
+#define INIT_DISABLED      0xFF
 
 // Shared MEMORY variables defines (Registers and PC Commands)
+// The Shared Memory is used to exchange variables between the PicoMEM and the PC
+// It is located just after the BIOS ROM (16KB) at PC Side
+// and in the Pico SRAM in the PM_DPRAM table
 
-// BIOSVARS
+// It is splitted in multiple part :
+// - Shared BIOS Variables
+// - Disk Parameter Table
+// - Registers save area (For Int calls)
+// - PicoMEM Config      (Saved to the SD Card)
+// - PC Command variables
+// - PicoMEM IRQ variables and parameters
+// - PicoMEM IRQ parameters
+// - PC Command parameters
+// - BIOS internal variables (Not used by the Pico)
+// - PicoMEM Disk Buffer (2KB)
+// - PicoMEM DMA  Buffer (2KB)
 
-#define BV_SIZE 32
+// Size of the different sections
+#define BV_SIZE    32
+#define DPT_SIZE   32     // (2*16)
+#define REGS_SIZE  18     // 9 registers saved
+#define CONF_SIZE  768    // Configuration variables size
+#define PCCMD_SIZE 4      // PC Command variables size
 
-#define BV_VARID      PM_DP_RAM[0]  // ID
-#define BV_Test       PM_DP_RAM[1]  // Test
-#define BV_InitCount  PM_DP_RAM[2]  // Nb of time the PicoMEM BIOS Start
-#define BV_BootCount  PM_DP_RAM[3]  // Nb of time the PicoMEM BootStrap Start
-#define BV_PSRAMInit  PM_DP_RAM[4]  // BIOS RAM Offset of the PSRAM Init Variable
-#define BV_SDInit     PM_DP_RAM[5]  // BIOS RAM Offset of the SD Init Variable
-#define BV_USBInit    PM_DP_RAM[6]  // BIOS RAM Offset of the USB Host Init Variable
-#define BV_CFGInit    PM_DP_RAM[7]  // BIOS RAM Offset of the Config File Init Variable
-#define BV_WifiInit   PM_DP_RAM[8]
-#define BV_PortInit   PM_DP_RAM[9]  // PicoMEM Base Port initialisation  0FEh not initialized 0 Ok
-#define BV_USBDevice  PM_DP_RAM[10] // Mounted USB Device Bit 0: Mouse Bit 1: Keyboard  Bit 3: Joystick ! Not used for the moment
-#define BV_IRQ        PM_DP_RAM[11] // Detected Hardware IRQ Number
-#define BV_IRQSource  PM_DP_RAM[12] // Source of the Hardware Interrupt, Data stored in IRQ_Param (Cleared by the PC when acknowledge)
-#define BV_IRQ_Cnt    PM_DP_RAM[13] // Incremented at the Stard, decremented at the end (To detect if an IRQ is in progress)
-#define BV_IRQStatus  PM_DP_RAM[14] // Status of the IRQ
-#define BV_IRQArg     PM_DP_RAM[15] // Argument for the IRQ (Like the SW IRQ number to call)
-#define BV_DMAStatus  PM_DP_RAM[16] // Status of the emulated DMA code (In the Interrupt)
-#define PC_DiskNB     PM_DP_RAM[17] // Number of Disk found at the origin
-#define PC_FloppyNB   PM_DP_RAM[18] // Number of Physical Floppy drive
-#define PC_MEM        PM_DP_RAM[19] // PC RAM Size in Kb
-#define PC_MEM_H      PM_DP_RAM[20] // PC RAM Size in Kb
-#define New_DiskNB    PM_DP_RAM[21] // Number of Disk in total after HDD Mount
-#define New_FloppyNB  PM_DP_RAM[22] // Number of Floppy in total after FDD Mount
-#define BV_Tandy      PM_DP_RAM[23] // Tandy Mode
-#define BV_TdyRAM     PM_DP_RAM[24] // Number of 16Kb Block of RAM to add for Tandy
-#define BV_CmdRunning PM_DP_RAM[25] // Number of Floppy in total after FDD Mount
-#define BV_BoardID    PM_DP_RAM[26] // PicoMEM Board ID (Type)
-#define BV_PicoID     PM_DP_RAM[27] // Pico ID (Pico, Pico W, Pimoroni...)
-#define BV_FW_Rev     PM_DP_RAM[28] // PicoMEM Firmware revision
-#define BV_FW_Rev_H   PM_DP_RAM[29] // PicoMEM Firmware revision
+#define VARS_OFFS 0 // Offset of the Shared Memory variables in the PM_DP_RAM
+#define DPT_OFFS       (VARS_OFFS + BV_SIZE)     // Offset of the Disk Parameter
+#define DPT0_OFFS       DPT_OFFS                 // Disk Parameter Table 0
+#define DPT1_OFFS      (VARS_OFFS + BV_SIZE+16)  // Disk Parameter Table 1
+#define REGS_OFFS      (DPT_OFFS + DPT_SIZE)     // Offset of the Registers save area
+#define CONF_OFFS      (REGS_OFFS + REGS_SIZE)   // Offset of the PicoMEM Config
+#define PCCMD_OFFS     (CONF_OFFS + CONF_SIZE)   // Offset of the PC Commands and IRQ parameters
+#define IRQ_VAR_OFFS   (PCCMD_OFFS + PCCMD_SIZE) // PicoMEM IRQ variables structure (14 bytes)
+#define OFFS_IRQ_PARAM   IRQ_VAR_OFFS+14      // Offset of the IRQ Parameter structure (12 bytes)
+#define OFFS_PCCMDPARAM  PCCMD_OFFS+36
 
-// Disk DPT  Size 16, Offset 16
-// Registry  Size 18, Offset 16+32
-// PicoMEM Config 16+32+18
+#define BV_VARID       PM_DP_RAM[0]  // ID
+#define BV_Test        PM_DP_RAM[1]  // Test
+#define BV_InitCount   PM_DP_RAM[2]  // Nb of time the PicoMEM BIOS Start
+#define BV_BootCount   PM_DP_RAM[3]  // Nb of time the PicoMEM BootStrap Start
+#define BV_PSRAMInit   PM_DP_RAM[4]  // PSRAM Init Status Variable
+#define BV_SDInit      PM_DP_RAM[5]  // SD Init Status Variable
+#define BV_USBInit     PM_DP_RAM[6]  // BIOS RAM Offset of the USB Host Init Variable
+#define BV_CFGInit     PM_DP_RAM[7]  // BIOS RAM Offset of the Config File Init Variable
+#define BV_WifiInit    PM_DP_RAM[8]
+#define BV_PortInit    PM_DP_RAM[9]  // PicoMEM Base Port initialisation  0FEh not initialized 0 Ok
+#define BV_USBDevice   PM_DP_RAM[10] // Mounted USB Device Bit 0: Mouse Bit 1: Keyboard  Bit 3: Joystick ! Not used for the moment
+#define BV_IRQ         PM_DP_RAM[11] // Detected Hardware IRQ Number
+#define BV_HWIRQ       PM_DP_RAM[12] // Detected Hardware IRQ Number (Bit field for multiple IRQ)
+#define BV_DMANoUpdate PM_DP_RAM[13] // Set to 1 when the DMA Code update the DMA registers (For the DMA emulation to ignore)
+#define BV_Int13hCLI   PM_DP_RAM[14] //
+#define BV_SPIPSRAM    PM_DP_RAM[15] // Set to 1 when SPI PSRAM is used (to stop IRQ during disk access)
+#define BV_Fill2       PM_DP_RAM[16] // Status of the emulated DMA code (In the Interrupt)
+#define PC_DiskNB      PM_DP_RAM[17] // Number of Disk found at the origin
+#define PC_FloppyNB    PM_DP_RAM[18] // Number of Physical Floppy drive
+#define PC_MEM         PM_DP_RAM[19] // PC RAM Size in Kb
+#define PC_MEM_H       PM_DP_RAM[20] // PC RAM Size in Kb
+#define New_DiskNB     PM_DP_RAM[21] // Number of Disk in total after HDD Mount
+#define New_FloppyNB   PM_DP_RAM[22] // Number of Floppy in total after FDD Mount
+#define BV_Tandy       PM_DP_RAM[23] // Tandy Mode
+#define BV_TdyRAM      PM_DP_RAM[24] // Number of 16Kb Block of RAM to add for Tandy
+#define BV_CmdRunning  PM_DP_RAM[25] // Command currently running in the Pico
+#define BV_PCCMD_SOURCE PM_DP_RAM[26] // Contains the ID/number of the PicoMEM code starting/Using the PC Command
+#define BV_BoardID    PM_DP_RAM[27] // PicoMEM Board ID (Type)
+#define BV_PicoID     PM_DP_RAM[28] // Pico ID (Pico, Pico W, Pimoroni...)
+#define BV_Fill3      PM_DP_RAM[29] //
+#define BV_FW_Rev     PM_DP_RAM[30] // PicoMEM Firmware revision
+#define BV_FW_Rev_H   PM_DP_RAM[31] // PicoMEM Firmware revision
 
-/*         Disk Parameters Table            */
 
-#define OFFS_DPT0  BV_SIZE    /* Disk Parameter Table 0 */
-#define OFFS_DPT1  BV_SIZE+16 /* Disk Parameter Table 1 */
-
-/* Registers save area */
-#define OFFS_REGS BV_SIZE+32  // 16+32  Registers Offset in the Shared RAM
-
-#define OFFS_AL OFFS_REGS
-#define OFFS_AH OFFS_REGS+1
-#define OFFS_BL OFFS_REGS+2
-#define OFFS_BH OFFS_REGS+3
-#define OFFS_CL OFFS_REGS+4
-#define OFFS_CH OFFS_REGS+5
-#define OFFS_DL OFFS_REGS+6
-#define OFFS_DH OFFS_REGS+7
-#define OFFS_DS OFFS_REGS+8
-#define OFFS_SI OFFS_REGS+10
-#define OFFS_ES OFFS_REGS+12
-#define OFFS_ESL OFFS_REGS+12
-#define OFFS_ESH OFFS_REGS+13
-#define OFFS_DI OFFS_REGS+14
-#define OFFS_CF OFFS_REGS+16
+// *** Registers PM_DP_RAM offset definitions ***
+#define OFFS_AL REGS_OFFS
+#define OFFS_AH REGS_OFFS +1
+#define OFFS_BL REGS_OFFS +2
+#define OFFS_BH REGS_OFFS +3
+#define OFFS_CL REGS_OFFS +4
+#define OFFS_CH REGS_OFFS +5
+#define OFFS_DL REGS_OFFS +6
+#define OFFS_DH REGS_OFFS +7
+#define OFFS_DS REGS_OFFS +8
+#define OFFS_SI REGS_OFFS +10
+#define OFFS_ES REGS_OFFS +12
+#define OFFS_ESL REGS_OFFS+12
+#define OFFS_ESH REGS_OFFS+13
+#define OFFS_DI REGS_OFFS +14
+#define OFFS_CF REGS_OFFS +16
 
 #define reg_ax (uint16_t) ((uint16_t)(PM_DP_RAM[OFFS_AH]<<8)+(uint16_t)PM_DP_RAM[OFFS_AL])
-#define reg_ah PM_DP_RAM[OFFS_AH]
 #define reg_al PM_DP_RAM[OFFS_AL]
+#define reg_ah PM_DP_RAM[OFFS_AH]
 #define reg_bx (uint16_t) ((uint16_t)(PM_DP_RAM[OFFS_BH]<<8)+(uint16_t)PM_DP_RAM[OFFS_BL])
-#define reg_bh PM_DP_RAM[OFFS_BH]
 #define reg_bl PM_DP_RAM[OFFS_BL]
-#define reg_ch PM_DP_RAM[OFFS_CH]
+#define reg_bh PM_DP_RAM[OFFS_BH]
 #define reg_cl PM_DP_RAM[OFFS_CL]
-#define reg_dh PM_DP_RAM[OFFS_DH]
+#define reg_ch PM_DP_RAM[OFFS_CH]
 #define reg_dl PM_DP_RAM[OFFS_DL]
-#define reg_esh PM_DP_RAM[OFFS_ESH]
+#define reg_dh PM_DP_RAM[OFFS_DH]
 #define reg_esl PM_DP_RAM[OFFS_ESL]
+#define reg_esh PM_DP_RAM[OFFS_ESH]
 #define reg_es (uint16_t) ((uint16_t)(PM_DP_RAM[OFFS_ESH]<<8)+(uint16_t)PM_DP_RAM[OFFS_ESL])
 #define reg_flagl PM_DP_RAM[OFFS_CF]
 
-//** PicoMEM Configuration variables: Loaded at Boot time from the CF, then saved
+// PC Commands "Registers"
+#define PCCR_PCSTATE  PM_DP_RAM[PCCMD_OFFS]
+#define PCCR_CMD      PM_DP_RAM[PCCMD_OFFS+1]  
+#define PCCR_PMSTATE  PM_DP_RAM[PCCMD_OFFS+2]  // Set to 1 when a command is sent
+#define PCCR_CMD_RES  PM_DP_RAM[PCCMD_OFFS+3]  // Result of the command (Not used)
+// [3] Reserved
 
-#define PMRAM_CFG_Offset BV_SIZE+50 // 18 Added
-
-/*         PC Commands defines          */
-#define OFFS_PCCMD BV_SIZE+306  // 16+32+18+256=322
-#define OFFS_IRQPARAM   OFFS_PCCMD+4
-#define OFFS_PCCMDPARAM OFFS_PCCMD+12
-#define PCCR_PMSTATE PM_DP_RAM[OFFS_PCCMD]
-#define PCCR_PCSTATE PM_DP_RAM[OFFS_PCCMD+1]
-#define PCCR_CMD     PM_DP_RAM[OFFS_PCCMD+2]    // 
-#define PCCR_SectNB  PM_DP_RAM[OFFS_PCCMD+3]    //
-#define IRQ_Param    PM_DP_RAM[OFFS_IRQPARAM]
-#define PCCR_Param   PM_DP_RAM[OFFS_PCCMDPARAM] //
-
-#define PCC_PCS_NOTREADY   0x00    // PC Not Waiting for a Command
-#define PCC_PCS_WAITCMD    0x01    // PC Waiting for an Command
-#define PCC_PCS_INPROGRESS 0X02    // PC Command in Progress
-#define PCC_PCS_COMPLETED  0X03    // PC Command completed
-#define PCC_PCS_ERROR      0x10    // PC Command Error
-#define PCC_PCS_RESET      0x20    // When the Pi Pico is blocked waiting for the PC, use this to reset
- 
-#define PCC_PMS_DOWAITCMD    0x00  // Ask the PC to Wait for a command
-#define PCC_PMS_COMMAND_SENT 0x01  // Tell the PC a command is available (At the end of the command, the PC Will wait)
-
-#define PCC_EndCommand    0    // No more Command
-#define PCC_IN8           1	   // IO Read  8Bit
-#define PCC_IN16          2    // IO Read  16Bit
-#define PCC_OUT8          3    // IO Write 8Bit
-#define PCC_OUT16         4    // IO Write 16Bit
-#define PCC_MemCopyB      5
-#define PCC_MemCopyW      6
-#define PCC_MemCopyW_Odd  7
-#define PCC_MemCopyW_512b 8
-#define PCC_MEMR16        9    // Memory Read 16Bit
-#define PCC_MEMW8         10   // Memory Write 16Bit
-#define PCC_MEMW16        11   // Memory Write 16Bit
-#define PCC_DMA_READ      12   //Read requested DMA channel Page:Offset and size
-#define PCC_DMA_WRITE     13   //Update the DMA channel Offset and size
-#define PCC_IRQ13         14   //Send an IRQ13 and get the result (BIOS)
-#define PCC_IRQ21         15   //Send an IRQ21 and get the result (DOS )
-
-#define PCC_Printf        16   // Display a 0 terminiated string with Int10h
-#define PCC_GetScreenMode 17   // Get the currently used Screen Mode
-#define PCC_GetPos        18   // Get Screen Offset
-#define PCC_SetPos        19   // 
-#define PCC_KeyPressed    20   //
-#define PCC_ReadKey       21   //
-#define PCC_SendKey       22   //
-#define PCC_ReadString    23   //
-
-#define PCC_Checksum      24   // Perform a Checksum from one Segment Start with a Size
-#define PCC_SetRAMBlock16 25   // Write the same value to a memory Block
-#define PCC_MEMWR8        26   // Write then read a byte
-#define PCC_MEMWR16       27   // Write then read a word
-
-#define PM_BIOS_SIZE 12*1024
+#define PCCR_Param   PM_DP_RAM[OFFS_PCCMDPARAM] //PC Commands parameters/memory zone
+// 2KB is reserved for the Commands parameters RAM
 
 #define PM_DB_Offset   4*1024  // Offset of the Disk Buffer start in the BIOS/DP RAM
 #define PM_DB_Size     2*1024  // Size of the 'Disk Buffer in the BIOS/DP RAM
@@ -296,15 +294,20 @@ If not, see <https://www.gnu.org/licenses/>.
 // Memory emulation defines
 #define MEM_T_Size 128
 
+//const char *PM_Models[] = {"PicoMEM Proto", "PicoMEM 1", "PicoMEM LP", "PicoMEM 1.3", "PicoMEM 1.4", "","","","","PicoMEM 1.5", "PicoMEM 2"};
+
 struct hostio_t {
-	volatile bool Updated;
+	volatile bool     Updated;
 	volatile uint32_t Port20hCount;   	// Incremented each time a write is done to Port 20h
 	volatile uint8_t  Port21h;			// IRQ Mask register
     volatile bool 	  Port21h_Updated;  // IRQ Mask register updates
-	volatile uint8_t  Port80h;			// Post Code
-    volatile bool 	  Port80h_Updated;  // Post Code Previous Value
-	volatile uint8_t  Port81h;			// Post Code
-    volatile bool 	  Port81h_Updated;  // Post Code Previous Value	
+	volatile uint8_t  Port80h;			// BIOS Post Code (80h)
+    volatile bool 	  Port80h_Updated;
+	volatile uint8_t  Port81h;			// PicoMEM Post Code (81h)
+    volatile bool 	  Port81h_Updated;  // Post Code Previous Value
+	volatile uint8_t  PortPost2;		// 2nd Post Code port (Custom)
+    volatile bool 	  PortPost2_Updated;
+	volatile uint16_t Post2Port;
 };
 
 typedef struct pm_reg {  // Not realy used for the moment
@@ -324,15 +327,51 @@ typedef struct FSizeName_t {
 	char name[14];
 } FSizeName_t;
 
-// PicoMEM Configuration table, defined in the BIOS
+// PicoMEM BIOS variables table, defined also in the BIOS
+// ! Be carefull, Word must be aligned
+typedef struct BIOSVAR_t {
+	uint8_t VARID;
+	uint8_t Test;			// Test
+	uint8_t InitCount;		// Nb of time the PicoMEM BIOS Start
+	uint8_t BootCount;		// Nb of time the PicoMEM BootStrap Start
+	uint8_t PSRAMInit;		// BIOS RAM Offset of the PSRAM Init Variable
+	uint8_t SDInit;			// BIOS RAM Offset of the SD Init Variable
+	uint8_t USBInit;		// BIOS RAM Offset of the USB Host Init Variable
+	uint8_t CFGInit;		// BIOS RAM Offset of the Config File Init Variable
+	uint8_t WifiInit;
+	uint8_t PortInit;		// PicoMEM Base Port initialisation  0FEh not initialized 0 Ok
+	uint8_t USBDevice;		// Mounted USB Device Bit 0: Mouse Bit 1: Keyboard  Bit 3: Joystick ! Not used for the moment
+	uint8_t IRQ;			// Detected Hardware IRQ Number
+	uint8_t IRQSource;		// Source of the Hardware Interrupt, Data stored in IRQ_Param (Cleared by the PC when acknowledge)
+	uint8_t IRQ_Cnt;		// Incremented at the Stard, decremented at the end (To detect if an IRQ is in progress)
+	uint8_t IRQStatus;		// Status of the IRQ
+	uint8_t IRQArg;			// Argument for the IRQ (Like the SW IRQ number to call)
+	uint8_t DMAStatus;		// Status of the emulated DMA code (In the Interrupt)
+	uint8_t DiskNB;			// Number of Disk found at the origin
+	uint8_t FloppyNB;		// Number of Physical Floppy drive
+	uint16_t MEM;			// PC RAM Size in Kb
+
+	uint8_t N_DiskNB;		// Number of Disk in total after HDD Mount
+	uint8_t N_FloppyNB;	    // Number of Floppy in total after FDD Mount
+	uint8_t Tandy;			// Tandy Mode
+	uint8_t TdyRAM;			// Number of 16Kb Block of RAM to add for Tandy
+	uint8_t CmdRunning;		// Command currently running in the Pico
+	uint8_t PCCMD_SOURCE;	// Contains the ID/number of the PicoMEM code starting/Using the PC Command
+	uint8_t BoardID;		// PicoMEM Board ID (Type)
+	uint8_t PicoID;			// Pico ID (Pico, Pico W, Pimoroni...)
+	uint8_t Fill;			//
+	uint16_t FW_Rev;		// PicoMEM Firmware revision
+} BIOSVAR_t;
+
+// PicoMEM Configuration table, defined also in the BIOS
 // ! Be carefull, Word must be aligned
 typedef struct PMCFG_t {
     FSizeName_t FDD[2];
     FSizeName_t HDD[4];
-    uint8_t    FDD_Attribute[2];  // Bit 7:1 PicoMEM Image ; Bit 6: USB or SD ; Bit 0-1: PC device / image number
-    uint8_t    HDD_Attribute[4];  // Bit 7:1 PicoMEM Image ; Bit 6: USB or SD ; Bit 0-1: PC device / image number
+    uint8_t     FDD_Attribute[2];  // Bit 7:1 PicoMEM Image ; Bit 6: USB or SD ; Bit 0-1: PC device / image number
+    uint8_t     HDD_Attribute[4];  // Bit 7:1 PicoMEM Image ; Bit 6: USB or SD ; Bit 0-1: PC device / image number
     FSizeName_t ROM[2];    // Emulated ROM Extention names
-//130 Bytes	 
+//130 Bytes
     uint8_t  ROM_Addr[2]; // Address
 	uint8_t  ROM_BlNb[2]; // Nb of 16K Block (Max 2)
     uint8_t  MEM_Map[64]; // Memory configuration MAP
@@ -359,20 +398,25 @@ typedef struct PMCFG_t {
 	uint8_t  BIOSBOOT;
 
 	uint8_t  AudioOut;
-	uint8_t  AudioBuff;  // Not used for the moment to define the Nb of audio Buffer
+	uint8_t  AudioBuff;   // Not used for the moment to define the Nb of audio Buffer
 	uint8_t  Audio1;
 	uint8_t  Audio2;
 	uint8_t  Audio3;
-	uint8_t  Adlib;		// Adlin On / Off (Port 0x388)
+	uint8_t  Adlib;		  // Adlin On / Off (Port 0x388)
 	uint16_t TDYPort;
 	uint16_t CMSPort;
 	uint16_t SBPort;
 	uint8_t  SBIRQ;
 	uint8_t  Audio4;
-	uint16_t MMBPort;
-	uint8_t  ColorPt;     // Menu Color Profile
+	uint16_t MMBPort;	
+	uint8_t  ColorPr;     // Menu Color Profile
 	uint8_t  UseRTC;
-//161 Bytes
+	uint8_t  Spare2;
+	uint8_t  Spare3;	
+	FSizeName_t CDR;      // CD ROM image name
+	char FDDPath[2][64];
+    char HDDPath[4][64];
+
 }PMCFG_t; 
 
 extern PMCFG_t *PM_Config;             // Pointer to the PicoMEM Configuration in the BIOS Shared Memory

@@ -16,10 +16,6 @@ If not, see <https://www.gnu.org/licenses/>.
 // Used by bios_disk.cpp, picomem.cpp
 #pragma once
 
-// Exported functions // (For CPP and C)
-extern "C" bool PM_EnablePSRAM();
-extern "C" bool PM_EnableSD();
-
 // Exported variables //
 extern volatile uint8_t PM_Command;    // Write at port 0 > Command to send to the Pico (Can be changed only if status is 0 Success)
 extern volatile uint8_t PM_Status;     // Read at Port 0  > Command and Pico Status
@@ -29,6 +25,8 @@ extern volatile bool PM_CmdReset;      // Is set to true when trying to reset a 
 
 extern volatile bool PM_DoSectorCount; // Increment the read/Written sector count in Disk function
 
+extern uint8_t PM_OLED_Type;           // OLED Screen Type (Defined in pm_cmd)
+
 extern uint32_t EMS_Base[4];
 
 extern uint8_t PM_Memory[128*1024];
@@ -36,7 +34,7 @@ extern volatile uint8_t PM_DP_RAM[16*1024];   // "Dual Port" RAM for Disk I/O Bu
 
 extern volatile uint8_t MEM_Type_T[128];
 extern volatile uint8_t MEM_Index_T[128];     // Table used to define the Memory index per 8k bloc
-extern volatile uint8_t PORT_Table[128];
+extern volatile uint8_t IO_Index_T[128];
 extern volatile uint32_t RAM_InitialAddress;  // Initial Address of the Pico Internal RAM Emulation (PC @)
 
 extern uint8_t *PM_PTR_DISKBUFFER;

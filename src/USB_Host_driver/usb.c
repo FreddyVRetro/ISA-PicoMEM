@@ -36,7 +36,7 @@ void usb_print_status()
     PM_INFO("USB: %d device%s\n", count, count == 1 ? "" : "s");
     for (uint8_t i = 0; i < CFG_TUH_DEVICE_MAX; i++)
         if (tuh_mounted(i + 1))
-            puts(dev_message[i]);
+            PM_INFO("%s",dev_message[i]);
 }
 
 void usb_set_status(uint8_t dev_addr, const char *format, ...)

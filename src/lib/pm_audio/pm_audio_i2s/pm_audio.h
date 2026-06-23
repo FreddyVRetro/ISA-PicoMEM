@@ -7,7 +7,7 @@
 #define PM_AUDIO_FREQUENCY 49716   // Adlib output frequency
 //#define PM_AUDIO_FREQUENCY 44100
 #define PM_SAMPLES_PER_BUFFER 64
-#define PM_AUDIO_BUFFERS  4
+#define PM_AUDIO_BUFFERS  5
 #define PM_SAMPLES_STRIDE 4        // (Nb of byte per sample 16Bit X 2)
 // 8*64*4 buffer (16Bit Stereo) is 2KB
 
@@ -40,12 +40,12 @@ extern bool pm_audio_stop();
 //extern void pm_audio_update_frequency(uint32_t sample_freq);
 //extern static void audio_i2s_update_frequency(uint32_t sample_freq);
 
-// Get the number of mixed buffer present in the audio buffers pool
-__force_inline uint32_t get_mixed_buffer_nb()
+// Returns true if there is no more buffer to mix
+__force_inline bool buffers_to_mix() 
 {
-  int32_t pm_buffers_ready=pm_audio.mixed_buffers-pm_audio.played_buffers;
- return abs(pm_buffers_ready);
+return ((pm_audio.mixed_buffers-pm_audio.played_buffers)==PM_AUDIO_BUFFERS-1);
 }
+
 // Take a mixed buffer to give to the DMA (Always the buffer after the last played one)
 __force_inline uint8_t * take_mixed_buffer()
 {
@@ -69,7 +69,7 @@ __force_inline uint8_t * take_empty_buffer()
 //if (pm_audio.mixing_buffer==NULL) {PM_ERROR("Err: mixing_buffer NULL");}
 // 2 counters are needed so that the DMA Interrupt don't cut the buffer increment instruction in two.
 int32_t pm_buffers_ready=pm_audio.mixed_buffers-pm_audio.played_buffers;
-if (abs(pm_buffers_ready)!=PM_AUDIO_BUFFERS-1)  // Remove one to remove the playing buffer
+if (pm_buffers_ready!=PM_AUDIO_BUFFERS-1)  // Remove one to remove the playing buffer
    {
     uint8_t * res=pm_audio.mixing_buffer+PM_AUDIO_BUFFERSIZE;
     if (res>=pm_audio.poolend) res=pm_audio.bufferpool;

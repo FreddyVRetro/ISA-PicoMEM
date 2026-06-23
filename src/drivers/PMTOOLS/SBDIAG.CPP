@@ -986,6 +986,7 @@ void menu_dsp_sine()
 // Plays a digital sample in a loop. Quits when key is pressed.
 void loop_play(unsigned char far *buffer, int length, int sample_rate)
 {
+        printf("loop_play len: %d rate: %d\n",length, sample_rate);
         dsp_set_time_constant(sample_rate);
         dsp_enable_speaker();
         hook_interrupt();

@@ -29,7 +29,7 @@
 #include "hid_dev.h"
 #include "../pm_debug.h"
 
-pm_mouse_t pm_mouse;
+volatile pm_midi_usb_t pm_midi_usb;
 
 //--------------------------------------------------------------------+
 // MACRO TYPEDEF CONSTANT ENUM DECLARATION
@@ -188,23 +188,24 @@ PM_INFO (" - V:%s M:%d K:%d J:%d R:%d",VendorName,has_mouse,has_keyboard,has_joy
 void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance)
 {
   PM_INFO("HID device address = %d, instance = %d is unmounted\r\n", dev_addr, instance);
+  usb_set_status(dev_addr,"");
 }
 
 // Invoked when received report from device via interrupt endpoint
 void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len)
 {
   uint8_t const itf_protocol = tuh_hid_interface_protocol(dev_addr, instance);
-  PM_INFO("tuh_hid_report_received_cb\n");
+//  PM_INFO("tuh_hid_report_received_cb ");
   
   switch (itf_protocol)
   {
     case HID_ITF_PROTOCOL_KEYBOARD:
-      TU_LOG2("HID receive boot keyboard report\r\n");
+//      TU_LOG2("HID receive boot keyboard report\r\n");
       process_kbd_report( (hid_keyboard_report_t const*) report );
       break;
 
     case HID_ITF_PROTOCOL_MOUSE:
-      TU_LOG2("HID receive boot mouse report\r\n");
+//      TU_LOG2("HID receive boot mouse report\r\n");
       process_mouse_report( (hid_mouse_report_t const*) report );
       break;
 
@@ -222,6 +223,43 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
   }
 }
 
+
+// Invoked when device with MIDI interface is mounted.
+void tuh_midi_mount_cb(uint8_t idx, const tuh_midi_mount_cb_t* mount_cb_data) {
+  PM_INFO("MIDI Interface Index = %u, Address = %u, Number of RX cables = %u, Number of TX cables = %u\r\n",
+          idx, mount_cb_data->daddr, mount_cb_data->rx_cable_count, mount_cb_data->tx_cable_count);
+  
+  usb_set_status(idx,"USB MIDI Adapter");
+  pm_midi_usb.tx_nb=mount_cb_data->tx_cable_count;
+  pm_midi_usb.dev_idx=mount_cb_data->daddr;
+  pm_midi_usb.mounted=true;          
+}
+
+// Invoked when device with hid interface is un-mounted
+void tuh_midi_umount_cb(uint8_t idx) {
+  printf("MIDI Interface Index = %u is unmounted\r\n", idx);
+}
+
+void tuh_midi_rx_cb(uint8_t idx, uint32_t xferred_bytes) {
+  if (xferred_bytes == 0) {
+    return;
+  }
+
+  uint8_t buffer[48];
+  uint8_t cable_num = 0;
+  uint32_t bytes_read = tuh_midi_stream_read(idx, &cable_num, buffer, sizeof(buffer));
+
+  printf("Cable %u rx: ", cable_num);
+  for (uint32_t i = 0; i < bytes_read; i++) {
+    printf("%02X ", buffer[i]);
+  }
+  printf("\r\n");
+}
+
+void tuh_midi_tx_cb(uint8_t idx, uint32_t xferred_bytes) {
+  (void) idx;
+  (void) xferred_bytes;
+}
 
 
 //--------------------------------------------------------------------+

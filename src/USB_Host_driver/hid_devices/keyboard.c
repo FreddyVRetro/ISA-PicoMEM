@@ -3,6 +3,7 @@
 // From tusb example modified by Freddy VETELE
 //--------------------------------------------------------------------+
 
+#include <stdio.h>
 #include "tusb.h"
 
 static uint8_t const keycode2ascii[128][2] =  { HID_KEYCODE_TO_ASCII };

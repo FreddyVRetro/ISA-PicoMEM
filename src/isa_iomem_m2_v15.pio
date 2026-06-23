@@ -1,17 +1,15 @@
 ; PIO Code for ISA Signals, Pico MEM Board, with multiplexer V2
 ; By Freddy VETELE
-; For PicoMEM >= 1.5, RP2350B only
+; For PicoMEM >= 1.5, !! RP2350B only !!
 
 ; This use one SM
 ; Control signals activation detection done by the CPU to Optimize the overall speed
 
 ; Values for the Proto Board :
-;.define public PIN_IRQ    5
 ;.define public PIN_AEN    6
 ;.define public PIN_ALE    7
 
 ; Values for the V1.0 Board: (Shift by 5 Pin).  
-.define public PIN_IRQ    41  // IRQ 7 Pin
 .define public PIN_BCK    10
 
 ; Values for the PIO (Shifted by 16Bit)
@@ -35,6 +33,10 @@
 .define public PIN_AD       32  // 1: Adress 0: Data
 .define public PIN_AS       33  // 1: A0-A7 IO/Mem R/W 0:A8-A19
 .define public PIN_IORDY    34  // Reversed : 1> Wait 0> Ok
+.define public PIN_TC       37  // DMA TC (Terminal count) inverted (PicoGUS is not inverted) >PicoMEM 2.0 only
+.define public PIN_DRQ      38  // DRQ Active High
+.define public PIN_DMAW     39  // 0 During the DMA IO Write
+.define public PIN_DMAW_S   23  // 0 During the DMA IO Write
 /*
 .define public PIN_AD       45  // 1: Adress 0: Data
 .define public PIN_AS       46  // 1: A0-A7 IO/Mem R/W 0:A8-A19
@@ -62,40 +64,77 @@
 
 restart:
 .wrap_target
-;    out Y, 32           side 0b11
-    set pins,0          side 0b11    ; Disable IOCHRDY
+    out Y, 32           side 0b11   ; Read the multiplexer delay value sent by the main code to Y
+    set pins,0          side 0b11   ; Disable IOCHRDY
 ; 1> Wait for the CPU Go (Control Signal detected)
-    out X, 32           side 0b11    
+    out X, 32
     in pins, 8          side 0b01   ; Read A19-A12                   > Switch A11-A0
-;Mux_Wait:
-;    jmp Y-- Mux_Wait
-    nop           [2]   side 0b01   ; Move mux to A10-A0, 3 Tick delay
-    nop           [2]   side 0b01   ; Move mux to A10-A0, 3 Tick delay
+Mux_Wait:
+    jmp Y-- Mux_Wait                ; Wait for the multiplexer delay > Loop Y Times
     in pins, 12         side 0b10   ; Read Address Low (A10-A0)     > Switch to Read/Write Data
-; Data is read after by the Pico core (Not PIO)
-    out X, 32           side 0b10   ; 2> Put the value sent by the main code to X
-    jmp !X NoWaitState  side 0b10   ; If X=0 don't add Wait State
-    set pins,1          side 0b10   ; Enable IOCHRDY    
-NoWaitState:
-    out X, 32           side 0b10   ; 3> Read 0, or PIN_A18_IR or PIN_A16_MR Wait instruction
-    jmp !x restart      side 0b10   ; X=0 >  IOR/MEMR or nothing
+; Data is read after by the Pico core (Not the PIO)
+;    out X, 32                       ; 2> Put the value sent by the main code to X
+;    jmp !X NoWaitState              ; If X=0 don't add Wait State
+;    set pins,1                      ; Enable IOCHRDY    
+;NoWaitState:
+    out X, 32                       ; 3> Read 0, or PIN_A18_IR or PIN_A16_MR Wait instruction
+    jmp !x restart                  ; X=0 >  IOR/MEMR or nothing
 ; Perform an IO or Memory Read
-    out pins, 8         side 0b10   ; Output data to be written
-    out pindirs, 8      side 0b10   ; Next 8 in pindirs is FF - set pindirs as output
-    set pins,0          side 0b10   ; Disable IOCHRDY (If active)  > Try to put it before ?
-; X is one of these 2 instructions : 
+    mov pindirs, ~null              ; Set the Data bus to output
+    out pins, 8                     ; Wait for the Data, then write it to the Data bus
+    set pins,0                      ; Disable IOCHRDY (If active)
+; X is one of these 2 instructions :
 ;    wait 0 gpio 14  side 0b10      ; Wait for IOR lowering edge  *Ok
 ;    wait 0 gpio 12  side 0b10      ; Wait for MEMR lowering edge *Ok
-    mov exec,X          side 0b10   ; Move the value to the exec register
+    mov exec,X                      ; Move the value to the exec register
     in  null, 20        side 0b11   ; Tell the CPU that the Read is complete and Move back the Mux to Command Signals and A19-A12
-    out pins, 8         side 0b11   ; next 8 in pindirs is FF - reset data pins back to high
-    out pindirs, 8      side 0b11   ; next 8 in pindirs is 00 - set pindirs back as input
+    out null, 24                    ; Clear the register
+    mov pindirs, null               ; Set the Data bus to input
 .wrap
 
+.program isa_dma_w
+.side_set 2 opt
+restart:
+    set pins, 1                           ; disable DRQ
+.wrap_target
+    out x, 32                             ; wait to trigger DMA operation
+    set pins, 0                           ; enable DRQ
+    wait 0 gpio PIN_DMAW                  ; Detect the DMA Ack and IOW
+    set pins, 1            side 0b10      ; disable DRQ and move to Ctrl + Data
+    in null, 24            side 0b10      ; write 0 to TC flag, autopush
+wait_dmaw:
+    wait 1 gpio PIN_DMAW   side 0b10      ; wait for IOW deassert
+    in pins, 8             side 0b11      ; Read the Data, move back to Ctrl + Address High
+.wrap
+
+; DMA PIO code with TC signal (PicoMEM 2.x)
+.program isa_dma_w_tc
+.side_set 2 opt
+    set pins, 1                           ; disable DRQ
+.wrap_target
+    out x, 32                             ; wait to trigger DMA operation
+    set pins, 0                           ; enable DRQ
+    wait 0 gpio PIN_DMAW                  ; Detect the DMA Ack and IOW
+    set pins, 1            side 0b10      ; disable DRQ and move to Ctrl + Data
+;    nop                    side 0b10 
+    jmp pin no_tc                         ; if TC high, transfer is over
+    jmp tc_flag                           ; if TC low, continue
+no_tc:
+    in null, 24                           ; write 0 to TC flag, autopush
+wait_dmaw_tc:
+    wait 1 gpio PIN_DMAW   side 0b10      ; wait for IOW deassert
+    in pins, 8             side 0b11      ; Read the Data, move back to Ctrl + Address High
+;    set pins, 1                           ; disable DRQ  > Move back DREQ here generate Crash at DOOM/DMX Start
+.wrap
+tc_flag:
+    in x, 24               side 0b11      ; set TC flag. X is full of 1
+    jmp wait_dmaw_tc
+
 % c-sdk {
+
 static inline void isa_bus_program_init(PIO pio, uint sm, uint offset) {
 
-    printf("isa_iomem_m2_v15 Start\n");
+//    printf("isa_iomem_m2_v15 Start\n");
 //    pio_set_gpio_base(pio,16);          // This pio will start from the gpio 16
 //    printf("GPIO Base : %d\n",pio_get_gpio_base(pio));
 
@@ -104,8 +143,8 @@ static inline void isa_bus_program_init(PIO pio, uint sm, uint offset) {
 // 133MHz: 4 Wait ([3]) 
 // 180MHz: 4 Wait 
 // 240MHz and 270MHz with 6 (3+2) Wait
-    float div = (float)clock_get_hz(clk_sys) / (280 * 1000000);  //100 MHz > 133 ?
-    sm_config_set_clkdiv(&c, div);
+ //   float div = (float)clock_get_hz(clk_sys) / (280 * 1000000);  //100 MHz > 133 ?
+ //   sm_config_set_clkdiv(&c, div);
 
     sm_config_set_in_shift (&c, false, true, 20);                 // Shift left,  Autopush 20 bits (20 addr) Ctrl and Data read by the CPU
     sm_config_set_out_shift(&c, true, true /* autopull */, 32);   // Shift right, Autopull 32 bits (condition variables from CPU)
@@ -124,18 +163,18 @@ static inline void isa_bus_program_init(PIO pio, uint sm, uint offset) {
     // Init and set up IOCHRDY, AD and AS as Output
     pio_gpio_init(pio, PIN_AD);    // Link the PIN to this PIO (All SM !)
     pio_gpio_init(pio, PIN_AS);    // Link the PIN to this PIO (All SM !)
-    pio_gpio_init(pio, PIN_IORDY); // Link the PIN to this PIO (All SM !)
+//   pio_gpio_init(pio, PIN_IORDY); // Link the PIN to this PIO (All SM !)
     pio_sm_set_consecutive_pindirs(pio, sm, PIN_AD, 3, true);       // Output
 
     // PIN_IORDY as SET Pin / AS and AD as sideset pins
-    sm_config_set_set_pins(&c, PIN_IORDY,1);                       // Set PIN_IORDY as SET pin
+//    sm_config_set_set_pins(&c, PIN_IORDY,1);                       // Set PIN_IORDY as SET pin
   
-    pio_sm_set_consecutive_pindirs(pio, sm, PIN_AD0, 12, false);    // AD0-11 input
+    pio_sm_set_consecutive_pindirs(pio, sm, PIN_AD0, 12, false);   // AD0-11 input
 
 /*
-    // Set the Output default values (Read Addr Low)
+    // Set the Output default values
     pio_sm_set_pins_with_mask(pio, sm, 0, 1u << PIN_IORDY);
-    pio_sm_set_pins_with_mask(pio, sm, 0, 1u << PIN_AS);
+    pio_sm_set_pins_with_mask(pio, sm, 1u << PIN_AS, 1u << PIN_AS);
     pio_sm_set_pins_with_mask(pio, sm, 1u << PIN_AD, 1u << PIN_AD);
 */
 
@@ -144,4 +183,84 @@ static inline void isa_bus_program_init(PIO pio, uint sm, uint offset) {
     // Set the state machine running
     pio_sm_set_enabled(pio, sm, true);
 }
+
+// DMA Write program init
+// > AD0 to AD8 as Input for Data Read
+// > DREQ as Output to start the DMA
+// > DMAW (DACK+IOW) as Input to detect the DMA Read cycle
+// > AD and AS as sideset to move the multiplexer to Data
+
+static inline void isa_dma_w_program_init(PIO pio, uint sm, uint offset) {
+    pio_sm_config c = isa_dma_w_program_get_default_config(offset);
+
+    // Autopush 32 bits
+    sm_config_set_in_shift(&c, false, true, 32);
+
+    // Autopull 32 bits (condition variables)
+    sm_config_set_out_shift(&c, true, true /* autopull */, 32);  // shift Right (0x000000DD)
+
+    // Set up AD0 bus as input
+    sm_config_set_in_pins(&c, PIN_AD0);
+    pio_sm_set_consecutive_pindirs(pio, sm, PIN_AD0, 8, false);
+
+    // Init DREQ and DACK (DMAWR)
+    pio_gpio_init(pio, PIN_DRQ);                                  // Init DREQ Pin
+    pio_sm_set_consecutive_pindirs(pio, sm, PIN_DRQ, 1, true);    // DREQ Output    
+    sm_config_set_set_pins(&c, PIN_DRQ, 1);                       // Set pin to DREQ
+    gpio_set_drive_strength(PIN_DRQ, GPIO_DRIVE_STRENGTH_12MA);   // Max drive strength for DREQ
+
+    pio_gpio_init(pio, PIN_DMAW);                                 // Init DMAW Pin
+    pio_sm_set_consecutive_pindirs(pio, sm, PIN_DMAW, 1, false);  // DMAW Input
+
+    sm_config_set_jmp_pin(&c, PIN_TC);        // Jump pin to TC
+
+    // Init and set AD and AS for multiplexer control
+    pio_gpio_init(pio, PIN_AD);    // Link the PIN to this PIO (All SM !) (Normally already done)
+    pio_gpio_init(pio, PIN_AS);    // Link the PIN to this PIO (All SM !) (Normally already done)
+    pio_sm_set_consecutive_pindirs(pio, sm, PIN_AD, 2, true);       // Output  (Normally already done)
+    sm_config_set_sideset_pins(&c, PIN_AD);      // SideSet pin config to AD/AS
+
+    // Load our configuration, and jump to the start of the program
+    pio_sm_init(pio, sm, offset, &c);
+    // Set the state machine running
+    pio_sm_set_enabled(pio, sm, true);
+}
+
+
+static inline void isa_dma_w_tc_program_init(PIO pio, uint sm, uint offset) {
+    pio_sm_config c = isa_dma_w_tc_program_get_default_config(offset);
+
+    // Autopush 32 bits
+    sm_config_set_in_shift(&c, false, true, 32);
+
+    // Autopull 32 bits (condition variables)
+    sm_config_set_out_shift(&c, true, true /* autopull */, 32);  // shift Right (0x000000DD)
+
+    // Set up AD0 bus as input
+    sm_config_set_in_pins(&c, PIN_AD0);
+    pio_sm_set_consecutive_pindirs(pio, sm, PIN_AD0, 8, false);
+
+    // Init DREQ and DACK (DMAWR)
+    pio_gpio_init(pio, PIN_DRQ);                                  // Init DREQ Pin
+    pio_sm_set_consecutive_pindirs(pio, sm, PIN_DRQ, 1, true);    // DREQ Output    
+    sm_config_set_set_pins(&c, PIN_DRQ, 1);                       // Set pin to DREQ
+    gpio_set_drive_strength(PIN_DRQ, GPIO_DRIVE_STRENGTH_12MA);   // Max drive strength for DREQ
+
+    pio_gpio_init(pio, PIN_DMAW);                                 // Init DMAW Pin
+    pio_sm_set_consecutive_pindirs(pio, sm, PIN_DMAW, 1, false);  // DMAW Input
+
+    sm_config_set_jmp_pin(&c, PIN_TC);        // Jump pin to TC
+
+    // Init and set AD and AS for multiplexer control
+    pio_gpio_init(pio, PIN_AD);    // Link the PIN to this PIO (All SM !) (Normally already done)
+    pio_gpio_init(pio, PIN_AS);    // Link the PIN to this PIO (All SM !) (Normally already done)
+    pio_sm_set_consecutive_pindirs(pio, sm, PIN_AD, 2, true);       // Output  (Normally already done)
+    sm_config_set_sideset_pins(&c, PIN_AD);      // SideSet pin config to AD/AS
+
+    // Load our configuration, and jump to the start of the program
+    pio_sm_init(pio, sm, offset, &c);
+    // Set the state machine running
+    pio_sm_set_enabled(pio, sm, true);
+}
+
 %}

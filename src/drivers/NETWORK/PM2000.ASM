@@ -251,13 +251,13 @@ endif
 
 	public	copyright_msg
 if PicoMEM  eq 1
-copyright_msg	db	"PicoMEM (NE2000) Packet Driver 0.4, version "
+copyright_msg	db	"PicoMEM (NE2000) Packet Driver 0.5, version "
 else
 copyright_msg	db	"Packet driver for NE2000, version "
 endif
 		db	'0'+(majver / 10),'0'+(majver mod 10),".",'0'+version,".",'0'+dp8390_version,CR,LF,'$'
 
-int_no_name	db	"Interrupt number ",'$'
+int_no_name	db	"Interrupt ",'$'
 io_addr_name	db	"I/O port ",'$'
 
 	extrn	set_recv_isr: near

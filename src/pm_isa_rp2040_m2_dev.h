@@ -25,9 +25,6 @@ uint8_t   ISA_Data;
 // pio_sm_put(isa_pio, isa_bus_sm, 0x0FFFFF0F0);  // If 0x0FFFFF0FF, Floppy access (DMA) Crash
 
 for (;;) {
-#if TIMING_DEBUG   
-//  gpio_put(PIN_IRQ,0);  // IRQ Up
-#endif
 
  ISA_WasRead = false;
 
@@ -139,7 +136,7 @@ ISA_Do_IO:  // Goto, from the assembly code
 
   ISA_IO_Addr = pio_sm_get_blocking(isa_pio, isa_bus_sm) & 0x3FF; // No need for Mask (Only the low 8Bit are used)
 
-  IO_Device = PORT_Table[ISA_Addr>>3]; 
+  IO_Device = IO_Index_T[ISA_Addr>>3]; 
   pio_sm_put(isa_pio, isa_bus_sm, IO_Device); // First pio put : No Wait State if 0
 
   asm volatile ("nop");
@@ -163,10 +160,8 @@ ISA_Do_IO:  // Goto, from the assembly code
           break;
         case DEV_LTEMS :  // LTEMS : Write to the Bank Registers
            dev_ems_iow(ISA_IO_Addr,ISAIOW_Data);
-        //    EMS_Bank[(uint8_t) ISA_IO_Addr & 0x03]=ISAIOW_Data;   // Write the Bank Register
-	     //    EMS_Base[(uint8_t) ISA_IO_Addr & 0x03]=((uint32_t) ISAIOW_Data*16*1024)+1024*1024; // EMS Bank base Address : 1Mb + Bank number *16Kb (in SPI RAM)
 	       break;  //DEV_LTEMS
-#ifdef RASPBERRYPI_PICO_W
+#if PM_WIFI
 #if USE_NE2000
         case DEV_NE2000:
            dev_ne2000_iow((ISA_IO_Addr-PM_Config->ne2000Port) & 0x1F,ISAIOW_Data);
@@ -202,15 +197,25 @@ ISA_Do_IO:  // Goto, from the assembly code
           break; 
         case DEV_MMB :
           dev_mmb_iow(ISA_IO_Addr,ISAIOW_Data);
-         break;                    
+         break;
+        case DEV_CVX :
+          dev_cvx_iow(ISA_IO_Addr,ISAIOW_Data);
+         break;         
 #if USE_SBDSP         
         case DEV_SBDSP :
            dev_sbdsp_iow(ISA_IO_Addr,ISAIOW_Data);
           break;
-#endif          
         case DEV_DMA :
            dev_dma_iow(ISA_IO_Addr,ISAIOW_Data);
-          break;           
+          break; 
+#endif
+#if USE_MPU
+        case DEV_MPU :
+           dev_mpu_iow(ISA_IO_Addr,ISAIOW_Data);
+          break;
+#endif          
+
+          
 #endif
 
 // *** Add Other device IOW here ***         
@@ -228,10 +233,9 @@ ISA_Do_IO:  // Goto, from the assembly code
           break; //DEV_PM    
         case DEV_LTEMS :
            dev_ems_ior(ISA_IO_Addr,&ISA_Data);
-           //ISA_Data=EMS_Bank[(uint8_t) ISA_IO_Addr & 0x03];  // Read the Bank Register
            pm_do_ior();
           break;  //DEV_LTEMS  
-#if PM_PICO_W
+#if PM_WIFI
 #if USE_NE2000
         case DEV_NE2000:        
            dev_ne2000_ior(ISA_IO_Addr,&ISA_Data);
@@ -247,24 +251,30 @@ ISA_Do_IO:  // Goto, from the assembly code
 #endif
 #if USE_AUDIO
         case DEV_ADLIB:
-           dev_adlib_ior(ISA_IO_Addr,&ISA_Data);
-           pm_do_ior();           
+           if (dev_adlib_ior(ISA_IO_Addr,&ISA_Data)) pm_do_ior();           
           break;
         case DEV_CMS:
            dev_cms_ior(ISA_IO_Addr,&ISA_Data);
            pm_do_ior();           
           break;          
          case DEV_MMB:
-          dev_mmb_ior(ISA_IO_Addr,&ISA_Data);
-          pm_do_ior();           
-         break;   
+          if (dev_mmb_ior(ISA_IO_Addr,&ISA_Data)) pm_do_ior();         
+         break;
+        case DEV_CVX:
+           if (dev_cvx_ior(ISA_IO_Addr,&ISA_Data)) pm_do_ior();        
+          break;         
 #if USE_SBDSP                    
         case DEV_SBDSP:
-           dev_sbdsp_ior(ISA_IO_Addr,&ISA_Data);
+           if (dev_sbdsp_ior(ISA_IO_Addr,&ISA_Data)) pm_do_ior();
+          break;
+#endif        
+#endif
+#if USE_MPU                    
+        case DEV_MPU:
+           dev_mpu_ior(ISA_IO_Addr,&ISA_Data);
            pm_do_ior();           
           break;  
-#endif          
-#endif          
+#endif           
 
    // *** Add Other device IOR here ***
         }         // switch(IO_Device) (Read)

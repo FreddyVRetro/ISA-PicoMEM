@@ -29,8 +29,9 @@
 //#include "vl.h"
 
 /*
-2023-10-08 
+2023-10-08
 Modifications for use with Pico by Kevin Moonlight (me@yyzkevin.com)
+Try : https://github.com/Xilinx/qemu/blob/master/hw/net/ne2000.c
 */
 
 #include <stdio.h>
@@ -49,9 +50,9 @@ Modifications for use with Pico by Kevin Moonlight (me@yyzkevin.com)
 #include "f_util.h"
 #include "ff.h"
 
-#include "../pm_libs/isa_irq.h"       // ISA/PC IRQ code
+#include "../pm_libs/bus_irq.h"       // ISA/PC IRQ code
 
-//#include "../pm_defines.h"
+//#include "pm_defines.h"
 
 // Picomem defines
 #define IRQ_NE2000  20
@@ -88,7 +89,7 @@ void TrimString(char *str) {
         }
 }
 
-
+/*
 #define CYW43_LINK_DOWN         (0)     ///< link is down
 #define CYW43_LINK_JOIN         (1)     ///< Connected to wifi
 #define CYW43_LINK_NOIP         (2)     ///< Connected to wifi, but no IP address
@@ -96,6 +97,7 @@ void TrimString(char *str) {
 #define CYW43_LINK_FAIL         (-1)    ///< Connection failed
 #define CYW43_LINK_NONET        (-2)    ///< No matching SSID found (could be out of range, or down)
 #define CYW43_LINK_BADAUTH      (-3)    ///< Authenticatation failure
+*/
 
 bool dev_ne2000_install()
 {
@@ -114,9 +116,10 @@ if (NE2000_Enabled) ne2000_close(nic);
 NE2000_Enabled=false;
 }
 
-void dev_ne2000_setport(uint16_t port)
+void dev_ne2000_cfg(uint16_t port,uint8_t irq)
 {
 nic->base_address=port;
+nic->irq=irq;
 }        
 
 //https://github.com/czietz/picowifi/blob/master/picowifi.c#L83
@@ -127,19 +130,22 @@ void PM_Wifi_GetStatus()
  cyw43_ioctl(&cyw43_state, (uint32_t)WLC_GET_RSSI<<1, sizeof(PM_Wifi.rssi), (uint8_t*)&PM_Wifi.rssi, CYW43_ITF_STA);
  cyw43_ioctl(&cyw43_state, (uint32_t)WLC_GET_RATE<<1, sizeof(PM_Wifi.rate), (uint8_t*)&PM_Wifi.rate, CYW43_ITF_STA);
  switch(PM_Wifi.Status)
-  {
-    case CYW43_LINK_DOWN : sprintf(PM_Wifi.StatusStr," Err: Link Down");
+  {  // !! Status string <= 31 chars !!
+    case CYW43_LINK_DOWN : strcpy(PM_Wifi.StatusStr," Err: Link Down");
                            break;
     case CYW43_LINK_JOIN :
     case CYW43_LINK_NOIP :
     case CYW43_LINK_UP   :
-                           sprintf(PM_Wifi.StatusStr," Connected, Signal %d dB",PM_Wifi.rssi);
+                           char numbuf[12];
+                           strcpy(PM_Wifi.StatusStr," Connected, Signal ");
+                           strcat(PM_Wifi.StatusStr, itoa(PM_Wifi.rssi, numbuf, 10));
+                           strcat(PM_Wifi.StatusStr,"dB");
                            break;
-    case CYW43_LINK_FAIL : sprintf(PM_Wifi.StatusStr," Err: Connection failed");
+    case CYW43_LINK_FAIL : strcpy(PM_Wifi.StatusStr," Err: Connection failed");
                            break;
-    case CYW43_LINK_NONET : sprintf(PM_Wifi.StatusStr," Err: SSID not found");
-                            break;
-    case CYW43_LINK_BADAUTH : sprintf(PM_Wifi.StatusStr," Err: Authentication failure");
+    case CYW43_LINK_NONET: strcpy(PM_Wifi.StatusStr," Err: SSID not found");
+                           break;
+    case CYW43_LINK_BADAUTH : strcpy(PM_Wifi.StatusStr," Err: Authentication failure");
                               break;
     default : 
   } 
@@ -159,44 +165,43 @@ uint8_t PM_ConnectWifi()
   FIL WifiConfigFile;
   FRESULT fr;
 
-#if PM_PRINTF
- PM_INFO("cyw43_arch_init();\n");
-#endif
-    //    cyw43_arch_init();
- int cyw43_err;
- cyw43_err=cyw43_arch_init();
- if (cyw43_err!=0) {
+  PM_INFO("cyw43_arch_init();\n");
+
+  int cyw43_err;
+  cyw43_err=cyw43_arch_init();
+  if (cyw43_err!=0) {
         PM_ERROR("Init failed: %d\n",cyw43_err);
+        sprintf(PM_Wifi.StatusStr,"Init failed: %d\n",cyw43_err);  //Add the error message to the Status String
+        cyw43_arch_deinit();
         return 1;
- }
+       }
 
+#if PM_WIFI_LED
  cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
-
-#if PM_PRINTF
-PM_INFO("cyw43_arch_enable_sta_mode();\n");        
 #endif 
- cyw43_arch_enable_sta_mode();    // Station Mode
 
- cyw43_wifi_set_up(&cyw43_state,CYW43_ITF_STA,true,CYW43_COUNTRY_CANADA);
- cyw43_wifi_get_mac (&cyw43_state, CYW43_ITF_STA, (uint8_t *)&PM_Wifi.cyw43_mac);     
- if ((PM_Wifi.cyw43_mac[0]==0)&&(PM_Wifi.cyw43_mac[1]==0)&&(PM_Wifi.cyw43_mac[2]==0)&&(PM_Wifi.cyw43_mac[3]==0))
-    {
-     PM_ERROR("No MAC > Not initialized\n");
-     return 1;        
-    }
+  PM_INFO("cyw43_arch_enable_sta_mode();\n");        
 
-#if PM_PRINTF 
- PM_INFO("WIFI Address: %02x%02x.%02x%02x.%02x%02x\n\r",PM_Wifi.cyw43_mac[0],PM_Wifi.cyw43_mac[1],PM_Wifi.cyw43_mac[2],PM_Wifi.cyw43_mac[3],PM_Wifi.cyw43_mac[4],PM_Wifi.cyw43_mac[5]);
-#endif
-        
+  cyw43_arch_enable_sta_mode();    // Station Mode
+
+  cyw43_wifi_set_up(&cyw43_state,CYW43_ITF_STA,true,CYW43_COUNTRY_CANADA);
+  cyw43_wifi_get_mac (&cyw43_state, CYW43_ITF_STA, (uint8_t *)&PM_Wifi.cyw43_mac);     
+  if ((PM_Wifi.cyw43_mac[0]==0)&&(PM_Wifi.cyw43_mac[1]==0)&&(PM_Wifi.cyw43_mac[2]==0)&&(PM_Wifi.cyw43_mac[3]==0))
+     {
+      PM_ERROR("No MAC > Not initialized\n");
+      strcpy(PM_Wifi.StatusStr,"No MAC > Not initialized\n");  //Add the error message to the Status String
+      cyw43_arch_deinit();
+      return 1;        
+     }
+
+  PM_INFO("[WIFI] MAC Address: %02X.%02X.%02X.%02X.%02X.%02X\n\r",PM_Wifi.cyw43_mac[0],PM_Wifi.cyw43_mac[1],PM_Wifi.cyw43_mac[2],PM_Wifi.cyw43_mac[3],PM_Wifi.cyw43_mac[4],PM_Wifi.cyw43_mac[5]);
+
         //this is proof of concept needs major  error checking and improvement.        
- fr=f_open(&WifiConfigFile,"Wifi.txt",FA_OPEN_EXISTING | FA_READ);
+  fr=f_open(&WifiConfigFile,"Wifi.txt",FA_OPEN_EXISTING | FA_READ);
 	if (FR_OK != fr)
            {
-            #if PM_PRINTF
-             PM_ERROR("Can't open wifi.txt %d\n",fr);
-            #endif            
-             sprintf(PM_Wifi.StatusStr,"Can't open wifi.txt");
+             PM_ERROR("Can't open wifi.txt %d\n",fr);         
+             strcpy(PM_Wifi.StatusStr,"Can't open wifi.txt");  //Add the error message to the Status String
              return 2;
            }
         if(f_gets(PM_Wifi.WIFI_SSID,32,&WifiConfigFile) && f_gets(PM_Wifi.WIFI_KEY,63,&WifiConfigFile)) {
@@ -217,8 +222,8 @@ PM_INFO("cyw43_arch_enable_sta_mode();\n");
                      cyw43_wifi_pm(&cyw43_state,CYW43_NO_POWERSAVE_MODE);
                 }
                 else {
-                      PM_ERROR("WIFI: Missing SSID or Password %s %s",PM_Wifi.WIFI_SSID,PM_Wifi.WIFI_KEY);                   
-                      sprintf(PM_Wifi.StatusStr,"Missing SSID or password");
+                      PM_ERROR("[WIFI] Missing SSID or Password %s %s",PM_Wifi.WIFI_SSID,PM_Wifi.WIFI_KEY);                   
+                      strcpy(PM_Wifi.StatusStr,"Missing SSID or password");
                       return 3;
                      }
         }
@@ -226,7 +231,7 @@ PM_INFO("cyw43_arch_enable_sta_mode();\n");
 #if PM_PRINTF
                PM_ERROR("WIFI Configuration file Error.");
 #endif
-               sprintf(PM_Wifi.StatusStr,"Configuration file Error");
+               strcpy(PM_Wifi.StatusStr,"Configuration file Error");
                return 4;
              }
 
@@ -247,7 +252,7 @@ for (;;)
  if (nic==NULL) nic = ne2000_init();  // DOS ne2000 driver crash if not init
  if (nic==NULL) 
               {
-               sprintf(PM_Wifi.StatusStr,"NE2000 failed to initialized");
+               strcpy(PM_Wifi.StatusStr,"NE2000 failed to initialized");
                return 5;
               } else NE2000_Enabled=true;
  return 0;
@@ -266,7 +271,9 @@ void cyw43_cb_tcpip_set_link_up(cyw43_t *self, int itf) {
     PM_INFO("Link Up\n");
 #endif    
     link_up = true;
+#if PM_WIFI_LED    
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, link_up);
+#endif    
 }
 
 void cyw43_cb_tcpip_set_link_down(cyw43_t *self, int itf) {
@@ -274,7 +281,9 @@ void cyw43_cb_tcpip_set_link_down(cyw43_t *self, int itf) {
     PM_INFO("Link Down\n");
 #endif    
     link_up = false;
+#if PM_WIFI_LED
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, link_up);
+#endif    
 }
 #endif
 
@@ -334,11 +343,14 @@ void cyw43_cb_process_ethernet(void *cb_data, int itf, size_t len, const uint8_t
   CYW43_STAT_INC(PACKET_IN_COUNT);       
 }
 
-static void ne2000_raise_irq(ne2000_t *ne2000) {            
-  isa_irq_raise(IRQ_NE2000,0,true);
+static void ne2000_raise_irq(ne2000_t *ne2000) {                   
+  bus_irq_raise(IRQ_R_NE2000,ne2000->irq,true);
+  PM_INFO("NR");
 }
+
 static void ne2000_lower_irq(ne2000_t *ne2000) {
-  isa_irq_lower();        
+  bus_irq_lower(IRQ_R_NE2000,ne2000->irq);       
+  PM_INFO("NL");
 }
 
 //
@@ -346,7 +358,8 @@ static void ne2000_lower_irq(ne2000_t *ne2000) {
 //
 static void ne2000_reset(int type, void *p) {
         ne2000_t *ne2000 = (ne2000_t *)p;
-        int i;                       
+        int i;
+        
         ne2000->macaddr[0] = ne2000->physaddr[0];
         ne2000->macaddr[1] = ne2000->physaddr[1];
         ne2000->macaddr[2] = ne2000->physaddr[2];
@@ -355,8 +368,28 @@ static void ne2000_reset(int type, void *p) {
         ne2000->macaddr[5] = ne2000->physaddr[5];
         // ne2k signature
         for (i = 12; i < 32; i++) {
-                ne2000->macaddr[i] = 0x57;
-        }        
+                ne2000->macaddr[i] = 0x57; }
+        /*
+       // change from https://github.com/FreddyVRetro/ISA-PicoMEM/issues/103
+        ne2000->macaddr[0] = ne2000->physaddr[0];
+        ne2000->macaddr[1] = ne2000->physaddr[0];
+        ne2000->macaddr[2] = ne2000->physaddr[1];
+        ne2000->macaddr[3] = ne2000->physaddr[1];
+        ne2000->macaddr[4] = ne2000->physaddr[2];
+        ne2000->macaddr[5] = ne2000->physaddr[2];
+        ne2000->macaddr[6] = ne2000->physaddr[3];
+        ne2000->macaddr[7] = ne2000->physaddr[3];
+        ne2000->macaddr[8] = ne2000->physaddr[4];
+        ne2000->macaddr[9] = ne2000->physaddr[4];
+        ne2000->macaddr[10] = ne2000->physaddr[5];
+        ne2000->macaddr[11] = ne2000->physaddr[5];
+        // type of interface: 8bit (ne1k)
+        ne2000->macaddr[14] = 0x42; 
+        ne2000->macaddr[15] = 0x42; 
+        ne2000->macaddr[28] = 0x42; 
+        ne2000->macaddr[30] = 0x42;        
+        */
+
         // Zero out registers and memory
         memset(&ne2000->CR, 0, sizeof(ne2000->CR));
         memset(&ne2000->ISR, 0, sizeof(ne2000->ISR));
@@ -366,7 +399,7 @@ static void ne2000_reset(int type, void *p) {
         memset(&ne2000->TSR, 0, sizeof(ne2000->TSR));
         // memset( & ne2000->RCR, 0, sizeof(ne2000->RCR));
         memset(&ne2000->RSR, 0, sizeof(ne2000->RSR));
-        ne2000->tx_timer_active = 0;
+       // ne2000->tx_timer_active = 0;
         ne2000->local_dma = 0;
         ne2000->page_start = 0;
         ne2000->page_stop = 0;
@@ -391,8 +424,8 @@ static void ne2000_reset(int type, void *p) {
         ne2000->CR.rdma_cmd = 4;
         ne2000->ISR.reset = 1;
         ne2000->DCR.longaddr = 1;
-        ne2000_raise_irq(ne2000);//maybe remove.
-        ne2000_lower_irq(ne2000);        
+      //  ne2000_raise_irq(ne2000); //maybe remove.
+      //  ne2000_lower_irq(ne2000);
 }
 
 //
@@ -1105,8 +1138,8 @@ void ne2000_rx_frame(void *p, const void *buf, int io_len) {
                 nextpage -= ne2000->page_stop - ne2000->page_start;
         }
         // Setup packet header
-        pkthdr[0] = 0; // rx status - old behavior
-        pkthdr[0] = 1; // Probably better to set it all the time
+//        pkthdr[0] = 0; // rx status - old behavior
+        pkthdr[0] = ENRSR_RXOK; // (Received a Good Packet) Probably better to set it all the time
         // rather than set it to 0, which is clearly wrong.
         if (pktbuf[0] & 0x01) {
                 pkthdr[0] |= 0x20; // rx status += multicast packet
@@ -1144,45 +1177,45 @@ void ne2000_rx_frame(void *p, const void *buf, int io_len) {
 }
 
 void ne2000_tx_done(void *p) {
-        ne2000_t *ne2000 = (ne2000_t *)p;
-        ne2000->TSR.tx_ok = 1;                        
-        if (ne2000->IMR.tx_inte && !ne2000->ISR.pkt_tx) {                
-                ne2000_raise_irq(ne2000);                
-        }                
-        ne2000->ISR.pkt_tx = 1;
-        ne2000->tx_timer_active = 0;         
+   ne2000_t *ne2000 = (ne2000_t *)p;
+   ne2000->TSR.tx_ok = 1;                        
+   if (ne2000->IMR.tx_inte && !ne2000->ISR.pkt_tx) {                
+           ne2000_raise_irq(ne2000);                
+   }                
+   ne2000->ISR.pkt_tx = 1;
+// ne2000->tx_timer_active = 0;
 }
 
 void *ne2000_common_init() {        
-        int rc;
+   int rc;
 
-        PM_INFO("ne2000 malloc : %d \n",sizeof(ne2000_t));
+   PM_INFO("ne2000 malloc : %d \n",sizeof(ne2000_t));
 
-        ne2000_t *ne2000 = malloc(sizeof(ne2000_t));
-        if (ne2000==NULL) 
+   ne2000_t *ne2000 = malloc(sizeof(ne2000_t));
+   if (ne2000==NULL) 
           {
            PM_ERROR("Out of RAM : %d \n",sizeof(ne2000_t));
            return NULL;
           }
-        memset(ne2000, 0, sizeof(ne2000_t));
+   memset(ne2000, 0, sizeof(ne2000_t));
                
-        memcpy(ne2000->physaddr, PM_Wifi.cyw43_mac, 6);
+   memcpy(ne2000->physaddr, PM_Wifi.cyw43_mac, 6);
 
-        ne2000_reset(BX_RESET_HARDWARE, ne2000); 
-        PM_INFO("Init end\n");
-        return ne2000;
+   ne2000_reset(BX_RESET_HARDWARE, ne2000); 
+   PM_INFO("Init end\n");
+   return ne2000;
 }
 
 ne2000_t *ne2000_init() {
-        ne2000_t *ne2000 = ne2000_common_init();
-        if (ne2000==NULL) return NULL;
-        ne2000->type = NE2000_NE2000;
-        return ne2000;
+   ne2000_t *ne2000 = ne2000_common_init();
+   if (ne2000==NULL) return NULL;
+   ne2000->type = NE2000_NE2000;
+   return ne2000;
 }
 
 void ne2000_close(void *p) {
-        ne2000_t *ne2000 = (ne2000_t *)p;
-        free(ne2000);         
+   ne2000_t *ne2000 = (ne2000_t *)p;
+   free(ne2000);
 }
 
 

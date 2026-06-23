@@ -1,4 +1,5 @@
 #pragma once
+// 10/04 : font scaling removed as it support multi size fonts
 
 #ifdef __cplusplus
 extern "C" {
@@ -7,22 +8,15 @@ extern "C" {
 #include <stdint.h>
 #include "hardware/i2c.h"
 
-// declare an OLED structure
-// t_OledParams myOled;
+typedef struct oled_font_t {            
+    const uint8_t *font;            // Pointer to the font
+    uint8_t width;
+    uint8_t height;
+    uint8_t firstchar;
+    uint8_t lastchar;
+} oled_font_t;
 
-// initialize the structure elements
-//     myOled->i2c         = i2c0;
-//     myOled->SDA_PIN     = 0;
-//     myOled->SCL_PIN     = 1;
-
-//     myOled->ctlrType    = CTRL_SH1106;
-//     myOled->i2c_address = 0x3C;
-//     myOled->height      = H_64;
-//     myOled->width       = W_128;
-
-// configure the OLED
-//     oledI2cConfig(&myOled);
-
+extern oled_font_t oled_font;
 
 #define DO_I2CERRLOGGING 0
 #define DO_I2CDATLOGGING 0
@@ -30,8 +24,8 @@ extern "C" {
 /**
  * Font pixel size
  */
-#define OLED_FONT_HEIGHT 8
-#define OLED_FONT_WIDTH 6
+#define OLED_FONT_HEIGHT oled_font.height
+#define OLED_FONT_WIDTH  oled_font.width
 
 /**
  * tty mode default
@@ -81,15 +75,19 @@ extern "C" {
 // class OLED : public Print
 // {
 // public:
-    
+
+#define LINE_0  0
+#define LINE_1  8
+#define LINE_2  16
+#define LINE_3  24
+
+extern const uint8_t oled_font6x8 [];
+
     /** Possible colors for drawing */
 typedef enum tColor { BLACK, WHITE } tColor;
     
     /** Filling mode */
 typedef enum tFillmode { HOLLOW, SOLID } tFillmode;
-    
-    /** Supported text sizes. Normal=6x8 pixels, Double=12x16 pixels */
-typedef enum tFontScaling { NORMAL_SIZE, DOUBLE_SIZE } tFontScaling;
     
     /** Scroll effects supported by the display controller, note that there is no plain vertical scrolling */
 typedef enum tScrollEffect { NO_SCROLLING=0, HORIZONTAL_RIGHT=0x26, HORIZONTAL_LEFT=0x27, DIAGONAL_RIGHT=0x29, DIAGONAL_LEFT=0x2A } tScrollEffect;
@@ -109,6 +107,7 @@ typedef struct t_OledParams{
     i2c_inst_t      *i2c;           // pico I2C instance
     uint8_t         SDA_PIN;        // SDA hardware pin
     uint8_t         SCL_PIN;        // SCL hardware pin
+    bool            enabled;
 
     tDisplayCtrl    ctlrType;       // oled controller type
 
@@ -121,7 +120,6 @@ typedef struct t_OledParams{
 //  or some can be changed with interface functions
     bool            fontInverted;   // @ true if the font is inverted
     tColor          color;          // @ text color
-    tFontScaling    scaling;        // @ font size (DOUBLE or SINGLE)
     bool            ttyMode;        // @ true if display in tty text mode
     tScrollEffect   scroll_type;
     uint8_t         X;              // current print position column
@@ -157,6 +155,8 @@ uint8_t oledI2cConfig(t_OledParams *oled);
  */
 void oledInit(t_OledParams *oled);
 
+void oled_setfont(const uint8_t *fontptr);
+
 /**
  * Will use offset for wired cases when controller uses SSH1106 132x64 but display is 128x64
  */
@@ -167,7 +167,7 @@ void oledSet_power(t_OledParams *oled, bool enable);
  * This command is executed by the display controller itself, hence it does not affect the buffer memory.
  * @param enable Whether to enable the display output.
  */
-void set_power(t_OledParams *oled, bool enable);
+void oledSet_power(t_OledParams *oled, bool enable);
        
 /**
  * Enable display inverting. If enabled, then WHITE and BLACK are swapped.
@@ -220,7 +220,9 @@ void oledDisplay(t_OledParams *oled);
  */
 void oledClear(t_OledParams *oled, tColor color);
 
-void oledDraw_simple_picture(t_OledParams *oled, uint8_t x0, uint8_t y0, uint8_t size_x,  uint8_t size_y, const uint8_t *data, bool invert);
+void oledDraw_img(t_OledParams *oled, int32_t x0, uint8_t y0, uint8_t size_x,  uint8_t size_y, const uint8_t *data, bool invert);
+
+void oledDraw_img2(t_OledParams *oled, int32_t x0, uint8_t y0, uint8_t size_x,  uint8_t size_y, const uint8_t *data, bool invert);
 
 /**
  * Draw a bitmap from RAM. The raw data format is explained in the description of this class.
@@ -249,20 +251,18 @@ void oledDraw_bitmap_P(t_OledParams *oled, uint8_t x, uint8_t y, uint8_t bitmap_
  * @param x Pixel position of the upper left corner
  * @param y Pixel position of the upper left corner
  * @param c The character code. Supports US-ASCII characters and german umlauts. See source code of oled.cpp
- * @param scaling Scaling factor. Can be used to double the size of the output. The normal font size is 6x8
  * @param color Color to draw with
  */
-size_t oledDraw_character(t_OledParams *oled, uint8_t x, uint8_t y, char c, tFontScaling scaling, tColor color);
+size_t oledDraw_character(t_OledParams *oled, uint8_t x, uint8_t y, char c, tColor color);
     
 /**
  * Draw a C string from RAM, which is a NULL terminated array of characters.
  * @param x Pixel position of the upper left corner
  * @param y Pixel position of the upper left corner
  * @param s The string to draw. Supports US-ASCII characters and german umlauts. See source code of oled.cpp
- * @param scaling Scaling factor. Can be used to double the size of the output. The normal font size is 6x8
  * @param color Color to draw with
  */
-void oledDraw_string(t_OledParams *oled, uint8_t x, uint8_t y, const char* s, tFontScaling scaling, tColor color);
+void oledDraw_string(t_OledParams *oled, uint8_t x, uint8_t y, const char* s, tColor color);
 
 //                  Depricated for the Raspberry Pi Pico
 //     /**
@@ -270,10 +270,9 @@ void oledDraw_string(t_OledParams *oled, uint8_t x, uint8_t y, const char* s, tF
 //      * @param x Pixel position of the upper left corner
 //      * @param y Pixel position of the upper left corner
 //      * @param s The string to draw. Supports US-ASCII characters and german umlauts. See source code of oled.cpp
-//      * @param scaling Scaling factor. Can be used to double the size of the output. The normal font size is 6x8
 //      * @param color Color to draw with
 //      */
-//     void draw_string_P(uint_fast8_t x, uint_fast8_t y, const char* s, tFontScaling scaling=NORMAL_SIZE, tColor color=WHITE);      
+//     void draw_string_P(uint_fast8_t x, uint_fast8_t y, const char* s, tColor color=WHITE);      
    
 /**
  * Draw a single pixel.
@@ -393,10 +392,9 @@ void oledSetTTYMode(t_OledParams *oled, bool enabled);
  * @param col column position where start to write (zero based).
  * @param row row position where start to write (zero based).
  * @param s The string to draw. Supports US-ASCII characters and german umlauts. See source code of oled.cpp
- * @param scaling Scaling factor. Can be used to double the size of the output. The normal font size is 6x8
  * @param color Color to draw with
  */
-void oledDrawString(t_OledParams *oled, uint8_t col, uint8_t row, const char* s, tFontScaling scaling, tColor color);
+void oledDrawString(t_OledParams *oled, uint8_t col, uint8_t row, const char* s, tColor color);
 
 /**
  * @brief Set inverted font write.
@@ -414,7 +412,7 @@ void oledNoInverse(t_OledParams *oled);
 void oledDraw_byte(t_OledParams *oled, uint8_t x, uint8_t y, uint8_t b, tColor color);
     
 /** Draw multiple bytes into the buffer */
-void oledDraw_bytes(t_OledParams *oled, uint8_t x, uint8_t y, const uint8_t* data, uint8_t size, tFontScaling scaling, tColor color, bool useProgmem);
+void oledDraw_bytes(t_OledParams *oled, uint8_t x, uint8_t y, const uint8_t* data, uint8_t size, tColor color, bool useProgmem);
 
 
 /**
@@ -472,6 +470,7 @@ uint_fast8_t ToX(uint8_t col);
  * @return Y position coordinate.
  */
 uint_fast8_t ToY(uint8_t row);
+
 
 #ifdef __cplusplus
 }

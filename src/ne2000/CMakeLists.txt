@@ -1,8 +1,8 @@
 add_library(ne2000 INTERFACE)
 
-if(NOT PICO_BOARD STREQUAL "pico_w")
-    message(FATAL_ERROR "NE2000 Requires Pico W")
-endif()
+#if(NOT PICO_BOARD STREQUAL "pico_w")
+#    message(FATAL_ERROR "NE2000 Requires Pico W")
+#endif()
 
 target_include_directories(ne2000 INTERFACE
     ${CMAKE_CURRENT_LIST_DIR}

@@ -23,8 +23,9 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "pico/stdlib.h"
 #include "../pm_debug.h"
 #include "../pm_gvars.h"
-#include "../pm_defines.h"
+#include "pm_defines.h"
 #include "dev_picomem_io.h"   // SetPortType / GetPortType
+#include "dev_cms.h"
 
 #include "dev_audiomix.h"
 #ifdef MAME_CMS
@@ -35,21 +36,20 @@ saa1099_device *saa0, *saa1; // CMS Emulation object
 cms_t *cms;                  // CMS Emulation object
 #endif  //MAME_CMS
 
-bool dev_cms_active=false;     // True if configured
-volatile uint8_t dev_cms_delay; // counter for the Nb of second since last I/O
-uint16_t dev_cms_baseport;     // CMS use an address range of 0 to B
-uint8_t cms_detect;            // Used for CMS detection
+dev_cms_t dev_cms = {false,0,0};
+
+uint8_t cms_detect;             // Used for CMS detection
 
 uint8_t dev_cms_install(uint16_t baseport)
 {
- if (!dev_cms_active)   // Don't re enable if active
+ if (!dev_cms.active)   // Don't re enable if active
   {
    PM_INFO("Install CMS (%x)\n",baseport);
 
    if (GetPortType(baseport)!=DEV_NULL)
      {
       PM_ERROR("Port already used (%d)\n",GetPortType(baseport));
-      return 1;
+      return CMDERR_PORTUSED;
      }
 
 #ifdef MAME_CMS
@@ -63,19 +63,19 @@ uint8_t dev_cms_install(uint16_t baseport)
 #endif  //MAME_CMS
 
    SetPortType(baseport,DEV_CMS,2);
-   dev_cms_baseport=baseport;
-   dev_cms_active=true;
+   dev_cms.baseport=baseport;
+   dev_cms.active=true;
    dev_audiomix.dev_active = dev_audiomix.dev_active & ~AD_CMS;
-   dev_cms_delay=0;   
+   dev_cms.delay=0;
    cms_detect=0xFF;   
  }  
   else  // Check if the port need to be changed
-    if (baseport!=dev_cms_baseport)
+    if (baseport!=dev_cms.baseport)
      {
       PM_INFO("Change CMS Port (%x)\n",baseport);
-      SetPortType(dev_cms_baseport,DEV_NULL,2);
+      DelPortType(DEV_CMS);
       SetPortType(baseport,DEV_CMS,2);
-      dev_cms_baseport=baseport;
+      dev_cms.baseport=baseport;
      }
 
   return 0;
@@ -83,11 +83,12 @@ uint8_t dev_cms_install(uint16_t baseport)
 
 void dev_cms_remove()
 {
- if (dev_cms_active)   // Don't stop if not active
+ if (dev_cms.active)   // Don't stop if not active
   {  
-   dev_cms_active=false;
+   dev_cms.active=false;
    dev_audiomix.dev_active = dev_audiomix.dev_active & ~AD_CMS;
-   PM_INFO("Remove CMS (%X)\n",dev_cms_baseport);
+   PM_INFO("Remove CMS (%X)\n",dev_cms.baseport);
+   DelPortType(DEV_CMS);
 #ifdef MAME_CMS
    PM_INFO("Delete SAA1099 1\n");
    delete saa0;
@@ -97,15 +98,13 @@ void dev_cms_remove()
 //   PM_INFO("Delete CMS\n");
    delete cms;
 #endif  //MAME_CMS
-
-   SetPortType(dev_cms_baseport,DEV_NULL,2);
   }  
 }
 
 // Return true if CMS is installed
 bool dev_cms_installed()
 {
-  return (GetPortType(dev_cms_baseport)==DEV_CMS);
+  return (GetPortType(dev_cms.baseport)==DEV_CMS);
 }
 
 // Started in the Main Command Wait Loop
@@ -131,9 +130,9 @@ bool dev_cms_ior(uint32_t CTRL_AL8,uint8_t *Data )
   return false;  // Nothing read
 }
 
-void dev_cms_iow(uint32_t CTRL_AL8,uint8_t Data)
+void dev_cms_iow(uint32_t Addr,uint8_t Data)
 {
-  uint8_t addr=CTRL_AL8&0x07;
+  uint8_t addr=Addr&0x07;
 
 #ifdef MAME_CMS  
   switch (addr) 
@@ -174,7 +173,7 @@ void dev_cms_iow(uint32_t CTRL_AL8,uint8_t Data)
               }
              // enable mixind, start the timer
              dev_audiomix.dev_active = dev_audiomix.dev_active | AD_CMS;
-             dev_cms_delay=0;
+             dev_cms.delay=0;
              break;
     case 0x6:
     case 0x7:

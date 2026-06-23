@@ -8,12 +8,10 @@
 ; To Optimize the overall speed
 
 ; Values for the Proto Board :
-;.define public PIN_IRQ    5
 ;.define public PIN_AEN    6
 ;.define public PIN_ALE    7
 
 ; Values for the V1.0 Board: (Shift by 5 Pin).  
-.define public PIN_IRQ    0
 .define public PIN_AEN    1
 .define public PIN_ALE    2
 ; Pin 3 to 7 are for SD/PSRAM

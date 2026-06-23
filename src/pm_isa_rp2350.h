@@ -26,9 +26,6 @@ uint8_t   ISA_Data;
 //for (;;) {}
 
 for (;;) {
-#if TIMING_DEBUG   
-//  gpio_put(PIN_IRQ,0);  // IRQ Up
-#endif
 
   ISA_WasRead = false;
 
@@ -167,7 +164,7 @@ ISA_Do_IO:  // Goto, from the assembly code
 
   ISA_Addr = pio_sm_get_blocking(isa_pio, isa_bus_sm); // Read (A19-A0)<<12
 
-  IO_Device = PORT_Table[(ISA_Addr<<9)>>24];  // <<9 to keep the Bit 13 as well, for DMA Detection
+  IO_Device = IO_Index_T[(ISA_Addr<<9)>>24];  // <<9 to keep the Bit 13 as well, for DMA Detection
   pio_sm_put(isa_pio, isa_bus_sm, IO_Device); // First pio put : No Wait State if 0
 
   ISA_IO_Addr = (ISA_Addr<<10)>>22;           // Same as (ISA_Addr>>12) & 0x3FF
@@ -189,7 +186,7 @@ ISA_Do_IO:  // Goto, from the assembly code
         case DEV_LTEMS :  // LTEMS : Write to the Bank Registers
            dev_ems_iow(ISA_IO_Addr,ISAIOW_Data);
 	       break;  //DEV_LTEMS
-#ifdef RASPBERRYPI_PICO_W
+#if PM_WIFI
 #if USE_NE2000
         case DEV_NE2000:
            dev_ne2000_iow((ISA_IO_Addr-PM_Config->ne2000Port) & 0x1F,ISAIOW_Data);
@@ -233,10 +230,9 @@ ISA_Do_IO:  // Goto, from the assembly code
           break; //DEV_PM    
         case DEV_LTEMS :
            dev_ems_ior(ISA_IO_Addr,&ISA_Data);
-           //ISA_Data=EMS_Bank[(uint8_t) ISA_IO_Addr & 0x03];  // Read the Bank Register
            pm_do_ior();
           break;  //DEV_LTEMS  
-#if PM_PICO_W
+#if PM_WIFI
 #if USE_NE2000             
         case DEV_NE2000:        
            dev_ne2000_ior(ISA_IO_Addr,&ISA_Data);

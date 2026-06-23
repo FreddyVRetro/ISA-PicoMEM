@@ -48,7 +48,7 @@ static void audio_i2s_update_frequency(uint32_t sample_freq) {
 
     uint32_t system_clock_frequency = clock_get_hz(clk_sys);
     assert(system_clock_frequency < 0x40000000);
-    uint32_t divider = system_clock_frequency * 4 / sample_freq; // avoid arithmetic overflow
+    uint32_t divider = system_clock_frequency * 4 / sample_freq; // avoid arithmetic overflow (It is like / (32*2) * 256)
     assert(divider < 0x1000000);
     pio_sm_set_clkdiv_int_frac(audio_pio, shared_state.pio_sm, divider >> 8u, divider & 0xffu);
     shared_state.freq = sample_freq;
@@ -65,9 +65,16 @@ bool audio_i2s_setup(const audio_i2s_config_t *config) {
 
     uint8_t sm = shared_state.pio_sm = config->pio_sm;      // Save the pio sm number
     //spi.sm = pio_claim_unused_sm(spi.pio, true);          // > To do, auto define state machine
+    if (pio_sm_is_claimed(audio_pio, sm)) PM_ERROR("pio/sm pio1/%d already claimed\n",sm);
+       else PM_INFO("Audio Init : Claiming PIO pio1 SM %d\n",sm);
     pio_sm_claim(audio_pio, sm);
-
+#if I2S_CLK_INVERT
+    PM_INFO("Audio Init : Using Inverted I2S PIO\n");
+    uint offset = pio_add_program(audio_pio, &audio_i2s_inv_program);  // With inverted Clock signals
+#else    
     uint offset = pio_add_program(audio_pio, &audio_i2s_program);
+#endif
+    PM_INFO("Audio Init : audio_i2s_program_init\n");
     audio_i2s_program_init(audio_pio, sm, offset, config->data_pin, config->clock_pin_base);
     audio_i2s_update_frequency(PM_AUDIO_FREQUENCY);
 
@@ -78,7 +85,7 @@ bool audio_i2s_setup(const audio_i2s_config_t *config) {
     shared_state.dma_channel = dma_channel;     // Save the DMA Channel number
     shared_state.pio_sm = sm;                   // Save the pio sm number
 
-    PM_INFO(" %d, PIO SM:%d",dma_channel,sm);
+    PM_INFO(" %d, PIO SM:%d ",dma_channel,sm);
 
     dma_channel_config dma_config = dma_channel_get_default_config(dma_channel);
 

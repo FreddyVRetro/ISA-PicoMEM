@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "pico/stdlib.h"
 #include "../pm_debug.h"
 #include "../pm_gvars.h"
-#include "../pm_defines.h"
+#include "pm_defines.h"
 #include "dev_picomem_io.h"
 
 
@@ -33,7 +33,7 @@ void dev_irq_install()
 
 void dev_irq_remove()
 {
- SetPortType(0x20,DEV_NULL,1);
+ DelPortType(DEV_IRQ);
 }
 
 void dev_irq_update()
@@ -42,23 +42,17 @@ void dev_irq_update()
 
 void dev_irq_iow(uint32_t Addr,uint8_t Data)
 {
- 	switch (Addr & 0x07)
+ switch (Addr & 0x03)
     {
      case 0: //PM_INFO ("$");
              break;
      case 1: PM_INFO ("p21:%X ",Data);   // Port 21h IRQ 
+             if (Data&0x80) PM_INFO("DIQ7 ");
              break;
-     case 2:PM_INFO ("p22:%X ",Data);   // Port 22h
+ /*    case 2:PM_INFO ("p22:%X ",Data);   // Port 22h
             break;
      case 3:PM_INFO ("p23:%X ",Data);   // Port 23h
-            break;
-     case 4:PM_INFO ("p24:%X ",Data);   // Port 22h
-            break;
-     case 5:PM_INFO ("p25:%X ",Data);   // Port 23h
-            break;
-     case 6:PM_INFO ("p26:%X ",Data);   // Port 22h
-            break;
-     case 7:PM_INFO ("p27:%X ",Data);   // Port 23h
-            break;                        
+            break;                       
+ */            
     }
 }

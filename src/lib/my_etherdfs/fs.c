@@ -23,7 +23,6 @@
 
 #include "debug.h"
 
-#ifdef BOARD_PICOMEM
 
 #include "pico/stdlib.h"
 #include "f_util.h"
@@ -31,7 +30,7 @@
 #include "../pm_debug.h"
 //#include "../pm_gvars.h"
 
-bool PM_EnablePSRAM();
+bool PM_PICO_EnablePSRAM();
 bool PM_EnableSD();
 
 //List of files indexed by their "ID"
@@ -43,9 +42,6 @@ FIL pm_files[MAXFILES]; // 16 Files maximum  > To change to pointer ?
 uint32_t pm_filesize[MAXFILES]; // File size
 
 DIR dir_find;       /* Find directory object */
-
-#else
-#endif
 
 #include "fs.h" /* include self for control */
 
@@ -200,7 +196,7 @@ unsigned char getitemattr(char *i, struct fileprops *fprops) {
 
  PM_EnableSD();
  fr = f_stat(i, &fno);
- PM_EnablePSRAM();
+ PM_PICO_EnablePSRAM();
  switch (fr) {
      case FR_OK:
         /* zero out struct and set timestamp & fcbname */
@@ -233,7 +229,7 @@ int setitemattr(char *i, unsigned char fattr) {
   FRESULT f_res;
   PM_EnableSD();  
   f_res = f_chmod(i,fattr,AM_RDO | AM_SYS | AM_HID | AM_ARC);
-  PM_EnablePSRAM();
+  PM_PICO_EnablePSRAM();
   printf("SET %u to %s!!\n",fattr,i);  
   if(f_res != F_OK) return(-1);
   return 0;  
@@ -243,7 +239,7 @@ int fs_find(bool Dofindfirst, char *path, char *pattern, struct fileprops *f, un
 {
 
   FRESULT fr;   /* Return value */
-//  DIR dj;       /* Directory object is sd_dir_find */
+//  DIR dj;    /* Directory object is sd_dir_find */
   FILINFO fno;  /* File information */
   bool ffound=false;
 
@@ -264,12 +260,12 @@ int fs_find(bool Dofindfirst, char *path, char *pattern, struct fileprops *f, un
     {               // findnext reuse the directory object
       PM_INFO("Find Next -%s%-11s Attr %x\n",path,pattern,fattr);
     }
-  PM_EnablePSRAM();
+  PM_PICO_EnablePSRAM();
 
  do {
   PM_EnableSD();
   fr = f_readdir(&dir_find, &fno);
-  PM_EnablePSRAM();
+  PM_PICO_EnablePSRAM();
   if (FR_OK != fr) {
     PM_INFO("f_find error: %s (%d)\n", FRESULT_str(fr), fr);
       return (-1);  // > Return directly if error
@@ -361,7 +357,7 @@ unsigned long long diskinfo(char *path, unsigned long long *dfree) {
   /* Get volume information and free clusters of drive */
    PM_EnableSD();
    if (f_getfree(path, &fre_clust, &fs)) return(0);
-   PM_EnablePSRAM();
+   PM_PICO_EnablePSRAM();
 
    PM_INFO("Free Clusters %d Clust size %d",fre_clust,fs->csize);
 
@@ -375,7 +371,7 @@ int makedir(char *d) {
   FRESULT fr;
   PM_EnableSD();
   f_mkdir(d);
-  PM_EnablePSRAM();
+  PM_PICO_EnablePSRAM();
     if (FR_OK != fr) {
         PM_INFO("f_mkdir error: %s (%d)\n", FRESULT_str(fr), fr);
         return (-1);
@@ -389,7 +385,7 @@ int remdir(char *d) {
   //TODO: Make sure this is a directory and not a file
   PM_EnableSD();  
   fr = f_unlink(d);
-  PM_EnablePSRAM();
+  PM_PICO_EnablePSRAM();
   if (FR_OK != fr) {
     PM_INFO("f_unlink error: %s (%d)\n", FRESULT_str(fr), fr);
     return (-1);
@@ -403,7 +399,7 @@ int changedir(char *d) {
   FRESULT fr;
   PM_EnableSD();
   fr=f_chdir(d);
-  PM_EnablePSRAM();
+  PM_PICO_EnablePSRAM();
     if (FR_OK != fr) {
       PM_INFO("f_chdir error: %s (%d)\n", FRESULT_str(fr), fr);
         return (-1);
@@ -419,7 +415,7 @@ void get_filestats(char *filepath, struct fileprops *f)
 
 PM_EnableSD();
 fr = f_stat(filepath, &fno);  //  Get the opened file info
-PM_EnablePSRAM();
+PM_PICO_EnablePSRAM();
 if (fr!=FR_OK) PM_INFO("! f_stat error : %d\n",fr);
 
 if (strlen(fno.altname)==0)  //If no alternate name, use name
@@ -459,7 +455,7 @@ int createfile(struct fileprops *f, char *filepath, unsigned char f_mode) {
 
   PM_EnableSD();
   fr = f_open(fd, filepath, FA_CREATE_ALWAYS);
-  PM_EnablePSRAM();
+  PM_PICO_EnablePSRAM();
 
   // Return the DOS error code as negative value
 	switch(fr)
@@ -473,7 +469,7 @@ int createfile(struct fileprops *f, char *filepath, unsigned char f_mode) {
 
   PM_EnableSD();
   fr = f_stat(filepath, &fno);  //  Get the opened file info
-  PM_EnablePSRAM();
+  PM_PICO_EnablePSRAM();
   if (fr!=FR_OK) PM_INFO("! f_stat error : %d\n",fr);
 
   if (strlen(fno.altname)==0)  //If no alternate name, use name
@@ -536,7 +532,7 @@ int openfile(struct fileprops *f, char *filepath, unsigned char f_mode) {
 
   PM_EnableSD();
   fr = f_open(fd, filepath, f_mode);
-  PM_EnablePSRAM();
+  PM_PICO_EnablePSRAM();
   if (fr!=FR_OK) free_fobj(fileid);      // Free the file object if can't be opened
 
   // if error, return the DOS error code as negative value
@@ -552,7 +548,7 @@ int openfile(struct fileprops *f, char *filepath, unsigned char f_mode) {
 
   PM_EnableSD();
   fr = f_stat(filepath, &fno);  //  Get the opened file info
-  PM_EnablePSRAM();
+  PM_PICO_EnablePSRAM();
   if (fr!=FR_OK) PM_INFO("! f_stat error : %d\n",fr);
 
   if (strlen(fno.altname)==0)  //If no alternate name, use name
@@ -591,7 +587,7 @@ void closefile(unsigned char fid) {
      {
       PM_EnableSD();
       fr = f_close(fd);
-      PM_EnablePSRAM();
+      PM_PICO_EnablePSRAM();
       free_fobj(fid);
      }
 }
@@ -613,7 +609,7 @@ int readfile(unsigned char *buff, uint8_t fid, uint32_t offset, uint16_t len) {
   PM_EnableSD();
   fr = f_lseek(fd,offset);
   if (fr==FR_OK) fr = f_read(fd, buff, len, &bread);
-  PM_EnablePSRAM();
+  PM_PICO_EnablePSRAM();
  // PM_INFO(" f_read fr %d, bread%d\n",fr,bread);
 
 // Return the DOS error code as negative value
@@ -649,7 +645,7 @@ long writefile(unsigned char *buff, unsigned short fid, unsigned long offset, un
   PM_EnableSD();
   fr = f_lseek(fd,offset);
   if (fr==FR_OK) fr = f_write(fd, buff, len, &bwritten);
-  PM_EnablePSRAM();
+  PM_PICO_EnablePSRAM();
  
   PM_INFO(" f_write fr %d, bread%d\n",fr,bwritten);
 
@@ -696,7 +692,7 @@ int delfiles(char *pattern) {
     
     PM_EnableSD();
     f_res = f_unlink(pattern);
-    PM_EnablePSRAM();
+    PM_PICO_EnablePSRAM();
     switch(f_res)
       {
        case FR_OK: break;
@@ -721,15 +717,15 @@ int delfiles(char *pattern) {
   f_res = f_opendir(&dp,dir);    
   if(f_res != F_OK) {
     f_closedir(&dp);
-    PM_EnablePSRAM();
+    PM_PICO_EnablePSRAM();
     return (-1);  
   }
-  PM_EnablePSRAM();
+  PM_PICO_EnablePSRAM();
 
   for (;;) {
     PM_EnableSD();
     f_res = f_readdir(&dp,&fno);    
-    PM_EnablePSRAM();
+    PM_PICO_EnablePSRAM();
     if(f_res != FR_OK || fno.fname[0] == 0) break;            
     /* skip directories */
     if(fno.fattrib & FAT_DIR) continue;  
@@ -743,14 +739,14 @@ int delfiles(char *pattern) {
       printf("unlink %s\n",fname);
       PM_EnableSD();      
       f_res = f_unlink(fname);      
-      PM_EnablePSRAM();
+      PM_PICO_EnablePSRAM();
       if (f_res != F_OK) fprintf(stderr, "failed to delete '%s'\n", fname);
          else dcount++;
     }
   }
   PM_EnableSD();  
   f_closedir(&dp);
-  PM_EnablePSRAM();
+  PM_PICO_EnablePSRAM();
  
   return(dcount);
 }
@@ -760,7 +756,7 @@ int renfile(char *fn1, char *fn2) {
   FRESULT fr;
   PM_EnableSD();
   fr = f_rename(fn1, fn2);
-  PM_EnablePSRAM();
+  PM_PICO_EnablePSRAM();
 
   switch(fr)
       {

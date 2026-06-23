@@ -13,6 +13,7 @@ typedef struct pm_mouse_t {
      uint8_t buttons;
      } pm_mouse_t;
 
+/*
 typedef struct {
     uint8_t joy1_x;
     uint8_t joy1_y;
@@ -20,3 +21,13 @@ typedef struct {
     uint8_t joy2_y;
     uint8_t button_mask;
 } joystate_struct_t;
+*/
+
+typedef struct {
+    uint8_t tx_nb;   // Number of MIDI TX cables
+    uint8_t dev_idx; // USB device index
+    bool   mounted;
+} pm_midi_usb_t;
+
+extern volatile pm_mouse_t pm_mouse;
+extern volatile pm_midi_usb_t pm_midi_usb;

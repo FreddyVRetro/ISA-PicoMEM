@@ -20,20 +20,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "pico/stdlib.h"
 #include <stdarg.h>
 #include "../../pm_debug.h"
+#include "pm_gvars.h"
+#include "pm_defines.h"
+#include "pm_board.h"     // PicoMEM Board Definitions (GPIO)
 
-#if PM_PICO_W
+#if PM_WIFI_LED
 #include "pico/cyw43_arch.h"    // Needed to blink the LED for Pico W
 #endif
 
 //#include "ff.h"
 
 #define DISPLAY_TIME 1
-//constexpr uint LED_PIN = PICO_DEFAULT_LED_PIN;
-#if BOARD_PM15
-#define LED_PIN 11
-#else
-#define LED_PIN 25
-#endif
 
 uint8_t pm_led_state;
 
@@ -87,9 +84,11 @@ void pm_timefromlast()
 void pm_led(uint8_t onoff)
 {
  pm_led_state=onoff;
-#if PM_PICO_W
-cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, onoff);
+#if PM_WIFI_LED
+PM_INFO("WLED %d ",onoff);
+if (BV_WifiInit==INIT_DONE) cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, onoff);
 #else
+//PM_INFO("LED %d ",onoff);
 gpio_put(LED_PIN, onoff);
 #endif
 }

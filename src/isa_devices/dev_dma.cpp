@@ -146,7 +146,7 @@ SeeAlso: #P0004,#P0486
 #include "pico/stdlib.h"
 #include "../pm_debug.h"
 #include "../pm_gvars.h"
-#include "../pm_defines.h"
+#include "pm_defines.h"
 #include "dev_picomem_io.h"   // SetPortType / GetPortType
 
 #include "dev_dma.h"
@@ -182,13 +182,15 @@ uint8_t dev_dma_install()
      {
       PM_ERROR("Port already used (%d)\n",GetPortType(dev_dma_baseport));
       dev_dma_active=false;
-      return 1;
+      return CMDERR_PORTUSED;
      }
 
    SetPortType(dev_dma_baseport,DEV_DMA,2);  // 2 is needed for Port 0C
-   SetPortType(dev_dma_pageport,DEV_DMA,1);  //
+   SetPortType(dev_dma_pageport,DEV_DMA,1);  // Page port (0x80-0x8F) for the DMA page registers (Be carefull of the POST Code using the same base port !)
    dev_dma_emulate=false;
    dev_dma_active=true;
+   BV_DMANoUpdate=0; // Reset the IRQ source
+
  }
   return 0;
 }
@@ -200,7 +202,7 @@ void dev_dma_remove()
    dev_dma_active=false;  
    PM_INFO("Remove DMA (%X)\n",dev_dma_baseport);
 
-   SetPortType(dev_dma_baseport,DEV_NULL,2);
+   DelPortType(DEV_DMA);
   }  
 }
 
@@ -230,7 +232,8 @@ void dev_dma_iow(uint32_t CTRL_AL8,uint8_t Data)
   uint8_t channel;
 
 //  PM_INFO("DMA %x,%x",CTRL_AL8,Data);
- if (!dma_ignorechange)  // Ignore the change when the PicoMEM update the registers (in pm_pccmd.cpp)
+// if (!dma_ignorechange)  // Ignore the change when the PicoMEM update the registers (in pm_pccmd.cpp)
+if (BV_DMANoUpdate==0) // if=0, update the DMA regs values
  {
   switch(addr)
       {
@@ -246,6 +249,7 @@ void dev_dma_iow(uint32_t CTRL_AL8,uint8_t Data)
             {
              dmachregs[channel].baseaddr=(uint16_t)((dmachregs[channel].baseaddr&0x00ff)|(Data << 8));
              dmachregs[channel].changed=true;  
+          //   PM_INFO("DW%d BA%d ",channel,dmachregs[channel].baseaddr);
             }
           break;
       // Transfer count
@@ -259,7 +263,8 @@ void dev_dma_iow(uint32_t CTRL_AL8,uint8_t Data)
             else
             {
              dmachregs[channel].basecnt=(uint16_t)((dmachregs[channel].basecnt&0x00ff)|(Data << 8));
-             dmachregs[channel].changed=true;              
+             dmachregs[channel].changed=true;
+         //    PM_INFO("DW%d TC%d ",channel,dmachregs[channel].basecnt);
             }
           break;
 		case 0x8:   // Command register
@@ -269,6 +274,7 @@ void dev_dma_iow(uint32_t CTRL_AL8,uint8_t Data)
          break;         
     case 0x0B:	// mode register
             dmachregs[Data&0x03].autoinit=(Data & 0x10)>0;
+       //     PM_INFO("DM:%x ",Data);
          break;         
 	  case 0xc:	// Clear flip flop
 		        dma_flipflop=false;
@@ -284,6 +290,7 @@ void dev_dma_iow(uint32_t CTRL_AL8,uint8_t Data)
 		case 0x83:  // Channel 1 page
             dmachregs[1].page=Data;
             dmachregs[1].changed=true;
+           // PM_INFO("DW1 P%d ",dmachregs[1].page);
             break;
 		case 0x87:  // Channel 0 page
             dmachregs[0].page=Data;

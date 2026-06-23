@@ -22,10 +22,12 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "pico/stdlib.h"
 #include "../pm_debug.h"
 #include "../pm_gvars.h"
-#include "../pm_defines.h"
+#include "pm_defines.h"
 #include "pico/multicore.h"
 
 #include "dev_picomem_io.h"
+#include "bus_irq.h"
+#include "isa_dma.h"
 
 volatile uint8_t PM_TestRead=0;
 uint8_t PM_CMDState=0;  //Command State Machine State (0 : Unlocked; 1 : Intermediate : 2: locked;)
@@ -112,7 +114,8 @@ bool dev_pmio_ior(uint32_t CTRL_AL8,uint8_t *Data )
 //                 printf("r%x",ISA_Data);
                  return true;
     case PORT_TEST:            // Test port, Return Test value +1            
-                 *Data=PM_TestRead++; 
+
+    *Data=PM_TestRead++; 
                 // printf("t");
                  return true;
     case PORT_TR_L:
@@ -133,7 +136,7 @@ bool dev_pmio_ior(uint32_t CTRL_AL8,uint8_t *Data )
 
 void dev_pmio_iow(uint32_t CTRL_AL8,uint8_t Data)
 {
-  //printf("Wr %x, %X",CTRL_AL8,Data);
+  //printf("W%x:%x ",CTRL_AL8 & 0x07, Data);
   switch(CTRL_AL8 & 0x07)  //CTRL_AL8 Remains as a Register even here        
  //          switch(ISA_Addr & 0x07) 
     {
@@ -142,7 +145,11 @@ void dev_pmio_iow(uint32_t CTRL_AL8,uint8_t Data)
 				       { 
 					      case 0:
 					        if (Data==CMD_LockPort) PM_CMDState=2;
-                        if ((PM_Status==STAT_READY)||((Data)==0))  // Ready to receive a command or Command Reset
+                        if (Data==CMD_PMIRQ_ACK) {
+                          bus_pm_irq_ack();  // Acknowledge the IRQ
+                        } else if (Data==CMD_DMACPY_ACK) {
+                            isa_dmacpy_ack(); // Acknowledge the DMA Copy command
+                        } else if ((PM_Status==STAT_READY)||((Data)==0))  // Ready to receive a command or Command Reset
                            {
                             if (Data==0) PM_CmdReset=true;   // Force commands reset (Then add RESET Command in command queue)
                             PM_Command=(uint8_t) Data;
@@ -165,7 +172,7 @@ void dev_pmio_iow(uint32_t CTRL_AL8,uint8_t Data)
                  PM_CmdDataH=Data;               
                  break;                 
       case PORT_TEST:              // Test and 8Bit Data port
-  //               gpio_put(PIN_IRQ,1);  // * Send an IRQ, to Debug
+  //               gpio_put(PIN_PM_IRQ,1);  // * Send an IRQ, to Debug
                  break;
       case PORT_TR_L:
                  if ((PM_TR_CNT_L!=0)&&(!PM_RE_ISREAD)) // counter of 
@@ -176,14 +183,16 @@ void dev_pmio_iow(uint32_t CTRL_AL8,uint8_t Data)
                     PM_INFO("CW %d, %X",PM_TR_CNT_L,Data);
                    }
                  break;  
-        case 5: if (Data==8) DBG_ON_INT_SB();
-                if (Data==3) DBG_ON_INT_DMA();
+#if DBG_PIN_AUDIO                     
+        case 5: //if (Data==8) DBG_ON_INT_SB();
+                //if (Data==3) DBG_ON_INT_DMA();
             //    PM_INFO("b%x,%d",Data,BV_IRQ_Cnt);       // Debug display for IRQ Begin/end
                 break;
         case 6: //PM_INFO("e%x",Data);
-                if (Data==8) DBG_OFF_INT_SB();
-                if (Data==3) DBG_OFF_INT_DMA();
+                //if (Data==8) DBG_OFF_INT_SB();
+                //if (Data==3) DBG_OFF_INT_DMA();
                 break;
+#endif
       default: break;
     } // PicoMEM Register Switch
 }

@@ -1,5 +1,15 @@
 #pragma once
 
+#include "pm_board.h"     // PicoMEM Board Definitions (GPIO) (MUX_V2 defined here)
+
+#if USE_RP2350_PSRAM  // Use the RP2350 internal PSRAM
+#include "pico_psram.h"
+
+#define PSRAM_EMS_START __psram_start__              // First 4Mb
+#define PSRAM_RAM_START __psram_start__+4*1024*1024  // PSRAM extention in the first 1Mb 
+#define PSRAM_GUS_START __psram_start__+5*1024*1024  // 1MB GUS Memory Start
+#endif
+
 #define EMS_PORT_NB 5
 #define EMS_ADDR_NB 2
 const uint8_t EMS_Port_List[EMS_PORT_NB]={0,0x268>>3,0x288>>3,0x298>>3,0x2A8>>3}; // 278 used by LPT
@@ -15,12 +25,11 @@ const uint8_t EMS_Addr_List[EMS_ADDR_NB]={0xD0000>>14,0xE0000>>14};
 // 16 +    : Wait State    (For RAM/ROM in PSRAM)
 
 #define MEM_NULL   0   // No PicoMEM emulation in this address
-
 #define MEM_RAM    1   // RAM in the Pico SRAM    RW / ZWS  !! Change Disk code if modified !!
-#define MEM_DISK   2   // BIOS RAM/DISK           RW / ZWS
+#define MEM_DISK   2   // BIOS RAM/DISK           RW / ZWS 
 
 #define MEM_BIOS   8   // PicoMEM BIOS ROM        R  / ZWS
-#define MEM_ROM0   9   // ROM in Segment C	      R  / ZSW > not used for the moment
+#define MEM_ROM0   9   // ROM in Segment C	      R  / ZWS > not used for the moment
 #define MEM_ROM1   10  // ROM in Segment D	      R  / ZWS > not used for the moment
 
 #define MEM_BIOS_EXT 12
@@ -41,7 +50,7 @@ const uint8_t EMS_Addr_List[EMS_ADDR_NB]={0xD0000>>14,0xE0000>>14};
 #define MEM_I_NULL   0
 #define MEM_I_PSRAM  16   // RAM in the PSRAM       WS (SPI and QSPI need WS)
 
-#ifdef PIMORONI_PICO_PLUS2_RP2350
+#if USE_RP2350_PSRAM
 #define MEM_I_EMS0 17   // EMS in the PSRAM			  WS
 #define MEM_I_EMS1 18   // EMS in the PSRAM			  WS
 #define MEM_I_EMS2 19   // EMS in the PSRAM			  WS
@@ -73,18 +82,18 @@ const uint8_t EMS_Addr_List[EMS_ADDR_NB]={0xD0000>>14,0xE0000>>14};
 extern volatile uint8_t *RAM_Offset_Table[21];
 extern volatile uint16_t PM_BIOSADDRESS;
 
+extern uint8_t  EMS_Bank[4];
+extern uint32_t EMS_Base[4];
+
 extern void display_memmap();
 extern void display_memindex();
 
 extern void dev_memory_init(uint32_t biosaddr);
+extern void dev_memory_install_all();
 extern uint8_t dev_memory_install(uint8_t MEM_Type, uint32_t Pico_Offset);
-extern bool dev_ems_install(uint16_t port, uint32_t base_addr);
 
 extern void dev_memory_remove_ram();
 extern void dev_memorytype_remove(uint8_t type);
-
-bool dev_ems_ior(uint32_t CTRL_AL8,uint8_t *Data );
-extern void dev_ems_iow(uint32_t CTRL_AL8,uint8_t Data);
 
 __force_inline uint8_t GetMEMType(uint32_t Address)
 #if MUX_V2  

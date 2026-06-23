@@ -1,222 +1,223 @@
 // Code to support the Hardware and emulated DMA
 #include <stdio.h>
 #include "pico/stdlib.h"
+#include "hardware/pio.h"
 #include "../pm_debug.h"
 #include "../pm_gvars.h"
-#include "../pm_defines.h"
-#include "../pm_pccmd.h"
+#include "pm_defines.h"
+#include "pm_pccmd.h"
 #include "dev_memory.h"
+#include "dev_audiomix.h"
 #include "isa_dma.h"
 #include "isa_irq.h"
 
-// DMA transfer will be done through a buffer in the BIOS RAM (last 2Kb)
+#if USE_HWDMA
+#if BOARD_PM15 || BOARD_PM20
+#include "isa_iomem_m2_v15.pio.h"
+#endif
+#endif
 
+uint isa_dma_w_offset;
+
+// DMA transfer will be done through a buffer in the BIOS RAM (last 2Kb)
 pm_dma_t isa_dma;
+uint32_t DMA_IRQ_Sent;   // To count the NB of DMA IRQ sent and acknowledge (For send/Not acked detection)
+uint32_t DMA_IRQ_Acked;
+
+uint64_t DMA_IRQ_AckTime;
+uint64_t DMA_Start_Time;
+
+#define DMA_IRQ_START_WAIT 500 // Need 500us between the Ack and next Request
+
+#if USE_HWDMA
+volatile irq_handler_t DMA_isr_ptr;    // Pointer to the current DMA ISR
+volatile irq_handler_t New_DMA_isr_ptr; // Pointer to the new DMA ISR
+#endif
+
+uint8_t pm_dma_isr_dev=0; // Currently configured ISR for the Hardware DMA (0 if no HW DMA, 1 for SB DSP, 2 for GUS, etc...)
+
+
+// Default Blank ISR for the HW DMA
+#if USE_HWDMA
+
+static void __not_in_flash_func(isa_dma_isr)(void) {
+    DMA_isr_ptr();
+  }
+
+static void __not_in_flash_func(isa_dma_isr_blank)(void) {
+    isa_dma_complete_write();
+  }
+#endif
+
 
 void isa_dma_init()
 {
-  isa_dma.inprogress=false;
-  isa_dma.transfer_remain=0;  
+  PM_INFO("isa_dma_init\n");
+  isa_dma.buffer_level=0;
+  isa_dma.dma_remain=0;
+  isa_dma.vdma_wait_irq=false;   // True when a DMA copy request was sent
+  DBG_OFF_2();  
+  DMA_IRQ_AckTime=time_us_64();
 }
 
-bool isa_dma_inprogress()
+// To be started early in the code, at Pico startup
+void isa_dma_install()
 {
- return false;
+  PM_INFO("isa_dma_install\n");
+#if USE_HWDMA
+if (pio_sm_is_claimed(DMA_PIO, DMA_SM)) PM_ERROR("pio/sm %s/%d already claimed\n",DMA_PIO, DMA_SM);
+   else PM_INFO("Claiming PIO %s SM %d\n",DMA_PIO, DMA_SM); 
+#if BOARD_PM15
+PM_INFO(" > Add ISA DMA Write SM\n");
+  pio_sm_claim(DMA_PIO,DMA_SM);
+  isa_dma_w_offset = pio_add_program(DMA_PIO, &isa_dma_w_program);
+  isa_dma_w_program_init(DMA_PIO, DMA_SM, isa_dma_w_offset);
+#elif BOARD_PM20
+PM_INFO(" > Add ISA DMA Write SM with TC\n");
+  pio_sm_claim(DMA_PIO,DMA_SM);
+  isa_dma_w_offset = pio_add_program(DMA_PIO, &isa_dma_w_tc_program);
+  isa_dma_w_tc_program_init(DMA_PIO, DMA_SM, isa_dma_w_offset);
+#endif
+
+  irq_set_enabled(PIO0_IRQ_0, false);
+  pio_set_irq0_source_enabled(DMA_PIO, pis_sm3_rx_fifo_not_empty, true);  // !! To change if the DMA SM value change
+  irq_set_priority(PIO0_IRQ_0, PICO_HIGHEST_IRQ_PRIORITY);
+  irq_set_exclusive_handler(PIO0_IRQ_0, isa_dma_isr);
+  irq_set_enabled(PIO0_IRQ_0, true);
+
+#endif
+  
+  isa_dma_init();
 }
 
-uint16_t dma_fifo_remain();
-
-// Perform a DMA transfer with a pre defined length
-// return the number of bytes transfered
-// Data stored to a 2KB fifo. No transfer when full
-uint16_t isa_dma_transfer_fifo()
+// Executed when the DMA Copy interrupt is completed (run from core1)
+void isa_dmacpy_ack()
 {
+  isa_dma.dma_remain-=isa_dma.to_transfer;   // Update the remaining bytes to transfer
+  isa_dma.dma_c_adress+=isa_dma.to_transfer; 
+  isa_dma.buffer_readindex=0;                // Reset the DMA buffer read index  
+  isa_dma.buffer_level=isa_dma.to_transfer;  // Update the bytes in the DMA buffer
+  isa_dma.vdma_wait_irq=false;
+  DMA_IRQ_Acked++;
+  DMA_IRQ_AckTime=time_us_64();
+  DBG_OFF_2();
+}
 
-// Commands to Start/Stop/Continue the transfer
-  switch(isa_dma.cmd)
-   {
-    case DMA_CMD_START:  // New Transfer may stop the actual running transfer (But don't clean the FIFO)
-         PM_INFO("DMA>START\n");
-         isa_dma.copy_cnt=0;              // count the NB of transfer done (Debug)
-         isa_dma.transfer_remain=isa_dma.transfer_size;
-         isa_dma.cmd=DMA_CMD_NONE;
-//         isa_dma.fifo_end=PM_DMAB_Size;  // set initial DMA FIFO End
-         isa_dma.inprogress=isa_dma.channel;
-         break;
-    case DMA_CMD_CONTINUE:    // Continue the transfer when the previous one is completed.
-         if (isa_dma.transfer_remain==0)
-            {
-              DBG_ON_1();
-            // PM_INFO("DMA>CONTINUE\n");
-
-             isa_dma.transfer_remain=isa_dma.transfer_size;
-             isa_dma.cmd=DMA_CMD_NONE;
-             isa_dma.inprogress=isa_dma.channel;
-             PM_INFO("DC>%d",isa_dma.transfer_remain);         
-            }
-         break;
-    case DMA_CMD_STOP:       // Stop/Pause the current transfer
-         PM_INFO("DMA>STOP\n");
-         isa_dma.cmd=DMA_CMD_NONE;
-         isa_dma.inprogress=0;
-         break; 
-    case DMA_CMD_RESET:       // Stop/Pause the current transfer
-         PM_INFO("DMA>RESET\n");
-         isa_dma.cmd=DMA_CMD_NONE;
-         isa_dma.inprogress=0;
-         isa_dma.transfer_remain=0;
-         isa_dma.fifo_head=0;
-         isa_dma.fifo_tail=0;
-         break;      
+void isa_dma_start_copy(uint8_t channel, uint32_t Src, uint32_t Dest, uint32_t Len, uint16_t NewAddr, uint16_t NewSize)
+{
+ bool force_irq=false;
+// Copy the parameters for the IRQ command
+if (DMA_IRQ_Sent!=DMA_IRQ_Acked) { // If the previous DMA Copy command was not acknowledged
+   PM_INFO("DMA not acked %d!=%d\n",DMA_IRQ_Sent,DMA_IRQ_Acked);
+   DMA_IRQ_Sent=0;
+   DMA_IRQ_Acked=0;
+   force_irq=true;
+//   return; // Do not send a new DMA Copy command
    }
 
-// Need to transfer something ?
-  if (!isa_dma.inprogress) return 0;
+   PM_DP_RAM[OFFS_IRQ_PARAM]=0xFF;  // Reset the IRQ parameters
+   PM_DP_RAM[OFFS_IRQ_PARAM+1]=0xFF;
+  // Source Offset
+   PM_DP_RAM[OFFS_IRQ_PARAM]=(uint8_t)Src&0xF;
+   PM_DP_RAM[OFFS_IRQ_PARAM+1]=0;
+   // Source Segment
+   PM_DP_RAM[OFFS_IRQ_PARAM+2]=(uint8_t)(Src>>4);
+   PM_DP_RAM[OFFS_IRQ_PARAM+3]=(uint8_t)(Src>>12);
+   // Destination Offset
+   PM_DP_RAM[OFFS_IRQ_PARAM+4]=(uint8_t)Dest&0xF;
+   PM_DP_RAM[OFFS_IRQ_PARAM+5]=0;
+   // Destination Segment
+   PM_DP_RAM[OFFS_IRQ_PARAM+6]=(uint8_t)(Dest>>4);
+   PM_DP_RAM[OFFS_IRQ_PARAM+7]=(uint8_t)(Dest>>12);  
+   // Length
+   PM_DP_RAM[OFFS_IRQ_PARAM+8]=(uint8_t)Len;
+   PM_DP_RAM[OFFS_IRQ_PARAM+9]=(uint8_t)(Len>>8);   
 
-  uint8_t channel=isa_dma.inprogress;
+   // New DMA regs values for after the copy (Address and Size)
+   PM_DP_RAM[OFFS_IRQ_PARAM+10]=(uint8_t)NewAddr&0xFF;
+   PM_DP_RAM[OFFS_IRQ_PARAM+11]=(uint8_t)(NewAddr>>8);
+   PM_DP_RAM[OFFS_IRQ_PARAM+12]=(uint8_t)NewSize&0xFF;
+   PM_DP_RAM[OFFS_IRQ_PARAM+13]=(uint8_t)(NewSize>>8);
+
+   // DMA Channel
+   PM_DP_RAM[OFFS_IRQ_PARAM+14]=channel;
+
+   isa_pm_irq_raise(IRQ_R_DMACOPY,1,force_irq);  // Send a DMA Copy interrupt request
+   DMA_IRQ_Sent++;
+//   PM_INFO("S%dA%d",DMA_IRQ_Sent, DMA_IRQ_Acked);
+}
+
+// Perform a DMA Transfer (Emulated DMA Code)
+// Transfer a 128 byte block from the PC to the PicoMEM RAM using a Single buffer (No FIFO)
+void isa_dma_transfer(uint8_t channel)
+{
+ // PM_INFO("!BL%d ",isa_dma.buffer_level);
+
+  if (isa_dma.vdma_wait_irq) 
+      {
+  /*      if ((SVAR_IRQ->PM_IRR+SVAR_IRQ->PM_ISR)==0){
+           DBG_ON_2();
+           busy_wait_us(5);
+           DBG_OFF_2();
+           busy_wait_us(5);
+          }          */
+/*        {
+              PM_INFO ("!TO ");
+              isa_dma.vdma_wait_irq=false;  // Give a new chance to be started
+            } */
+        return;
+      }
+
+  if ((time_us_64()-DMA_IRQ_AckTime)<100) return; // Too fast, wait for the defined time
+   //if ((time_us_64()-PM_IRQ_AckTime)<200) return; // Too fast, wait for the defined time
   
-// Update the DMA channel values if changed (By the PC)
+   // !! Check again the DMA Buffer send, as may change since the last check
+  if (isa_dma.buffer_level!=0) return;  // DMA Copy finished and buffer empty, Don't fill again
+
+// 1) Check if the DMA registers were modified
+
   if (dmachregs[channel].changed)  // !! Risk if only one change is captured when arriving here, Nobody should do that
     {
       dmachregs[channel].changed=false;
-      PM_INFO("DMA %d REG Changed >",channel);
- //     PM_INFO("Virtual DMA: Page:%X Offset: %X Size: %d\n",dmachregs[channel].page, dmachregs[channel].baseaddr, dmachregs[channel].basecnt);
       isa_dma.dma_address=((uint32_t) dmachregs[channel].page<<16)+dmachregs[channel].baseaddr;
       isa_dma.dma_c_adress=isa_dma.dma_address;
       isa_dma.dma_size=dmachregs[channel].basecnt+1;  // DMA register is the size -1
-      isa_dma.dma_remain=isa_dma.dma_size;            // Bytes remaining in the currect DMA buffer
- //     PM_INFO("DMA Addr:%x Size:%d\n",isa_dma.dma_c_adress,isa_dma.dma_size);
-     }
-
-  uint32_t FIFO_Addr=((uint32_t) PM_BIOSADDRESS<<4)+16*1024+PM_DMAB_Offset; // FIFO is in the PC RAM
-
-// Hoy many bytes need to be transfered, and is there enaugh space ?
-  uint16_t to_transfer;
-  uint16_t transfered;  
-  uint16_t tr_offset;
-  to_transfer= (isa_dma.transfer_remain<isa_dma.sizept) ? isa_dma.transfer_remain : isa_dma.sizept;
-// PM_INFO("TC: %d (before move)  Tail: %d Head: %d\n",isa_dma.copy_cnt,isa_dma.fifo_tail,isa_dma.fifo_head);
-
- // Verify if there is enaugh space to copy "to_transfer" bytes
- if (isa_dma.fifo_tail>isa_dma.fifo_head)
-     { // Tail in advance, Free space is tail-head
-      if ((isa_dma.fifo_tail-isa_dma.fifo_head)<=to_transfer)
-         {
- //         PM_INFO("DMA FIFO Full ! (tail>head) %d>%d\n",isa_dma.fifo_tail,isa_dma.fifo_head);  
-// DBG_ON_1();       
-          return 0;
-         }
-     } // Tail before head : Check if not enaugh space after the head, or before the tail
-    else if (((PM_DMAB_Size-isa_dma.fifo_head)<to_transfer)&&(isa_dma.fifo_tail<=to_transfer)) // <= ??
-     {
- //     PM_INFO("DMA FIFO Full ! (tail<=head) %d<%d\n",isa_dma.fifo_tail,isa_dma.fifo_head);
- // DBG_ON_1();   
-      return 0;
-     } 
-
-// FIFO : Loop if not enaugh space to transfer at the end  
-  if ((isa_dma.fifo_head+to_transfer)>PM_DMAB_Size)
-    {
-      // Go back to the FIFO begining, place the fifo end to the current head
-      isa_dma.fifo_end=isa_dma.fifo_head; // Set new DMA Buffer end
-      isa_dma.fifo_head=0;
-//      PM_INFO("FIFO Go back\n");
-    }
-
-  tr_offset = isa_dma.fifo_head;
-  transfered= to_transfer;
-
-//  PM_INFO("TC: %d (after move)  Tail: %d Head: %d\n",isa_dma.copy_cnt,isa_dma.fifo_tail,isa_dma.fifo_head);
-//  PM_INFO("TC: %d Rem:%d DAM Rem: %d Off: %d End: %d\n",isa_dma.copy_cnt,isa_dma.transfer_remain,isa_dma.dma_remain,tr_offset,isa_dma.fifo_end);
-
-  if (!PC_Wait_End_Timeout(10000))
-  { 
-    PM_INFO("DMA> TIMEOUT, PCCR_PCSTATE!=0 (%x)\n",PCCR_PCSTATE);
-    if (PCCR_PCSTATE==PCC_PCS_WAITCMD) PM_INFO("CMD in Progress");
-    isa_irq_lower();
-    return 0;
-   }
-
-// Ask the PC to Start the commands (Via an IRQ)
-  isa_irq_raise(IRQ_StartPCCMD,0,true);  
-
-  if (!PC_Wait_Ready_Timeout(20000))  // 20ms timeout
-     { 
-      PM_INFO("DMA> TIMEOUT, NO IRQ ?\n");
-      isa_irq_lower();
-      return 0;
-     }
-
-  if (to_transfer>isa_dma.dma_remain)
-     {  // There is less data remaining in the DMA buffer that what is asked.
-//      PM_INFO("TC: %d Copy %X>%X %d (DMA Loop)\n",isa_dma.copy_cnt, isa_dma.dma_c_adress, FIFO_Addr+tr_offset,isa_dma.dma_remain);
-      PC_MemCopy(isa_dma.dma_c_adress, FIFO_Addr+tr_offset, isa_dma.dma_remain);
-      // Update the FIFO transfer variables
-      to_transfer-=isa_dma.dma_remain;
-      tr_offset+=isa_dma.dma_remain;
-      isa_dma.fifo_head+=isa_dma.dma_remain;
-
-      // Loop to the begining of the DMA buffer (DMA Autoinit "simulation")  !! Must be in autoinit mode
-      isa_dma.dma_c_adress=isa_dma.dma_address;
       isa_dma.dma_remain=isa_dma.dma_size;
-     }
- 
-//  PM_INFO("TC: %d Copy %X>%X %d\n",isa_dma.copy_cnt,isa_dma.dma_c_adress, FIFO_Addr+tr_offset,to_transfer);
-  PC_MemCopy(isa_dma.dma_c_adress, FIFO_Addr+tr_offset, to_transfer);
 
-  // Update the DMA registers
-  PC_SetDMARegs(channel, (uint16_t) (isa_dma.dma_c_adress+to_transfer), isa_dma.dma_remain-to_transfer);
-
-  PC_End();     // Tell the PC Command loop to end  
-  isa_irq_lower();
-
-  
-  if (!PC_Wait_End_Timeout(10000))
-  { 
-    PM_INFO("DMA> TIMEOUT, PCCR_PCSTATE!=0 (%x) BV_IRQStatus %x\n",PCCR_PCSTATE,BV_IRQStatus);
-    isa_irq_lower();
-    return 0;
-  }
-
-/**/  //> Move to SB interrupt code ?
-   if (!isa_irq_Wait_End_Timeout(10000))
-   { 
-     PM_INFO("DMA> TIMEOUT, PIRQ still in progress BV_IRQStatus %x\n",BV_IRQStatus);
-   }   
-
-/*
-  PM_INFO("\n");
-  for (int i=0;i<32;i++)
-      PM_INFO("%X ",PM_DP_RAM[PM_DMAB_Offset+i]);
-*/
-  // Update the FIFO variables
-  isa_dma.transfer_remain-=to_transfer;
-  tr_offset+=to_transfer;
-  isa_dma.fifo_head+=to_transfer;
-  // Update the DMA buffer variables
-  isa_dma.dma_c_adress+=to_transfer;
-  isa_dma.dma_remain-=to_transfer;
-
-  isa_dma.copy_cnt++;  // Count the Nb of transfer done (For Debug)  
-
-  if (isa_dma.transfer_remain==0) 
-     {
-      isa_dma.inprogress=0;
-      PM_INFO("D>E");
-     }
-  //PM_INFO("R>%d",isa_dma.transfer_remain);
-
-  if (isa_dma.fifo_head==isa_dma.fifo_tail) // Should never occur (For debug)
-    {
-      PM_INFO("DMA> ERROR ! HEAD=TAIL");
+      PM_INFO("DMA> A:%x S:%d ",isa_dma.dma_c_adress,isa_dma.dma_size);
+      if (dmachregs[channel].autoinit) PM_INFO("Autoinit enabled\n");
     }
 
-  return transfered;
-}
+  if (isa_dma.dma_size==0) {
+      PM_INFO("DMA> No DMA size set, can't transfer\n");
+      return; // No DMA size set
+    }
 
-/*
-bool isa_dma_transfer_completed
-{
- return true;
+  if (isa_dma.dma_remain==0) {
+      if (dmachregs[channel].autoinit) // Autoinit mode, so reinit the DMA size
+        {
+          //PM_INFO("DMA>Cont");
+          isa_dma.dma_remain=isa_dma.dma_size;
+          isa_dma.dma_c_adress=isa_dma.dma_address;
+        } else
+         {
+          return; // No DMA size set
+         }
+    }
+
+
+  // Minimum size to transfer is DMA_BLOC_SIZE/2
+  isa_dma.to_transfer = (isa_dma.dma_remain<(DMA_BLOC_SIZE+DMA_BLOC_SIZE/2)) ? isa_dma.dma_remain : DMA_BLOC_SIZE;
+
+  uint32_t DMA_Buffer_Addr=((uint32_t) PM_BIOSADDRESS<<4)+16*1024+PM_DMAB_Offset;    // "Dual Port RAM" is at BIOS Address + 16Kb
+//  PM_INFO("DMA> TX %x>%x r%d tt%d \n",isa_dma.dma_c_adress, DMA_Buffer_Addr, isa_dma.dma_remain, isa_dma.to_transfer);
+//  PM_INFO("DMA> TX %x tt%d na %x ns %x\n",isa_dma.dma_c_adress, isa_dma.to_transfer,(uint16_t) (isa_dma.dma_c_adress+isa_dma.to_transfer),
+//          (uint16_t) (isa_dma.dma_remain-isa_dma.to_transfer-1));
+  
+  isa_dma.vdma_wait_irq=true;
+  DMA_Start_Time=time_us_64();  
+  DBG_ON_2();
+  isa_dma_start_copy(channel, isa_dma.dma_c_adress, DMA_Buffer_Addr, isa_dma.to_transfer,
+                  (uint16_t) (isa_dma.dma_c_adress+isa_dma.to_transfer),(int16_t) (isa_dma.dma_remain-isa_dma.to_transfer-1));
+  
 }
- */

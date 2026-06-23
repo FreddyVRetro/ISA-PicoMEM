@@ -4,13 +4,13 @@
 extern "C" {
 #endif
 
-#ifdef BOARD_PM15
+#if BOARD_PM15 || BOARD_PM20
 #include "isa_iomem_m2_v15.pio.h"  // For Pin definitions
 #else
 #include "isa_iomem_m1.pio.h"  // For Pin definitions
 #endif
-#if USE_PSRAM
-#if USE_PSRAM_DMA
+#if USE_SPI_PSRAM
+#if USE_SPI_PSRAM_DMA
 #include "psram_spi.h"
 extern psram_spi_inst_t psram_spi;
 #else
@@ -18,27 +18,6 @@ extern psram_spi_inst_t psram_spi;
 extern pio_spi_inst_t psram_spi;
 #endif
 #endif
-/*
-// Code to display value, when the board is not in the PC (Manual test of the signals)
-void display_inputs(void) {
-    uint32_t value;
-    gpio_put(PIN_AS, SEL_ADL);        // Low part of the @ and I/O Mem Signals
-    gpio_put(PIN_AD, SEL_ADR);
-    while (true) {
-        value = gpio_get_all();
-        printf("IO : %x\n",value);
-        printf("AD : %x\n",(value>>8)&0xFF);
-#if PM_PICO_W        
-        sleep_ms(1000);
-#else  
-//        gpio_put(LED_PIN, 1);
-         sleep_ms(500);
-//        gpio_put(LED_PIN, 0);
-        sleep_ms(500);
-#endif
-    }
-}
-*/
 
 /*
 // Simple IOWrite test without PIO
@@ -52,7 +31,7 @@ void IOW_Test_Loop () {
 while(true) {
   gpio_put(PIN_AD, SEL_ADR);
   gpio_put(PIN_AS, SEL_ADL); // The Switch delay is <10ns , we may not need a delay to stabilize
-#ifdef BOARD_PM15  
+#if BOARD_PM15 || BOARD_PM20
   while (gpio_get(PIN_A11_IW)==0){}  // If already 0, Wait for a 1
   while (gpio_get(PIN_A11_IW)==1){}  // Wait until IOR is 0
 #else
@@ -89,7 +68,7 @@ while(true) {
   if (gpio_get(PIN_A19_IW)==0)
      { 
       printf("0");
-#if !PM_PICO_W      
+#if !PM_WIFI      
       gpio_put(LED_PIN, 0);
 #endif
       while (gpio_get(PIN_A19_IW)==0){}  // Wait until 1     
@@ -97,7 +76,7 @@ while(true) {
      else
      {
       printf("1 ");   
-#if !PM_PICO_W     
+#if !PM_WIFI     
       gpio_put(LED_PIN, 1);
 #endif
       while (gpio_get(PIN_A19_IW)==1){}  // Wait until 1 
@@ -273,7 +252,7 @@ void PSRAM_Test()
 {
  printf("PSRAM Test\n");
 
-#if USE_PSRAM
+#if USE_SPI_PSRAM
 
  printf("Basic AA/55 Test\n");
  for (int i=0;i<5;i++)

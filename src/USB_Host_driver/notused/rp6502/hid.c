@@ -81,17 +81,17 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *desc_re
     }
 
     if (has_keyboard && has_mouse && other_reports)
-        usb_set_status(dev_addr, "HID keyboard, mouse, and %d other reports", other_reports);
+        usb_set_status(dev_addr, "keyboard, mouse, and %d other reports", other_reports);
     else if (has_keyboard && other_reports)
-        usb_set_status(dev_addr, "HID keyboard and %d other reports", other_reports);
+        usb_set_status(dev_addr, "keyboard and %d other reports", other_reports);
     else if (has_mouse && other_reports)
-        usb_set_status(dev_addr, "HID mouse and %d other reports", other_reports);
+        usb_set_status(dev_addr, "mouse and %d other reports", other_reports);
     else if (has_keyboard && has_mouse)
-        usb_set_status(dev_addr, "HID keyboard and mouse");
+        usb_set_status(dev_addr, "keyboard and mouse");
     else if (has_keyboard)
-        usb_set_status(dev_addr, "HID keyboard");
+        usb_set_status(dev_addr, "keyboard");
     else if (has_mouse)
-        usb_set_status(dev_addr, "HID mouse");
+        usb_set_status(dev_addr, "mouse");
     else
         usb_set_status(dev_addr, "HID %d report%s", other_reports, other_reports == 1 ? "" : "s");
 

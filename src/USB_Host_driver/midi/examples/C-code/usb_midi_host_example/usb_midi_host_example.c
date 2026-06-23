@@ -39,10 +39,6 @@
 #include "bsp/board_api.h"
 #include "tusb.h"
 #include "usb_midi_host.h"
-#ifdef RASPBERRYPI_PICO_W
-// The Board LED is controlled by the CYW43 WiFi/Bluetooth module
-#include "pico/cyw43_arch.h"
-#endif
 
 static uint8_t midi_dev_addr = 0;
 
@@ -55,12 +51,6 @@ static void blink_led(void)
     absolute_time_t now = get_absolute_time();
     
     int64_t diff = absolute_time_diff_us(previous_timestamp, now);
-    if (diff > 1000000) {
-#ifdef RASPBERRYPI_PICO_W
-        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, led_state);
-#else
-        board_led_write(led_state);
-#endif
         led_state = !led_state;
         previous_timestamp = now;
     }
@@ -116,13 +106,6 @@ int main() {
 
     printf("Pico MIDI Host Example\r\n");
     tusb_init();
-#ifdef RASPBERRYPI_PICO_W
-    // for the LED blink
-    if (cyw43_arch_init()) {
-        printf("WiFi/Bluetooh module init for LED blink failed");
-        return -1;
-    }
-#endif
     while (1) {
         tuh_task();
 

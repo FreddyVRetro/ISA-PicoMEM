@@ -32,17 +32,6 @@
 
 #include <../../psram_board.h>
 
-
-//#define PIMORONI_PICO_PLUS2_PSRAM_CS_PIN 47
-//#define RP2350_PSRAM_CS PIMORONI_PICO_PLUS2_PSRAM_CS_PIN
-#if BOARD_PM15
-#define RP2350_PSRAM_CS 0
-#else
-#define RP2350_PSRAM_CS 47  // Pimoroni pico plus 2
-#endif
-#define PSRAM_HEAP 0
-
-
 #ifdef RP2350_PSRAM_CS
 
 #include <stdio.h>
@@ -59,7 +48,7 @@
 
 #if PSRAM_HEAP
 // Include TLSF in this compilation unit
-#include "tlsf/tlsf.c"
+#include "tlsf.c"
 
 static tlsf_t _mem_heap = nullptr;
 static pool_t _mem_psram_pool = nullptr;
@@ -272,16 +261,20 @@ static void __no_inline_not_in_flash_func(set_psram_timing)(void) {
 
     //maxSelect = 35;
     //minDeselect = 15;
-
     uint8_t selectHold = 0;     
     uint8_t cooldown = 1;
     uint8_t rxdelay = 4;
+    
+/*   printf("(Theory) System Clk %d, divider: %d (%d), cooldown %d, rxdelay %d, Max Select: %d, Min Deselect: %d, Sel Hold %d\n ",
+           sysHz/1000000,clockDivider,sysHz/(1000000*clockDivider), cooldown,rxdelay,maxSelect,minDeselect,selectHold);
+*/
     clockDivider = 4;
 
   // if (sysHz/clockDivider>100000000) rxdelay = clockDivider;
-
+/*
    printf("System Clk %d, divider: %d (%d), cooldown %d, rxdelay %d, Max Select: %d, Min Deselect: %d, Sel Hold %d\n ",
            sysHz/1000000,clockDivider,sysHz/(1000000*clockDivider), cooldown,rxdelay,maxSelect,minDeselect,selectHold);
+*/           
  
     qmi_hw->m[1].timing = QMI_M1_TIMING_PAGEBREAK_VALUE_1024 << QMI_M1_TIMING_PAGEBREAK_LSB | // Break between pages.
                           selectHold << QMI_M1_TIMING_SELECT_HOLD_LSB   | // Delay releasing CS for 3 extra system cycles.

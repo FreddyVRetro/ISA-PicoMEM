@@ -86,7 +86,7 @@ __force_inline pio_spi_inst_t psram_init(float clkdiv) {
     pio_spi_inst_t spi;
     spi.pio = PSRAM_PIO;
     spi.sm = spi_sm;
-//   printf("!! PSRAM PIO Init : SM %d \n",spi_sm);
+    printf("PSRAM PIO Init : pio1/%d \n",spi_sm);
 //   printf("sm is %d\n", spi_sm);
 
     gpio_set_drive_strength(PSRAM_PIN_CS, GPIO_DRIVE_STRENGTH_4MA);

@@ -146,7 +146,8 @@ terminated_msg	db	"Uninstall completed",'$'
 
 if PicoMEM  eq 1
 detected_msg     db 'PicoMEM Detected',CR,LF,'$'
-notdetected_msg  db	'Error : PicoMEM Not Detected','$'
+notdetected_msg  db	'Error : PicoMEM Not Detected',CR,LF,'$'
+no_ne2000_msg    db	'Error : NE2000 not enabled',CR,LF,'$'
 endif
 
 handle		dw	?
@@ -438,30 +439,33 @@ if PicoMEM  eq 1
 		mov dx,1234h	; To be added to be sure
 		int 13h
 
-	    cmp bx,0
-		je @@NoPicomem
-
 		mov	int_no,ah
 		mov	io_addr,bx
+;		push bx
+;		call print_parameters		
+;		pop bx
 
-;		call print_parameters
+	    cmp bx,0
+		jne @@Ne2000_ok
 
-		jmp @@PMDetectEnd
+; Display ne2000 not enabled
+		mov dx,offset no_ne2000_msg
+		mov	ah,9
+		int	21h		
+        jmp @@ReturnDOS
+
 @@NoPicomem:
-
 		mov dx,offset notdetected_msg
 		mov	ah,9
 		int	21h
 
+@@ReturnDOS:
 		mov	ah,4ch
 		mov al,32
 		int	21h			; Return to DOS
-		
-@@PMDetectEnd:
 
-;		mov	int_no,3
-;		mov	io_addr,300h
-
+@@Ne2000_ok:
+;		call print_parameters
 endif
 
 if PicoMEM eq 0

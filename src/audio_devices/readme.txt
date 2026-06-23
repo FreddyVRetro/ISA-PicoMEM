@@ -12,6 +12,9 @@ Emulation code from :
  Mitsutaka Okazaki / Graham Sanderson emu8950 v1.1.0
  https://github.com/digital-sound-antiques/emu8950
 
+ -OPL3 : 
+ dbopl.cpp
+
 For the future ?
 https://github.com/DLehenbauer/arduino-midi-sound-module
 

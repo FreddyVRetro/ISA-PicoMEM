@@ -22,10 +22,11 @@ If not, see <https://www.gnu.org/licenses/>.
 
 #if USE_CDROM
 #include <stdio.h>
-#include "pico/stdlib.h"
+#include <stdlib.h>
+//#include "pico/stdlib.h"
 #include "../pm_debug.h"
 #include "../pm_gvars.h"
-#include "../pm_defines.h"
+#include "pm_defines.h"
 #include "dev_picomem_io.h"   // SetPortType / GetPortType
 
 extern "C" void MKE_WRITE(uint16_t address, uint8_t value);
@@ -37,7 +38,7 @@ extern "C" void mke_init();
 cdrom_t *cdrom;
 
 bool dev_cdr_active =false;         // True if configured
-#define dev_cdr_baseport 0x0
+#define dev_cdr_baseport 0x250      // 250 or 260
 
 uint8_t dev_cdr_install()
 {
@@ -45,19 +46,22 @@ uint8_t dev_cdr_install()
   {  
    PM_INFO("Install CD ROM (%x)\n",dev_cdr_baseport);
 
-  cdrom = (cdrom_t *) calloc (1, sizeof (cdrom_t));
-  if (cdrom == NULL)
+   cdrom = (cdrom_t *) calloc (1, sizeof (cdrom_t));
+   if (cdrom == NULL)
      {
       PM_ERROR("CDROM: Can't allocate RAM (%d)\n",sizeof (cdrom_t));
       dev_cdr_active=false;
-      return 1;
+      return CMDERR_MEM_ERR;
      }
+   
+   PM_INFO("CDROM@=%p\n",cdrom);
+   mke_init();     
 
    if (GetPortType(dev_cdr_baseport)!=DEV_NULL)
      {
       PM_ERROR("Port already used (%d)\n",GetPortType(dev_cdr_baseport));
       dev_cdr_active=false;
-      return 1;
+      return CMDERR_PORTUSED;
      }
 
    SetPortType(dev_cdr_baseport,DEV_CDR,1);
@@ -74,7 +78,7 @@ void dev_cdr_remove()
    PM_INFO("Remove CD ROM (%X)\n",dev_cdr_baseport);
 
    if (cdrom) free(cdrom);  
-   SetPortType(dev_cdr_baseport,DEV_NULL,2);
+   DelPortType(DEV_CDR);
   }  
 }
 
@@ -87,28 +91,18 @@ bool dev_cdr_installed()
 // Started in the Main Command Wait Loop
 void dev_cdr_update()
 { // Perform file open, read ...
-  cdrom_tasks(cdrom);
+  if (dev_cdr_active) cdrom_tasks(cdrom);
 }
 
-bool dev_dma_ior(uint32_t CTRL_AL8,uint8_t *Data )
+bool dev_cdr_ior(uint32_t Addr,uint8_t *Data )
 {
-  if (dev_dma_emulate)
-  {
-
-    return false;
-  } else return false;  // Nothing to read
+  *Data=MKE_READ(Addr);
+  return true;  // Nothing to read
 }
 
-void dev_cdr_iow(uint32_t CTRL_AL8,uint8_t Data)
+void dev_cdr_iow(uint32_t Addr,uint8_t Data)
 {
-  uint8_t addr=CTRL_AL8&0xFF;
-
-  switch(addr)
-      {
-        case 0x0:
-
-      }
- }
+ MKE_WRITE(Addr, Data);
 }
 
 #endif

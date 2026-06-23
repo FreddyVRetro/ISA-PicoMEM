@@ -65,11 +65,7 @@ static void blink_led(void)
     if (diff < 0)
         diff = -diff;
     if (diff > 1000) {
-#ifdef RASPBERRYPI_PICO_W
-        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, led_state);
-#else
         board_led_write(led_state);
-#endif
         led_state = !led_state;
         previous_timestamp = now;
     }

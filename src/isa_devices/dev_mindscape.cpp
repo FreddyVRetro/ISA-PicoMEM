@@ -23,12 +23,14 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "pico/stdlib.h"
 #include "../pm_debug.h"
 #include "../pm_gvars.h"
-#include "../pm_defines.h"
+#include "pm_defines.h"
 #include "pm_audio.h"
 #include "dev_picomem_io.h"   // SetPortType / GetPortType
 
 #include "dev_audiomix.h"
 #include "../audio_devices/emu2149/emu2149.h"
+
+#include "dev_mindscape.h"
 
 #define MINDSCAPE_CLK 4772726/2
 
@@ -40,11 +42,8 @@ static uint8_t psg1Reg = 0;
 
 uint8_t dev_psg_freq_low;
 uint8_t dev_psg_freq_med;
-bool dev_mmb_active=false;    // True if configured
-uint8_t dev_mmb_port;
-volatile uint8_t dev_mmb_delay=0;      // counter for the Nb of second since last I/O
-uint64_t dev_mmb_lastaccess;  // Last access time (For Audo mute)
 
+dev_mmb_t dev_mmb = {false,0,0};
 
 static PSG* createPSG(int psgClock, int sampleRate)
 {
@@ -56,39 +55,52 @@ static PSG* createPSG(int psgClock, int sampleRate)
 
 uint8_t dev_mmb_install(uint16_t baseport)
 {
- if (!dev_mmb_active)   // Don't re enable if active
+ if (!dev_mmb.active)   // Don't re enable if active
   {
    PM_INFO("Install Mindscape Music Board (%x)\n",baseport);
+
+    if (GetPortType(baseport)!=DEV_NULL)
+      {
+        PM_ERROR("Port already used (%d)\n",GetPortType(baseport));
+        return CMDERR_PORTUSED;
+      } 
 
    psg0 = createPSG(MINDSCAPE_CLK, PM_AUDIO_FREQUENCY);
    psg1 = createPSG(MINDSCAPE_CLK, PM_AUDIO_FREQUENCY);
 
    SetPortType(baseport,DEV_MMB,1);   
-   
-   dev_mmb_port=baseport;
-   dev_mmb_active=true;
-   dev_audiomix.dev_active = dev_audiomix.dev_active & ~AD_MMB;
-  }
+   dev_mmb.baseport=baseport;
+   dev_mmb.active=true;
+  }  else  // Check if the port need to be changed
+    if (baseport!=dev_mmb.baseport)
+     {
+      PM_INFO("Change Mindscape Port (%x)\n",baseport);
+      DelPortType(DEV_MMB);
+      SetPortType(baseport,DEV_MMB,1);
+      dev_mmb.baseport=baseport;
+     }
+
+  dev_mmb_disable_mix(); // Disable Mindscape mixing
   return 0;
 }
 
 void dev_mmb_remove()
 {
- if (dev_mmb_active)       // Don't stop if not active
+ if (dev_mmb.active)       // Don't stop if not active
   {
-   dev_mmb_active=false;
-   dev_audiomix.dev_active = dev_audiomix.dev_active & ~AD_MMB;
+   dev_mmb.active=false;
+   dev_mmb_disable_mix();
    PM_INFO("Remove Mindscape Music Board (0x300\n");
   
 //   OPL_Pico_Shutdown();
-   SetPortType(dev_mmb_port,DEV_NULL,1);
+   DelPortType(DEV_MMB);
   }
 }
 
 // Return true if Adlib is installed
 bool dev_mmb_installed()
 {
-  return dev_mmb_active;
+  return dev_mmb.active;
 }
 
 // Started in the Main Command Wait Loop
@@ -111,15 +123,15 @@ bool dev_mmb_ior(uint32_t CTRL_AL8,uint8_t *Data )
   return false;
 }
 
-void dev_mmb_iow(uint32_t CTRL_AL8,uint8_t Data)
+void dev_mmb_iow(uint32_t Addr,uint8_t Data)
 {
-;  PM_INFO("W%x %x ",CTRL_AL8,Data);
-  switch (CTRL_AL8&0x07) 
+ // PM_INFO("W%x %x ",Addr,Data);
+  switch (Addr&0x07) 
   { 
    case 0: psg0Reg = Data;
      return;
      break;
-   case 1: if (psg0Reg>15) 
+   case 1: if (psg0Reg>15) // There is 16 registers in the PSG, Add virtual ones
              {  // PicoMEM > New register to update the PSG Frequency
               if (psg0Reg==16) dev_psg_freq_low=Data;
               if (psg0Reg==17) dev_psg_freq_med=Data;
@@ -133,7 +145,8 @@ void dev_mmb_iow(uint32_t CTRL_AL8,uint8_t Data)
               return;
              }
            PSG_writeReg(psg0, psg0Reg, Data); 
-           dev_audiomix.dev_active = dev_audiomix.dev_active | AD_MMB;
+           dev_mmb_enable_mix();
+           dev_mmb.delay=0;
        //    PM_INFO("WR0:%x,%x ",psg0Reg, Data);
      return;
      break; 
@@ -141,7 +154,8 @@ void dev_mmb_iow(uint32_t CTRL_AL8,uint8_t Data)
      return;
      break;
    case 3: PSG_writeReg(psg1, psg1Reg, Data);
-           dev_audiomix.dev_active = dev_audiomix.dev_active | AD_MMB;
+           dev_mmb_enable_mix();
+           dev_mmb.delay=0;
        //    PM_INFO("WR1:%x,%x ",psg0Reg, Data);
      return;
      break;          
@@ -153,7 +167,7 @@ void dev_psg_getbuffer(int32_t* buff,uint8_t samples)
 {
  int32_t fres;
 
- for (int8_t sn=0;sn<samples;sn++)
+ for (uint32_t sn=0;sn<samples;sn++)
   {
    // generate audio data
    fres = ((int32_t) PSG_calc(psg0) + (int32_t) PSG_calc(psg1))/2 ;

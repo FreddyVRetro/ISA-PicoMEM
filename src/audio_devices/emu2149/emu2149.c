@@ -10,6 +10,15 @@
  * - ay8910.c       -- 1998-2001 Author unknown (MAME).
  * - MSX-Datapack   -- 1991 ASCII Corp.
  * - AY-3-8910 data sheet
+ * 
+ * 2.000 MHz = Atari ST
+ * 1.7898 MHz = CSM
+ * 1.7734 MHz = ZX Spectrum
+ * 1.75 MHz = Pentagon 128k
+ * 1.000 MHz = Amstrad CPC
+ * 
+ * 
+ * 
  */
 
 #include <stdlib.h>

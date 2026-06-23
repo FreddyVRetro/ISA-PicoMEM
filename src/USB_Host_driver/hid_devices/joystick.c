@@ -180,8 +180,8 @@ inline void process_sony_ds4(uint8_t const* report, uint16_t len)
         /*
         const char* dpad_str[] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW", "none" };
 
-        printf("(x, y, z, rz) = (%u, %u, %u, %u)\r\n", ds4_report.x, ds4_report.y, ds4_report.z, ds4_report.rz);
-        printf("DPad = %s ", dpad_str[ds4_report.dpad]);
+        PM_INFO("(x, y, z, rz) = (%u, %u, %u, %u)\r\n", ds4_report.x, ds4_report.y, ds4_report.z, ds4_report.rz);
+        PM_INFO("DPad = %s ", dpad_str[ds4_report.dpad]);
 
         if (ds4_report.square   ) printf("Square ");
         if (ds4_report.cross    ) printf("Cross ");
@@ -201,7 +201,7 @@ inline void process_sony_ds4(uint8_t const* report, uint16_t len)
         if (ds4_report.ps       ) printf("PS ");
         if (ds4_report.tpad     ) printf("TPad ");
 
-        printf("\r\n");
+        PM_INFO("\r\n");
         */
     }
 }
@@ -212,13 +212,14 @@ void process_joy_report(uint8_t dev_addr, uint8_t instance, uint8_t const* repor
 {
   /*  
     for (uint16_t i = 0; i < len; ++i) {
-        printf("%02x ", report[i]);
+        PM_INFO("%02x ", report[i]);
     }
-    putchar('\n');
+    PM_INFO("\n");
   */
 
     if (is_sony_ds4(dev_addr)) {
         process_sony_ds4(report, len);
+        return;
     }
 
     // continue to request to receive report
@@ -298,7 +299,9 @@ void tuh_xinput_mount_cb(uint8_t dev_addr, uint8_t instance, const xinputh_inter
         }
 
     usb_set_status(dev_addr,"%s %s Joystick (XInput)",VendorName,type_str);
+    #if PM_PRINTF
     usb_print_status();
+    #endif
 
     // If this is a Xbox 360 Wireless controller we need to wait for a connection packet
     // on the in pipe before setting LEDs etc. So just start getting data until a controller is connected.

@@ -14,70 +14,61 @@ You should have received a copy of the GNU General Public License along with thi
 If not, see <https://www.gnu.org/licenses/>.
 */
 
-/* pm_adlib.cpp : PicoMEM Adlib emulation
+/* pm_adlib.cpp : PicoMEM Adlib emulation */
 
- */ 
-
-#if USE_AUDIO
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "../pm_debug.h"
 #include "../pm_gvars.h"
-#include "../pm_defines.h"
+#include "pm_defines.h"
 #include "dev_picomem_io.h"   // SetPortType / GetPortType
 #include "dev_audiomix.h"
+#include "dev_adlib.h"
 #include "opl.h"
 
-extern "C" int OPL_Pico_Init(unsigned int);
-extern "C" void OPL_Pico_Shutdown(void);
-extern "C" void OPL_Pico_PortWrite(opl_port_t, unsigned int);
-extern "C" unsigned int OPL_Pico_PortRead(opl_port_t);
-
-bool dev_adlib_active=false;    // True if configured
-volatile uint8_t dev_adlib_delay=0;      // counter for the Nb of second since last I/O
-uint64_t dev_adlib_lastaccess;  // Last access time (For Audo mute)
+dev_adl_t dev_adlib = {false,0};
 
 uint8_t dev_adlib_install()
 {
- if (!dev_adlib_active)   // Don't re enable if active
+ if (!dev_adlib.active)   // Don't re enable if active
   {
    PM_INFO("Install OPL2 (0x388)\n");
 
    OPL_Pico_Init(0x388);
    SetPortType(0x388,DEV_ADLIB,1);   
-
-   dev_adlib_active=true;
+   dev_adlib.active=true;
+   dev_adlib_disable_mix();
   }
   return 0;
 }
 
 void dev_adlib_remove()
 {
- if (dev_adlib_active)       // Don't stop if not active
+ if (dev_adlib.active)       // Don't stop if not active
   {
-   dev_adlib_active=false;
-   dev_audiomix.dev_active = dev_audiomix.dev_active & ~AD_ADLIB;
    PM_INFO("Remove OPL2 (0x388)\n");
-  
+
    OPL_Pico_Shutdown();
-   SetPortType(0x388,DEV_NULL,1);  
+   DelPortType(DEV_ADLIB);  
+   dev_adlib.active=false;
+   dev_adlib_disable_mix();  
   }
 }
 
 // Return true if Adlib is installed
 bool dev_adlib_installed()
 {
-  return dev_adlib_active;
+  return dev_adlib.active;
 }
 
-// Started in the Main Command Wait Loop
+// Started in the Main Command Wait Loop (Not needed for Adlib)
 void dev_adlib_update()
 {
 }
 
-bool dev_adlib_ior(uint32_t CTRL_AL8,uint8_t *Data )
+bool dev_adlib_ior(uint32_t Addr,uint8_t *Data )
 {
-  if ((CTRL_AL8&0x07)==0) 
+  if ((Addr&0x07)==0) 
    {
     *Data = (uint8_t) OPL_Pico_PortRead(OPL_REGISTER_PORT); 
   //  printf("OPLR %x-",*Data);
@@ -87,25 +78,28 @@ bool dev_adlib_ior(uint32_t CTRL_AL8,uint8_t *Data )
   return false;
 }
 
-void dev_adlib_iow(uint32_t CTRL_AL8,uint8_t Data)
+void dev_adlib_iow(uint32_t Addr,uint8_t Data)
 {
-  switch (CTRL_AL8&0x07) 
+  static uint16_t opl_addr;
+
+  switch (Addr&0x07) 
   {
-   case 0:
-  //   PM_INFO("OPLR 0,%x-",Data);
-     OPL_Pico_PortWrite(OPL_REGISTER_PORT, (unsigned int) Data);
-     dev_audiomix.dev_active = dev_audiomix.dev_active | AD_ADLIB;   // enable the mixing
-     dev_adlib_delay=0;     
+   case 0:  // Bank 1 Address
+     opl_addr = Data;
+     dev_adlib_enable_mix();   // enable the mixing
+     dev_adlib.delay=0;
      return;
      break;
-   case 1:
-   //  PM_INFO("OPLR 1,%x-",Data);
-     OPL_Pico_PortWrite(OPL_DATA_PORT, (unsigned int) Data);
-     dev_audiomix.dev_active = dev_audiomix.dev_active | AD_ADLIB;   // enable the mixing
-     dev_adlib_delay=0;
+   case 2:  // Bank 2 Address (OPL3)
+     opl_addr = 0x100 | Data;
+     dev_adlib_enable_mix();   // enable the mixing
+     dev_adlib.delay=0;
      return;
-     break;     
+     break;
+   case 1:  // Bank 1 Data
+   case 3:  // Bank 2 Data (OPL3)
+     OPL_Pico_WriteRegister(opl_addr, Data);
+     return;
+     break;
   }
-    
 }
-#endif

@@ -1,11 +1,14 @@
 #include <conio.h>
 #include <dos.h> 
+#include <malloc.h> 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <i86.h>
+
+#include "pm_lib.h"
 
 // * Status and Commands definition
 #define STAT_READY         0x00  // Ready to receive a command
@@ -17,11 +20,17 @@
 
 #define DEFAULT_BASE 0x2A0
 
-typedef struct ROM_Header
-{
+// Gravis Gamepad definitions
+#define GRIP_LENGTH_GPP		24
+#define GRIP_STROBE_GPP		200	/* 200 us */
+
+
+typedef struct ROM_Header {
   uint16_t id;
   uint8_t size;
 } ROM_Header_t;
+
+bios_var_t far *BIOSVAR = (bios_var_t far *) MK_FP(0x0040,0x0000);
 
 uint16_t PM_Base=0;
 uint16_t PM_DataL=0;
@@ -226,7 +235,7 @@ bool BIOS_detect(uint16_t Segm)
   if (id==0xAA55)
    {
     checksum=BIOS_Checksum(Segm,(ROM->size)*512);
-    printf("- %FP Size:%d (%dKB) Checksum:%x\n",ROM,ROM->size,(ROM->size)*2,checksum);
+    printf("- %FP Size:%d (%dKB) Checksum:%x\n",ROM,ROM->size,(ROM->size)/2,checksum);
     return true;
    } else return false;
 
@@ -313,8 +322,11 @@ bool pm_wait_cmd_end()
         {
      case STAT_READY        : return true;
      case STAT_CMDINPROGRESS: break;   // In progress, Loop
-     case STAT_CMDERROR     :  // Status not used for the moment
-     case STAT_CMDNOTFOUND  : printf("CMD Error\n");
+     case STAT_CMDERROR     : 
+                              printf("Command Status: Error (%x)\n",inp(PM_Base+1));
+                              outp(PM_Base,0);  // Error : Reset and go check again the status
+                              break;
+     case STAT_CMDNOTFOUND  : printf("CMD not found (Old Firmware ?)\n");
                               outp(PM_Base,0);  // Error : Reset and go check again the status
                               break;
      case STAT_INIT         :
@@ -329,13 +341,15 @@ bool pm_wait_cmd_end()
 // Send a command via I/O with argument and return a word
 uint16_t pm_io_cmd(uint8_t cmd,uint16_t arg)
 {
+ // printf("PM CMD %X Arg %X\n",cmd,arg);
+   _asm {sti};
   if (pm_wait_cmd_end())
    {
     outpw(PM_Base+1,arg);   // Send the parameters
     outp(PM_Base,cmd);      // Send the command
     pm_wait_cmd_end();
     return inpw(PM_Base+1);
-   }     
+   } else return 0xFF;
   return 0;
 }
 
@@ -349,7 +363,7 @@ bool pm_detect()
 if (pm_irq_detect())
 { 
   printf(" - PicoMEM BIOS Interrupt Detected\n");
-  printf(" > Reported Port: %X - Address %X\n",PM_Base,BIOS_Segment);
+  printf(" > Reported Port: %X - Address: %X\n",PM_Base,BIOS_Segment);
 
   PM_BIOS_IRQ_Present=true;
   if (!pm_detectport(100)) 
@@ -391,13 +405,53 @@ else
 }
 }
 
+//https://github.com/torvalds/linux/blob/master/drivers/input/joystick/grip.c
+
+// Gravis GamePAD test
+static int grip_gpp_read_packet(uint16_t gameport, int shift, uint32_t *data)
+{
+	unsigned long flags;
+	int i,u;
+  uint32_t v,w;
+	unsigned int t;
+
+	*data = 0;
+	t = 500;  // Timeout value (Nb of loop) (around 500us)
+	i = 0;
+
+  _asm { cli };
+	v = inp(gameport) >> shift;
+
+	do {
+		t--;
+		u = v; 
+    v = (inp(gameport) >> shift) & 3;
+		if (~v & u & 1) {   
+			*data |=(uint32_t) (((uint32_t) v >> 1) << i++);
+			t = 500 ;
+	  	}
+	} while (i < GRIP_LENGTH_GPP && t > 0);
+  _asm { sti };
+
+  printf("GamePad Data: %024lb, i:%d, %X > ",*data, i, inp(gameport) );
+
+	if (i < GRIP_LENGTH_GPP) return -1;
+  
+	for (i = 0; i < GRIP_LENGTH_GPP && (*data & 0xfe4210) ^ 0x7c0000; i++)
+  //for (i = 0; i < GRIP_LENGTH_GPP && (*data & 0x00FE1084) ^ 0x7C0000; i++)
+		*data = *data >> 1 | (*data & 1) << (GRIP_LENGTH_GPP - 1);
+
+	return -(i == GRIP_LENGTH_GPP);
+}
+
+
 bool pm_get_yn()
 {
   char canswer;
   return (scanf(" %c", &canswer) == 1 && ((canswer == 'Y')||(canswer == 'y')));
 }
 
-test_print_result(uint16_t total, uint16_t res)
+void test_print_result(uint16_t total, uint16_t res)
 {
 if (res==0) printf(" Ok (x%d)\n",total);
    else printf("Fail (%d/%d)\n",res/total);
@@ -415,6 +469,22 @@ void pm_diag()
 
  if (!PM_Port_present)
   { printf("** PicoMEM Port Not detected **\n"); }
+
+  printf("** Gravis GamePad test ? (y/n)");
+  if (pm_get_yn())
+   {
+    for (int i=0;i<5;i++)
+     {  
+      uint32_t data;
+      int res=grip_gpp_read_packet(0x201, 4, &data);  // 4 for player 1, 6 for player 2
+      if (res < 0) printf("GamePad 1 Fail: %lX\n",(uint32_t) data);
+         else printf("GamePad 1 Ok: %lX\n",(uint32_t) data);
+      res=grip_gpp_read_packet(0x201, 6, &data);  // 4 for player 1, 6 for player 2
+      if (res < 0) printf("GamePad 2 Fail: %lX\n",(uint32_t) data);
+         else printf("GamePad 2 Ok: %lX\n",(uint32_t) data);
+      sleep(2);
+     }
+   }
 
   printf(" > Start Port test (2Ax) ? (y/n)");
   if (pm_get_yn())
@@ -444,9 +514,159 @@ void pm_diag()
       BIOS_detect(addr);
      }
 
- 
+// printf("\nPress a key to finish.\n");
+// getch();
 
- printf("\nPress a key to continue.\n");
- getch();
+}
+
+// Code for DMA Test
+// Macros return upper or lower byte of a word.
+#define HIGH(val) ((val) >> 8)
+#define LOW(val) ((val) & 0xFF)
+
+
+// Macros calculate the linear address and page of a far pointer.
+#define LINEAR_ADDRESS(val) (((unsigned long)FP_SEG(val) << 4) + (unsigned long)FP_OFF(val))
+#define PAGE(val) (LINEAR_ADDRESS(val) >> 16)
+
+// Programmable Interrupt Controller registers and command.
+#define PIC1_COMMAND 0x20
+#define PIC1_MASK 0x21
+#define PIC_EOI 0x20
+
+// Offset between physical interrupts and logical interrupts.
+#define INTERRUPT_OFFSET 0x8
+
+// DMA controller macros to calculate address and length for a channel.
+#define DMA_ADDRESS(channel) ((channel) * 2)
+#define DMA_LENGTH(channel) ((channel) * 2 + 1)
+
+// DMA controller registers and register bits.
+#define DMA_MASK 0x0A
+#define  DMA_MASK_SET 0x04
+#define  DMA_MASK_CLEAR 0x00
+#define DMA_MODE 0x0B
+#define  DMA_MODE_READ 0x08
+#define  DMA_MODE_WRITE 0x04
+#define  DMA_MODE_SINGLE 0x40
+#define  DMA_MODE_AUTO 0x10
+#define DMA_CLEAR 0x0C
+
+// DMA page register I/O ports in DMA channel order (0, 1, 2, 3).
+const int dma_page_register[] = {0x87, 0x83, 0x81, 0x82};
+
+int sb_dma = 0x1;
+
+// Configures the DMA controller for playing back a sound.
+void setup_dma_transfer(unsigned char far *buffer, int length, int autoinit)
+{
+        // Note that the input buffer cannot cross a page boundary or
+        // DMA will loop back to the beginning of the page.
+        unsigned int pointer = LINEAR_ADDRESS(buffer);
+        unsigned int page = PAGE(buffer);
+        printf("DMA: %x, Length: %d, Page: %x, Pointer: %x\n", sb_dma, length, page, pointer);
+
+        // Mask off DMA while we set it up.
+        outp(DMA_MASK, DMA_MASK_SET | sb_dma);
+        outp(DMA_CLEAR, 0);
+        outp(DMA_MODE, (autoinit ? DMA_MODE_AUTO : DMA_MODE_SINGLE) | DMA_MODE_READ | sb_dma);
+        outp(DMA_ADDRESS(sb_dma), LOW((long)pointer));
+        outp(DMA_ADDRESS(sb_dma), HIGH((long)pointer));
+        outp(dma_page_register[sb_dma], page);
+        outp(DMA_LENGTH(sb_dma), LOW(length - 1));
+        outp(DMA_LENGTH(sb_dma), HIGH(length - 1));
+
+        // Unmask DMA since we are ready to go.
+        outp(DMA_MASK, DMA_MASK_CLEAR | sb_dma);
+}
+
+// Stops and clears the DMA controller
+void end_dma_transfer()
+{
+        outp(DMA_MASK, DMA_MASK_SET | sb_dma);
+        outp(DMA_CLEAR, 0);
+}
+
+// Allocate a block of memory that doesn't cross a page boundary.
+void far *farmalloc_page(unsigned long nbytes)
+{
+        void far *start;
+        void far *temp = NULL;
+        unsigned int page_offset;
+        // Find out where the next available memory is being allocated.
+        start = _fmalloc(1);
+        if (start == NULL) {
+                return NULL;
+        }
+        page_offset = LINEAR_ADDRESS(start);
+#if 0
+        printf("farmalloc_page: requested length %ld\n", nbytes);
+        printf("farmalloc_page: ptr %Fp\n", start);
+        printf("farmalloc_page: page offset %X\n", page_offset);
+#endif
+
+        // If we wouldn't have enough room for the buffer in the current
+        // page, allocate a temporary buffer to fill up that space, so
+        // that our real buffer will start at the beginning of the next
+        // page. 
+        if ((unsigned long)page_offset + nbytes - 1 > 0xFFFF) {
+                temp = _fmalloc(0xFFFF - page_offset + 1);
+                if (temp == NULL) {
+                        printf("farmalloc_page: Could not allocate temp buffer\n");
+                       // printf("farmalloc_page: farcore left: %ld\n", farcoreleft());
+                        _ffree(start);
+                        return NULL;
+                }
+        }
+
+        // Don't need the temporary buffer anymore. 
+        _ffree(start);
+
+        // Allocate the real buffer.
+        start = _fmalloc(nbytes);
+        page_offset = LINEAR_ADDRESS(start);
+        if (temp != NULL) {
+                _ffree(temp);
+        }
+        return start;
+}
+
+
+void pm_dmadiag()
+{
+        unsigned char far *buffer;
+        unsigned long size;
+        unsigned int sample_rate;
+
+        size=1024;
+
+        buffer = (unsigned char *far)farmalloc_page(size);
+        if (buffer == NULL) {
+                printf("Could not allocate buffer.\n");
+                printf("Press any key to go back to the menu.\n");
+                getch();
+                return;
+        }
+
+        for (unsigned long i = 0; i < size; i++) {
+                buffer[i] = (unsigned char)(i & 0xFF);
+        }
+        
+        // Test 64 bytes
+        setup_dma_transfer(buffer, 64, 0);
+        pm_io_cmd(CMD_DMA_TEST,0);
+
+        setup_dma_transfer(buffer, 64, 1);       
+        pm_io_cmd(CMD_DMA_TEST,1);        
+
+        setup_dma_transfer(buffer, 10, 0);
+        pm_io_cmd(CMD_DMA_TEST,2); 
+
+        setup_dma_transfer(buffer, 10, 1);
+        pm_io_cmd(CMD_DMA_TEST,2);         
+
+        setup_dma_transfer(buffer+13, 10, 0);
+        pm_io_cmd(CMD_DMA_TEST,2); 
+
 
 }

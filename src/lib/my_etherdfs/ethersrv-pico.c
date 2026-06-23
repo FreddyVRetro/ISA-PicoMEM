@@ -57,16 +57,16 @@
 
 #ifdef BOARD_PICOMEM
 
-extern volatile uint8_t PM_DP_RAM[16*1024];   // "Dual Port" RAM for Disk I/O Buffer
+extern volatile uint8_t PM_DP_RAM[16*1024];   // "Dual Port" RAM extern declaration for Disk I/O Buffer
 
 #include "pico/stdlib.h"
 #include "../pm_debug.h"
 //#include "../pm_gvars.h"   // Has an extern "C" C++ code so can't add it
-#include "../pm_defines.h"
+#include "pm_defines.h"
 #include "ff.h"
 
-char sd_rootdir[]="0:";
-char usb_rootdir[]="1:";
+static const char sd_rootdir[]="0:";
+static const char usb_rootdir[]="1:";
 
 /* DOS to FatFS open mode convert
    Bit 0-2 access mode
@@ -234,7 +234,7 @@ static int process(unsigned char *reqbuff) {
   unsigned char *answ;    /* convenience pointer to answer->frame */
   unsigned short *wreqbuff; /* same as query, but word-based (16 bits) */
   unsigned short *wansw;  /* same as answer->frame, but word-based (16 bits) */
-  char *root;
+  const char *root;
   answ = reqbuff;
 
 #ifndef BOARD_PICOMEM
@@ -296,7 +296,7 @@ static int process(unsigned char *reqbuff) {
   if (query == AL_DISKSPACE) {
     unsigned long long diskspace, freespace;
     PM_INFO("DISKSPACE for drive '%c:\n", 'A' + reqdrv);
-    diskspace = diskinfo(root, &freespace);
+    diskspace = diskinfo((char *)root, &freespace);
     // limit results to slightly under 2 GiB (otherwise MS-DOS is confused)
     if (diskspace >= 2lu*1024*1024*1024) diskspace = 2lu*1024*1024*1024 - 1;
     if (freespace >= 2lu*1024*1024*1024) freespace = 2lu*1024*1024*1024 - 1;

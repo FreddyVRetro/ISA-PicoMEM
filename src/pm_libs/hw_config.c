@@ -45,17 +45,17 @@ tab "Monster", for pin assignments assumed in this configuration file.
 #include <assert.h>
 //
 #include "hw_config.h"
-#include "../pm_gpiodef.h"     // Various PicoMEM GPIO Definitions
+#include "pm_board.h"       // PicoMEM Board Definitions (GPIO)
 
 // Modified for PicoMEM
 // Hardware Configuration of SPI "objects"
 // Note: multiple SD cards can be driven by one SPI if they use different slave
 // selects (or "chip selects").
 static spi_t spis[] = {  // One for each RP2040 SPI component used
-    {   .hw_inst = spi0,           // RP2040 SPI component
-        .sck_gpio = SD_SPI_SCK,    // 6 (PicoMEM)
-        .mosi_gpio = SD_SPI_MOSI,  // 7 (PicoMEM)
-        .miso_gpio = SD_SPI_MISO,  // 4 (PicoMEM)
+    {   .hw_inst = SD_SPI,           // RP2040 SPI component
+        .sck_gpio = SD_SPI_SCK,
+        .mosi_gpio = SD_SPI_MOSI,
+        .miso_gpio = SD_SPI_MISO,
         .set_drive_strength = true,
         .mosi_gpio_drive_strength = GPIO_DRIVE_STRENGTH_8MA,        // Same value as the PSRAM
         .sck_gpio_drive_strength = GPIO_DRIVE_STRENGTH_8MA,         // Same value as the PSRAM

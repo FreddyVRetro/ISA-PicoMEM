@@ -14,8 +14,14 @@ You should have received a copy of the GNU General Public License along with thi
 If not, see <https://www.gnu.org/licenses/>.
 */
 
-/* dev_covox.cpp : PicoMEM Covox emulation
+/* dev_covox.cpp : PicoMEM Covox, Disney Sound Source emulation
 
+Covox Speech Thing : Parallel port Simple DAC
+Disney Sound Source : Parallel port DAC with small FIFO
+Stereo in One : LPT DAC With Right/Left Channel, can be auto detected
+Covox Voice Master :
+Covox Sound Master : AY-3-8910 (PSG), Covox DAC and DMA via the AY8930 Timer
+Covox Sound Master + : OPL2 FM, Covox DAC and Covox via DMA
  */ 
 
 //#if USE_AUDIO
@@ -23,61 +29,64 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "pico/stdlib.h"
 #include "../pm_debug.h"
 #include "../pm_gvars.h"
-#include "../pm_defines.h"
+#include "pm_defines.h"
 #include "dev_picomem_io.h"   // SetPortType / GetPortType
+#include "covox/covox_dac.h"
+#include "dev_audiomix.h"
+#include "dev_covox.h"
 
+dev_cvx_t dev_cvx {false,0,0};
 
-bool dev_cvx_active=false;             // True if configured
-volatile bool dev_cvx_playing=false;   // True if playing
-volatile uint8_t dev_cvx_delay=0;      // counter for the Nb of second since last I/O
-uint16_t dev_cvx_baseport=0x378;       // Port to LPT1
-
-uint8_t dev_cvx_install(uint16_t baseport)
+uint8_t dev_cvx_install(uint8_t type, uint16_t baseport)
 {
- if (!dev_cvx_active)   // Don't re enable if active
-  {  
+ uint8_t res=0;
+
+ if (!dev_cvx.active)   // Don't re enable if active
+  {
    PM_INFO("Install Covox (%x)\n",baseport);
 
    if (GetPortType(baseport)!=DEV_NULL)
      {
       PM_ERROR("Port already used (%d)\n",GetPortType(baseport));
-      return 1;
+      return CMDERR_PORTUSED;
      }
-
-
    SetPortType(baseport,DEV_CVX,1);
-   dev_cvx_baseport=baseport;
-   dev_cvx_active=true;
-   dev_cvx_playing=false;
+   res=cvx_enable(type,baseport,0);
+   if (res!=0) { 
+     PM_INFO("cvx_enable Err:%x\n",res);
+     return res; // Return the error code
+    }    
+   dev_cvx.baseport=baseport;
+   dev_cvx.active=true;
  }  
   else  // Check if the port need to be changed
-    if (baseport!=dev_cvx_baseport)
+    if (baseport!=dev_cvx.baseport)
      {
       PM_INFO("Change CVX Port (%x)\n",baseport);
-      SetPortType(dev_cvx_baseport,DEV_NULL,1);
+      SetPortType(dev_cvx.baseport,DEV_NULL,1);
       SetPortType(baseport,DEV_CVX,1);
-      dev_cvx_baseport=baseport;
+      dev_cvx.baseport=baseport;
      }
-
-  return 0;
+  dev_cvx_disable_mix(); // Disable Covox mixing
+  return res;
 }
 
 void dev_cvx_remove()
 {
- if (dev_cvx_active)   // Don't stop if not active
+ if (dev_cvx.active)   // Don't stop if not active
   {  
-   dev_cvx_active=false;
-   dev_cvx_playing=false;   
-   PM_INFO("Remove CVX (%X)\n",dev_cvx_baseport);
+   dev_cvx.active=false;
+   PM_INFO("Remove CVX (%X)\n",dev_cvx.baseport);
 
-   SetPortType(dev_cvx_baseport,DEV_NULL,2);
+   SetPortType(dev_cvx.baseport,DEV_NULL,1);
+   dev_cvx_disable_mix(); // Disable Covox mixing 
   }  
 }
 
 // Return true if CMS is installed
 bool dev_cvx_installed()
 {
-  return (GetPortType(dev_cvx_baseport)==DEV_CVX);
+  return (GetPortType(dev_cvx.baseport)==DEV_CVX);
 }
 
 // Started in the Main Command Wait Loop
@@ -85,21 +94,29 @@ void dev_cvx_update()
 {
 }
 
-bool dev_cvx_ior(uint32_t CTRL_AL8,uint8_t *Data )
+bool dev_cvx_ior(uint32_t Addr,uint8_t *Data )
 {
   return false;  // Nothing to read
 }
 
-void dev_cms_iow(uint32_t CTRL_AL8,uint8_t Data)
+void dev_cvx_iow(uint32_t Addr,uint8_t Data)
 {
-  uint8_t addr=CTRL_AL8&0x07;
-
-  if (dev_cvx_playing==0)
+  if (!(dev_audiomix.dev_active & AD_CVX))
      {
-      //ADD Audio fifo init
-      dev_cvx_playing=1;
+      PM_INFO("CVX Start\n");
+      cvx_start_dac();
      }
-  
-
+  dev_cvx_enable_mix(); // Enable Covox mixing
+  dev_cvx.delay=0;
+  cvx_outp(Addr, Data);
 }
+
+void dev_cvx_test()
+{
+dev_cvx_install(CVX_TYPE_DAC,0x378);
+cvx_test();
+dev_cvx_remove();
+for (;;) {}
+}
+
 //#endif

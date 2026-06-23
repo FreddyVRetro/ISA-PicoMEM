@@ -7,12 +7,10 @@
 ; Control signals activation detection done by the CPU to Optimize the overall speed
 
 ; Values for the Proto Board :
-;.define public PIN_IRQ    5
 ;.define public PIN_AEN    6
 ;.define public PIN_ALE    7
 
 ; Values for the 1.0 to 1.14 Boards: (Shift by 5 Pin).
-.define public PIN_IRQ    0
 .define public PIN_AEN    1
 .define public PIN_ALE    2
 ; Pin 3 to 7 are for SD/PSRAM
@@ -57,7 +55,7 @@ restart:
     out X,32            side 0b01    ; Dummy Get command
     jmp restart         side 0b01
 No_DMA:
-    nop           [2]   side 0b11    ; Delay, 3 clock tick ("Default" 2, 1 Working as well...)
+    nop           [2]   side 0b11    ; Delay, 3 clock tick
     in pins, 12         side 0b00    ; Read Address High (A8-A19)     > Switch to Read/Write Data
 ; Data is read after by the Pico core (Not PIO)
     out X, 32           side 0b00    ; 2> Put the value sent by the main code to X : Do a Read if <> 0

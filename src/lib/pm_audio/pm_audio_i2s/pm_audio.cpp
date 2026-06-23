@@ -36,6 +36,7 @@ bool pm_audio_stop_i2s();
 void pm_audio_freepool()
 { 
   free(pm_audio.bufferpool);
+  pm_audio.bufferpool=NULL;
   pm_pool_initialized=false;
 // Now we have a deadpool :)     
 }
@@ -95,8 +96,6 @@ bool pm_audio_init_i2s(uint32_t sample_freq) {
  
  if (!pm_i2s_active)
    {
-    PM_INFO("audio_i2s_setup\n");
-
     if (!audio_i2s_setup(&config)) {
         PM_ERROR("! PicoAudio: Unable to open audio device.\n");
         return false;

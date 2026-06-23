@@ -24,9 +24,9 @@
 
 ; Send 16 bit words to the PIO for mono, 32 bit words for stereo
 
+
 .program audio_i2s
 .side_set 2
-
                     ;        /--- LRCLK
                     ;        |/-- BCLK
 bitloop1:           ;        ||
@@ -40,6 +40,23 @@ bitloop0:
     jmp x-- bitloop0  side 0b01
     out pins, 1       side 0b10
 public entry_point:
+    set x, 14         side 0b11
+
+.program audio_i2s_inv
+.side_set 2
+                    ;        /--- LRCLK
+                    ;        |/-- BCLK
+bitloop1:           ;        ||
+    out pins, 1       side 0b01
+    jmp x-- bitloop1  side 0b11
+    out pins, 1       side 0b00
+    set x, 14         side 0b10
+
+bitloop0_inv:
+    out pins, 1       side 0b00
+    jmp x-- bitloop0_inv  side 0b10
+    out pins, 1       side 0b01
+public entry_point_inv:
     set x, 14         side 0b11
 
 % c-sdk {

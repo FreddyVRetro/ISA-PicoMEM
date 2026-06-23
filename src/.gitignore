@@ -1,1 +1,10 @@
 build
+.DS_Store
+*~
+*.swp
+*.swo
+*.zip
+*.obj
+*.o
+build/
+.vscode

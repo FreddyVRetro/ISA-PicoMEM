@@ -18,6 +18,18 @@ typedef enum { NE2000_NE2000, NE2000_RTL8029AS } ne2000_type;
 #define BX_NE2K_MEMSTART (16 * 1024)
 #define BX_NE2K_MEMEND (BX_NE2K_MEMSTART + BX_NE2K_MEMSIZ)
 
+// FV: From QEMU
+
+/* Bits in received packet status byte and EN0_RSR*/
+#define ENRSR_RXOK      0x01    /* Received a good packet */
+#define ENRSR_CRC       0x02    /* CRC error */
+#define ENRSR_FAE       0x04    /* frame alignment error */
+#define ENRSR_FO        0x08    /* FIFO overrun */
+#define ENRSR_MPA       0x10    /* missed pkt */
+#define ENRSR_PHY       0x20    /* physical/multicast address */
+#define ENRSR_DIS       0x40    /* receiver disable. set in monitor mode */
+#define ENRSR_DEF       0x80    /* deferring */
+
 typedef struct ne2000_t {
         //
         // ne2k register state
@@ -157,10 +169,10 @@ typedef struct ne2000_t {
 
         // ne2k internal state
         uint16_t base_address;
-        int base_irq;
-        int tx_timer_index;
-        int tx_timer_active;
-        uint8_t pending_tx;
+        int irq;
+        //int tx_timer_index;
+        //int tx_timer_active;
+        //uint8_t pending_tx;
 
         ne2000_type type;
 

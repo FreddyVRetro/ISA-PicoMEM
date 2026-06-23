@@ -3,6 +3,7 @@ add_library(pm_libs INTERFACE)
 target_include_directories(pm_libs INTERFACE
     ${CMAKE_CURRENT_LIST_DIR}
     ${CMAKE_CURRENT_LIST_DIR}/pm_libs
+    ${CMAKE_CURRENT_LIST_DIR}/pm_libs/pm_watcom
 )
 
 target_sources(pm_libs INTERFACE
@@ -13,6 +14,9 @@ target_sources(pm_libs INTERFACE
     ${CMAKE_CURRENT_LIST_DIR}/hw_config.c    
     ${CMAKE_CURRENT_LIST_DIR}/pm_disk.cpp
     ${CMAKE_CURRENT_LIST_DIR}/pm_apps.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/pm_pccmd.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/pm_watcom/w_bios.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/inputs/players/player.c
+    ${CMAKE_CURRENT_LIST_DIR}/inputs/buttons/sp_buttons.c
+    ${CMAKE_CURRENT_LIST_DIR}/inputs/pm_inputs.c
 )
-
-

@@ -1,8 +1,9 @@
 
 #include <stdio.h>
+#include "string.h"
 #include "pico/stdlib.h"
 #include "../pm_debug.h"
-
+#include "pico/aon_timer.h"
 #include <sys/time.h>
 #include <time.h>
 
@@ -10,32 +11,31 @@
 
 void printdatetime(tm *t)
 {
-printf(" %d:%d:%d %d/%d/%d",t->tm_hour,t->tm_min,t->tm_sec,t->tm_mon,t->tm_mday,t->tm_year);
+PM_INFO(" %d:%d:%d %d/%d/%d",t->tm_hour,t->tm_min,t->tm_sec,t->tm_mon,t->tm_mday,t->tm_year);
 }
 
-// Initialize the RTC with a default value
+// Initialize the RTC with a default value (Compile Date/Time)
 void pico_rtc_init()
 {
-  struct timeval tv;
-  time_t tsec = tv.tv_sec;
+    static const char month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+    char s_month[5];
+    int month, day, year, hour, min, sec;
+    sscanf(__DATE__, "%s %d %d", s_month, &day, &year);
+    month = (strstr(month_names, s_month)-month_names)/3;
+    sscanf(__TIME__, "%d:%d:%d", &hour, &min, &sec);
+    struct tm t = {
+        .tm_sec   = sec,
+        .tm_min   = min,
+        .tm_hour  = hour,
+        .tm_mday  = day,
+        .tm_mon   = month,
+        .tm_year  = year - 1900,
+        .tm_wday  = 6  // 0 is Sunday
+    };
 
-  struct tm t = {
-            .tm_sec   = 00,
-            .tm_min   = 00,
-            .tm_hour  = 12,
-            .tm_mday  = 22,
-            .tm_mon   = 05,
-            .tm_year  = 2025,
-            .tm_wday  = 4  // 0 is Sunday
-             };
-
-  tv.tv_sec = mktime(&t);
-  tv.tv_usec = 0; /* microseconds */
-  settimeofday(&tv, nullptr);
-
-  PM_INFO("Pico Default Time/Date: ");
-  printdatetime(&t);
-  PM_INFO("\n");  
+    aon_timer_start_calendar(&t);
+    PM_INFO("Pico Default Time/Date: ");
+    PM_INFO(" %d:%02d:%02d %d/%d/%d\n",t.tm_hour,t.tm_min,t.tm_sec,t.tm_mday,t.tm_mon+1,t.tm_year+1900);  
 }
 
 /*
@@ -60,7 +60,7 @@ void pico_rtc_setDOSDate(uint32_t ddate)
   t.tm_sec   = (ddate & 0x1F) << 1; /* DOS stores seconds divided by two */
   t.tm_isdst = -1;
 
-  printf("DOS Date to pico Date : ");
+  PM_INFO("DOS Date to pico Date : ");
   printdatetime(&t);
 
   tv.tv_sec = mktime(&t);

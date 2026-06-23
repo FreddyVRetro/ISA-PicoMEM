@@ -1,8 +1,12 @@
 #pragma once
+//Definitions for the QSPI PSRAM Code
 
-//#define PIMORONI_PICO_PLUS2_PSRAM_CS_PIN 47
-//#define RP2350_PSRAM_CS PIMORONI_PICO_PLUS2_PSRAM_CS_PIN
-#ifdef PIMORONI_PICO_PLUS2_RP2350
-#define RP2350_PSRAM_CS 47
-#define PSRAM_HEAP 1
+#if BOARD_PM15 || BOARD_PM20 || BOARD_WM10
+#define RP2350_PSRAM_CS 0
+#else
+#define RP2350_PSRAM_CS 47  // Pimoroni pico plus 2
+#endif
+
+#ifndef PSRAM_HEAP    //Value 1 taken from CMakefile
+#define PSRAM_HEAP 0
 #endif
