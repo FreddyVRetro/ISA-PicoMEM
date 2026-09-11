@@ -48,8 +48,9 @@ The PicoMEM exist in 4 Versions : 1.0, 1.1, 1.11, 1.14 and 1.2A<br />
 
 **PicoMEM variant :**
 
-PicoMEM 1.2A : It is a PicoMEM 1.14 with the DAC Added on Board, DAC Added by Serdaco.<br />
+PicoMEM 1.2A   : It is a PicoMEM 1.14 with the DAC Added on Board, DAC Added by Serdaco.<br />
 PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the Sinclair PC200.<br />
+PicoMEM 2.0    : New PicoMEM with RP2350 soldered onboard, DAC, RTC, front panel connector, USB A.<br />
 
 **Picomem LP (Low profile):**<br /> 
 <a href="url"><img src="https://github.com/FreddyVRetro/ISA-PicoMEM/blob/main/jpg/PM10LP.jpg" align="middle" height=30% width=30% ></a>
@@ -62,8 +63,6 @@ PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the 
   - The MicroSD connector share the SPI BUS of the PSRAM, adding some limitations. (We need to stop the PC IRQ during Disk Access)
   - One IRQ Line that can be connected to IRQ 3 or 5 for Rev 1.0, 2,5 or 7 for Rev 1.1.
   - QwiiC Connector (SPI) (Added to V1.1)
-
-
 
 **Software :**
   - A Full BIOS with a "Phoenix BIOS Like" text interface in assembly.
@@ -78,29 +77,31 @@ PicoMEM LP 1.0 : PicoMEM variant designed for Low profile ISA Slot, like on the 
    128Kb of RAM can be emulated from the Pi Pico internal RAM with No Wait State.<br />
    It can emulate the whole 1Mb of RAM address space from the PSRAM. (With 4-5 Wait States added)<br />
    4MB of EMS Emulation.<br />
-   Memory emulation is used to add 4Kb of "Private" memory for the PicoMEM BIOS Usage.<br />
+   Memory emulation is used to add 8Kb of "Private" memory for the PicoMEM BIOS Usage.<br />
    PicoMEM Disks data transfer done via the emulated Memory.<br />
 
 - **ROM Emulation** for its internal BIOS and custom ROM loaded from the MicroSD. (Custom ROM not implemented yet)<br />
    The Board has its own BIOS, used to automatically detect/Extend/Configure the RAM emulation and select Floppy/Disk images.
 - **Floppy and Disk** "emulation" from .img files stored in uSD through FasFs and DosBOX int13h emulation code.
    Emulate 2 Floppy and 4 Disk (80h to 83h), Disk up to 4Gb (More later)
-- **NEW : SD and USB disk direct access** A Network redirector driver allow full access to the SD and USB for DOS 3.2 +
+- **SD and USB disk direct access** A Network redirector driver allow full access to the SD and USB for DOS 3.2 +
    As it is a network redirector, the SD and USB filesystem can be anything (Even FAT32/ExtFS)
 - **USB Mouse** support through a USB OTC Adapter. (Micro USB to USB A or USB Hub)
 - **POST Code** (Port 80 Display in Hexa) via the QwiiC connector: https://www.sparkfun.com/products/16916
 - **ne2000 network card** emulation via Wifi. (Pico W PicoMEM only)
 - **USB Joystick** for PS4 and Xinput controllers.
 - **Tandy 1000** (Old models with Tandy Graphic) now supported, even for RAM upgrade.
-- **NEW** First Pico controlled application : RAMP/ROM Dump.
+- **NEW** First Pico controlled application : RAM/ROM Dump.
 
 **Audio/Sound cards emulation :**<br />
 
 - **Adlib** using a PCM5102 I2S module.<br />
 - **CMS/Game Blaster and Tandy** sound chip emulation.<br />
-- **NEW : The extremely rare Mindscape Music Board** sound card is now emulated. (Dual AY-3-8910)<br />
-- **NEW : Covox (8Bit DAC on parallel port)** sound device emulated. (LPT1/LPT2)<br />
-- **NEW : Sound Blaster**  Done via a DMA emulation (Memory copy via an interrupt), the compatibility is low<br />
+- **The extremely rare Mindscape Music Board** sound card is now emulated. (Dual AY-3-8910)<br />
+- **Covox (8Bit DAC on parallel port)** sound device emulated. (LPT1/LPT2)<br />
+- **Sound Blaster**  Done via a DMA emulation (Memory copy via an interrupt), the compatibility is low<br />
+- **General MIDI** Onboard General MIDI rendered on the PicoMEM 2<br />
+- **PS/1 and Covox** emulation in progress<br />
 
 ## Future Functionality
 
@@ -124,7 +125,7 @@ It can be used like a PicoMEM 1.
 
 - Global performance increase thanks to the RP2350 at 360MHz (Vs RP2040 at 240MHz)
 - Zero wait RAM emulation moved from 128KB to 256KB
-- IOCHRDY Signal generation (used for PSRAM Memory emulation) moved from 120ns to 50ns, allowing for more PC to support EMS.
+- IOCHRDY Signal generation (used for PSRAM Memory emulation) moved from 120ns to 40ns, allowing for more PC to support EMS.
 - Global RAM/IO performance increase for more PC compatibility.
 - Now use QSPI PSRAM, for faster RAM/EMS emulation (only 1 Wait state)
 - Support DMA from PicoMEM emulated RAM (Except when the PicoMEM does DMA)
@@ -158,13 +159,17 @@ It can be used like a PicoMEM 1.
 **Planned:**
 - CD ROM emulation
 
+## Alternative Firmware:
+
+The PicoGraph firmware transform the PicoMEM 2 to a Video card, using USB Displaylink (V2)<br />
+It can emulate MGA, Hercule, CGA, VGA, Cirrus Logic CL-GD5429 and the Sony DTL-H201A PSX GPU board.<br \>
+**Link:** https://github.com/ianhan/picograph<br />
+
 ## Compatibility/Limitations
 
 **PicoMEM 1 limitations:** 
 
 The Board can't be used for Video emulation, as it require a way for the Pico to actually display something, and only 3 pins are "Free".<br />
-Update (06/2026) : Th ePicoGraph is a PicoMEM 1.14 firmware to transform it to a Video card (Require a Pico2 to replace the existing Pico module)<br />
-Link: https://github.com/ianhan/picograph<br />
 
 The Pi Pico is limmited in its speed, this is excellent and bad at the same time:
 - Multiple complex function can't be emulated at the same time, choices need to be done.
@@ -173,7 +178,9 @@ The Pi Pico is limmited in its speed, this is excellent and bad at the same time
 
 **PicoMEM 2 limitations:**<br />
 
-Mostr of the PicoMEM 1.14 limitations are now gone with the PicoMEM 2<br />
+Most of the PicoMEM 1.14 limitations are now gone with the PicoMEM 2<br />
+
+The DMA treansfer (To the PicoMEM) does not work when the data to transfer in in the PicoMEM RAM (For the moment)<br />
 
 ## Memory emulation details :
 
@@ -207,7 +214,7 @@ The PicoMEM is then more suitable to extend a **512KB PC to 640KB**, Add some UM
 The PicoMEM can add 4 disks to the BIOS, Disk up to 4Gb.<br />
 It can also mount Floppy image as A: or B:
 
-The PicoMEM does not emulate disk, it send the BIOS Disk access commands to the Pi Pico. <br />
+**The PicoMEM does not emulate disks**, it send the BIOS Disk access commands to the Pi Pico. <br />
 Then, it is more a "Disk BIOS" emulator than a Disk emulator. <br />
 
 **NEW : Full SD and USB Disk access**
@@ -217,7 +224,6 @@ Thanks to a modified EtherDFS driver and an embedded EtherDFS server, the MicroS
 Another particularity is that it use Memory to perform the Data transfer, this allow for the maximum possible transfer speed, even on 8088 CPU. <br />
 Anyway, single sector read is slower than multiple sector read as the PicoMEM need to read the sector from the SD, then send the data to the PC Memory. <br />
 With multiple sector Read, the Pico read the next sector while the data is copied to the PC Memory. <br />
-**NEW: Fast Seek added:** Disk Seek time is now more than 10x faster, it improve a lot the disk "reactivity".
 
 It is highly recommended to use reasonable disk image size, below 500Mb. <br /> 
 100 or 200Mb are ideal size, as it will be recognized and usable by DOS 6 and DOS 3.31 <br />
@@ -230,7 +236,7 @@ As you can add 4 Disk with 4 partitions, you can create diferent disk images for
 ## ne2000 emulation via Wifi
 
 The PicoMEM can emulate a ne2000 network card via Wifi.<br />
-Warning : As the Wifi antenna is inside the PC case, the connection quality may be low.<br />
+**Warning :** As the Wifi antenna is inside the PC case, the connection quality may be low. (Not valid on PicoMEM 2)<br />
 
 **How to use it :**
 - Create a wifi.txt file with the SSID in the first line and the Password in the 2nd line.<br />
@@ -244,13 +250,15 @@ Warning : As the Wifi antenna is inside the PC case, the connection quality may 
 - **New : Tandy 1000** : Now tested on a Tandy 1000 SX, EX and HX other to confirm. (October 2024 firmware)<br />
 - Tandy 1000 RLX Rev B Need a new BIOS to work.<br />
 - Amstrad PC1512, PC1640, Sinclair PC200 (It is my DEV Machine)<br />
-- Schneider EuroPC1 (PSRAM/EMS Not working), EuroPC2, Olivetti M21, Olivetti M24, Sega TeraDrive.<br />
+- Schneider EuroPC1:  PSRAM/EMS Not working on PicoMEM 1, Ok on the PicoMEM 2
+- Schneider EuroPC2, Olivetti M21, Olivetti M24, Sega TeraDrive.<br />
 - Commodore PC1, PC10/PC20. (Need Fast RAM Firmware)<br />
 - Worked on Various 486, 386, 286 (Has more chance to work with lower ISA Clocks)<br />
 - Tested with some Pentium, Pentium MMX, Pentium 2, AMD K6 ...<br />
 - Amiga 2000 with a A2088 (PC Config A000) A2286/A2386 SX Board. (Use the BIOS in C800)
 - Book8088 (At 4.77MHz and 8MHz with the latest firmware), **The Power need to be connected at 8MHz**. 
   EMS/PSRAM based RAM is failing. (Working with PicoMEM 2)
+- Amstrad PPC512/PPC640 : No more problem with the PicoMEM 2
 
 ## Failing Machines :
 - The number of failing machines is decreasing, if it does not work on your machine, you can post an issue in this GitHub repository.
