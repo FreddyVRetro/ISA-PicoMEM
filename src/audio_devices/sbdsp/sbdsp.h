@@ -23,16 +23,22 @@ typedef struct sbdsp_t {
     volatile uint8_t mainloop_action;  // Action to execute in the main loop
 
     uint8_t  dma_mode;               // 2, 3, 4, 8 or 16 bits
-    bool adpcm_ref;    
+    bool adpcm_ref;                  // set while parsing a "with reference" ADPCM command
+
+    uint8_t  adpcm_codes_per_byte;   // decoded PCM samples produced per raw DMA byte (1=PCM, 2/3/4=ADPCM)
+    uint8_t  adpcm_code_index;       // 0..adpcm_codes_per_byte-1 : position in the current DMA byte cadence
+    uint8_t  adpcm_reference;        // ADPCM decoder state: last decoded output level
+    uint8_t  adpcm_scale;            // ADPCM decoder state: current step-size index
+    bool     adpcm_need_ref;         // next raw DMA byte is an uncompressed reference sample, not encoded data
 
     // dma commands variables
     uint16_t dma_interval;           // Interval (in uS) between 2 samples read by the DMA
     uint16_t dma_block_size;         // Block size as sent to the command by the PC
-    uint16_t dma_sample_count;       // Number of samples to transfer sent by the PC
-    uint16_t dma_sample_count_rx;    // Count of samples to transfer (When = dma_sample_count, send an interrupt and clear)
+    uint16_t dma_sample_count;       // Number of (encoded) bytes to transfer sent by the PC
+    uint32_t dma_sample_count_rx;    // Count of DMA ticks elapsed (one per decoded output sample; may exceed dma_sample_count for ADPCM)
     uint16_t dma_xfer_count;         // Number of transfers to do (for 16bit/stereo DMA)
     uint16_t dma_xfer_count_left;    // Number of transfers left to do (for 16bit/stereo DMA)
-    
+
     bool autoinit;
     bool dma_enabled;
     bool dma_16bit;
@@ -47,7 +53,7 @@ typedef struct sbdsp_t {
 
     uint16_t dac_interval;           // Interval (in uS) between 2 samples is sent to the DAC
     int32_t timer_delta;             // Timer delta for the DAC timer event
-    
+
 
 // Variables for the buffers copy/convertion
     uint16_t sample_rate;
@@ -70,13 +76,13 @@ typedef struct sbdsp_t {
     volatile bool irq_8_pending;
     volatile bool irq_16_pending;
 
-    uint8_t reset_state;    
+    uint8_t reset_state;
     uint8_t cur_sample8;            // Current sample for the DAC
     uint8_t silence8;               // Value used for silence in 8bit mode
-    
+
     uint8_t mixer_command;  // To remove later
 
-    uint8_t ident_e2[2];    // Buffer for the E2 command, to be able to return 2 bytes of data    
+    uint8_t ident_e2[2];    // Buffer for the E2 command, to be able to return 2 bytes of data
     //    volatile int16_t cur_sample;  // PicoGUS bufferless mode
 } sbdsp_t;
 
