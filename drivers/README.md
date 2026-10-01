@@ -1,7 +1,16 @@
 # ISA PicoMEM Extension board (For 8086/8088 PC)
 
 ## Introduction
-This folder contains the drivers needed for the PicoMEM<br />
+This folder contains the drivers needed for the PicoMEM:<br />
+
+**PMINIT**  : Main initialisation tool, to enable/disable emulated devices (Mainly sound Cards)<br />
+**PM2000**  : NE2000 emulation DOS Packet driver<br />
+**PMDFS**   : Driver providing access to the MicroSD and one USB key.<br />
+**PMEMM**   : EMS Driver.<br />
+**PMMOUSE** : Mouse Driver.<br />
+
+Alternative drivers/tools are now available here: https://github.com/jdredd87/CH375USBTools/tree/main/PicoMEM
+
 
 ## PMINIT.EXE
 
