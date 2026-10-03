@@ -18,7 +18,7 @@ The FLoppy images are stores under a “FLOPPY” folder<br />
 
 Any type/Size of uSD is normally supported, but High Speed uSD of more than 4Gb is recommended.
 
-### Configuration files : (in the uSD rood directory)
+### Configuration files : (in the uSD root directory)
 
 **wifi.txt :** Place the Wifi SSID first, then the password<br />
 
