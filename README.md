@@ -100,7 +100,7 @@ PicoMEM 2.0    : New PicoMEM with RP2350 soldered onboard, DAC, RTC, front panel
 - **The extremely rare Mindscape Music Board** sound card is now emulated. (Dual AY-3-8910)<br />
 - **Covox (8Bit DAC on parallel port)** sound device emulated. (LPT1/LPT2)<br />
 - **Sound Blaster**  Done via a DMA emulation (Memory copy via an interrupt), the compatibility is low<br />
-- **General MIDI** Onboard General MIDI rendered on the PicoMEM 2<br />
+- **General MIDI** Onboard General MIDI rendered on the PicoMEM 2 (TinySoundFont)<br />
 - **PS/1 and Covox** emulation in progress<br />
 
 ## Future Functionality
@@ -114,7 +114,7 @@ PicoMEM 2.0    : New PicoMEM with RP2350 soldered onboard, DAC, RTC, front panel
 ## PicoMEM 2
 
 PicoMEM 2 is the evolution of the PicoMEM with on board RP2350B chip.<br />
-It can be used like a PicoMEM 1.
+It can be used like a PicoMEM 1 and removed most of its limitation.
 
 <a href="url"><img src="https://github.com/FreddyVRetro/ISA-PicoMEM/blob/main/jpg/PM202_Close.jpg" align="middle" height=40% width=40% ></a>
 
@@ -136,20 +136,25 @@ It can be used like a PicoMEM 1.
 
 **Connectivity / panels:**
 
-- New : USB A Connector for direct Joystick/Mouse/USB drive connection, or USB Hub
-- New : Serial port (TX/RX) + LED Connector foe external LED connection or HDDClicker.
-- New : 2x QwiiC connectors that can be used at any moment for possible Upgrade.
-- New : 1x Front Panel connector for OLED + 5 Buttons
-- New : SSD1306 128x32 OLED Screen on the front panel now display POST Code / Logos
+- USB A Connector for direct Joystick/Mouse/USB drive connection, or USB Hub
+- Serial port (TX/RX) + LED Connector foe external LED connection or HDDClicker.
+- 2x QwiiC connectors that can be used at any moment for possible Upgrade.
+- 1x Front Panel connector for OLED + 5 Buttons
+- SSD1306 128x32 OLED Screen on the front panel now display POST Code / Logos
 
 **Audio improvements:**
 
- - New : DAC is now onboard, with better sound quality (4 Layers routing) and Jack connector
+ - DAC is now onboard, with better sound quality (4 Layers routing) and Jack connector
  - Sound Blaster code now use Hardware DMA for greatly improved compatibility.
- - New: Gravis UltraSound support Added, 1MB RAM, DMA and IRQ.
- - New: MPU / General MIDI via a modified TinySoundFont implementation (https://github.com/schellingb/TinySoundFont)
+ - Gravis UltraSound support Added, 1MB RAM, DMA and IRQ.
+ - MPU / General MIDI via a modified TinySoundFont implementation (https://github.com/schellingb/TinySoundFont)
  - As all emulation can be active at the same time, you can configure General MIDI + GUS on DOOM for example.
- - Audio : Now generate Stereo OPL3 instead of OPL2
+ - Now generate Stereo OPL3 instead of OPL2
+
+**PicoMEM 2 exclusive fonctionality:**
+ - **NEW**: CD-ROM and CD Audio emulation
+ - **NEW**: CD Audio player on the front panel
+ - **NEW**: Option ROM emulation (via config.txt)
 
 **Other updates:** (possible on PicoMEM 1)
  - More Joystick supported (DirectInput, PS4/PS5, Switch/Switch2... )  (https://github.com/joypad-ai/joypad-os)
@@ -157,7 +162,9 @@ It can be used like a PicoMEM 1.
  - Load images from a sub Folder added
 
 **Planned:**
-- CD ROM emulation
+- USB RJ45 Dongles
+- USB MIDI / MPU401
+- General MIDI sound font loading
 
 ## Alternative Firmware:
 
@@ -217,7 +224,7 @@ It can also mount Floppy image as A: or B:
 **The PicoMEM does not emulate disks**, it send the BIOS Disk access commands to the Pi Pico. <br />
 Then, it is more a "Disk BIOS" emulator than a Disk emulator. <br />
 
-**NEW : Full SD and USB Disk access**
+**Full SD and USB Disk access**
 The PicoMEM can access the full MicroSD and USB drive connected to it, even if formatted in FAT32, from DOS 3.2 !<br />
 Thanks to a modified EtherDFS driver and an embedded EtherDFS server, the MicroSD and any USB key can be seen as a network drive.<br />
 
@@ -290,4 +297,6 @@ Hardware is currently closed. <br />
 * [Mitsutaka Okazaki / Graham Sanderson emu8950 v1.1.0] (https://github.com/digital-sound-antiques/emu8950) : Adlib/OPL2 emulation
 * Aaron Giles DREAMM / SCUMM Games emulator : CMS / Tandy emulation
 * Fast disk access TinyUSB branch by Artem Vasilev (wbcbz7) (https://github.com/wbcbz7/tinyusb/)
-* Etherdfs by Mateusz Viste. (https://mateusz.fr/etherdfs/)
+* KME CD device and Sound Blaster DSP by yyzkevin.
+* [Etherdfs by Mateusz Viste](https://mateusz.fr/etherdfs/)
+* [TinySoundFont by Bernhard Schelling](https://github.com/schellingb/TinySoundFont)

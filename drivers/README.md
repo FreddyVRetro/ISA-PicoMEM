@@ -19,7 +19,7 @@ I will regularly update the tools to add init fonctions when DOS is Booted.<br /
 
 To enable the Key Shortcut: (Left Shift + Ctrl + F1 for information and F2 For A: Floppy change)<br />
 PMINIT /k
-
+ 
 /j x      - Enable/Disable the Joystick     (0:Off 1:On)<br />
 /adlib x  - Adlib sound      (0:Off 1:On)\n")<br />
 /cms x    - CMS sound        (0:Off 1:220 or 210,230,240,250)<br />
@@ -27,12 +27,16 @@ PMINIT /k
 /cvx x    - Covox DAC sound  (0:Off 1:LPT1 2:LPT2 or 300)<br />
 /mmb x    - Mindscape sound  (0:Off 1:300 or 220,2F0,310,320)<br />
 /sb x     - Sound Blaster    (0:Off 1:On) use the BLASTER values<br />
-/gus x    - Gravis UltraSound (0:Off 1:On) use the ULTRSND values  **(PicoMEM 2)**<br />
-/mpu x   - General MIDI font (0:Off 1:330 or 300,320,340,360)      **(PicoMEM 2)**<br />
+/gus x    - Gravis UltraSound (0:Off 1:On) use the ULTRSND values   **(PicoMEM 2)**<br />
+/mpu x    - General MIDI font (0:Off 1:330 or 300,320,340,360)      **(PicoMEM 2)**<br />
+/font x   - GM Renderer       (0: ArdSynth 1: TinySoundFont)        **(PicoMEM 2)**<br />
 /diag     - Start in Diagnostic Mode <br />
 
-## Rev 1.0.2 (June 14 2026)
+## Rev 1.0.4 (Sept 17, 2026)
+- + Added mpu synth slection : ArdSynth or TinySoundFont
+- + Added port 300 to the Tandy output.
 
+## Rev 1.0.2 (June 14 2026)
 - + Add mpu initialisation for the PicoMEM 2
 - - Remove some lines from the Parameters display list
 
@@ -49,7 +53,6 @@ PMINIT /k
 - ! Initialisation of some audio devices was bugged...
 
 ### Rev 0.7 (October 2025) <br />
-
 - + Added the covox setup (for Oct test firmware)
 - + Added all the port list when typing pminit /?
 - + Improved the error display.
@@ -129,6 +132,10 @@ Example: pmdfs S-D U-E<br />
 
 Warning : This driver can't be used if the PicoMEM BIOS is not loaded.<br />
 
+### Rev 1.0.1 <br /> (October 10, 2026)
+- ! Corrected a bug when MSCDEX is active : FindNext was not working for CD<br />
+- ! 0 length file write was not working : Can't truncate files<br />
+- ! * were rejected for file rename<br />
 
 ## ASTCLOCK.COM<br />
 
