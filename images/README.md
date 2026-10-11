@@ -43,6 +43,6 @@ The ROM binaries are stored in the `ROM` folder (PicoMEM 2 only)<br />
 
 Any type/Size of uSD is normally supported, but High Speed uSD of more than 4Gb is recommended.
 
-### Configuration files : (in the uSD rood directory)
+### Configuration files : (in the uSD root directory)
 
 Description of the configuration file is in this [PicoMEM Wiki page](https://github.com/FreddyVRetro/ISA-PicoMEM/wiki/Configuration-files)
