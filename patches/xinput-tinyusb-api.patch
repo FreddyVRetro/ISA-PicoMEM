@@ -1,0 +1,27 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -8,4 +8,4 @@
+ target_include_directories(xinput_host INTERFACE
+  ${CMAKE_CURRENT_LIST_DIR}
+ )
+-target_link_libraries(xinput_host INTERFACE tinyusb)
++
+--- a/xinput_host.c
++++ b/xinput_host.c
+@@ -606,11 +606,15 @@
+ #endif
+ #endif
+ 
++static bool xinputh_open_bool(uint8_t rhport, uint8_t addr,
++ const tusb_desc_interface_t *desc, uint16_t len)
++{ return xinputh_open(rhport,addr,desc,len) != 0; }
++
+ usbh_class_driver_t const usbh_xinput_driver =
+ {
+     DRIVER_NAME("XINPUT")
+     .init       = xinputh_init,
+-    .open       = xinputh_open,
++    .open       = xinputh_open_bool,
+     .set_config = xinputh_set_config,
+     .xfer_cb    = xinputh_xfer_cb,
+     .close      = xinputh_close
