@@ -1,3 +1,6 @@
 .vscode
 build
 *.LST
+# Local dependency checkouts prepared from pinned revisions and patches
+/src/lib/tinyusb/
+/src/lib/tusb_xinput/

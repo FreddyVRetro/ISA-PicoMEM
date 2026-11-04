@@ -31,7 +31,6 @@ target_sources(USB_Host_Driver INTERFACE
     ${CMAKE_CURRENT_LIST_DIR}/hid/devices/vendors/microsoft/ms_sidewinder_dualstrike.c
     ${CMAKE_CURRENT_LIST_DIR}/hid/devices/vendors/microsoft/ms_sidewinder_commander.c
     ${CMAKE_CURRENT_LIST_DIR}/xinput/oldxinput.c
-    ${CMAKE_CURRENT_LIST_DIR}/../USB_Host_Driver/msc/fatfs_usb.c
     ${CMAKE_CURRENT_LIST_DIR}/../USB_Host_Driver/usb.c    
     )
 
@@ -41,3 +40,12 @@ include(${CMAKE_SOURCE_DIR}/lib/tinyusb/src/CMakeLists.txt)
 target_compile_definitions(tinyusb_config INTERFACE
     CFG_TUSB_CONFIG_FILE="../../../USB_Host_Driver/tusb_config.h"
 )
+
+if(PM_RAW_USB_RO)
+ target_sources(USB_Host_Driver INTERFACE
+  ${CMAKE_CURRENT_LIST_DIR}/../rawblock/core.c
+  ${CMAKE_CURRENT_LIST_DIR}/../rawblock/service.c)
+else()
+ target_sources(USB_Host_Driver INTERFACE
+  ${CMAKE_CURRENT_LIST_DIR}/../USB_Host_Driver/msc/fatfs_usb.c)
+endif()

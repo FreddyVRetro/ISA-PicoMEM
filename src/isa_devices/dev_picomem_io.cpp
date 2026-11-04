@@ -28,6 +28,12 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "dev_picomem_io.h"
 #include "bus_irq.h"
 #include "isa_dma.h"
+#ifdef PM_RAW_USB_RO
+#include "../rawblock/service.h"
+#if DBG_PIN_AUDIO
+#error Raw USB ports conflict with optional audio debug ports
+#endif
+#endif
 
 volatile uint8_t PM_TestRead=0;
 uint8_t PM_CMDState=0;  //Command State Machine State (0 : Unlocked; 1 : Intermediate : 2: locked;)
@@ -101,6 +107,9 @@ PM_INFO("Transfer End\n");
 
 bool dev_pmio_ior(uint32_t CTRL_AL8,uint8_t *Data )
 {
+#ifdef PM_RAW_USB_RO
+ if ((CTRL_AL8 & 7)>=5) { *Data=pm_raw_ior(CTRL_AL8 & 7); return true; }
+#endif
  switch(CTRL_AL8 & 0x07)  //CTRL_AL8 Remains as a Register even here
   {
     case PORT_PM_CMD_STATUS:   // PicoMEM : Read Status           
@@ -136,6 +145,9 @@ bool dev_pmio_ior(uint32_t CTRL_AL8,uint8_t *Data )
 
 void dev_pmio_iow(uint32_t CTRL_AL8,uint8_t Data)
 {
+#ifdef PM_RAW_USB_RO
+  if ((CTRL_AL8 & 7)>=5) { pm_raw_iow(CTRL_AL8 & 7,Data); return; }
+#endif
   //printf("W%x:%x ",CTRL_AL8 & 0x07, Data);
   switch(CTRL_AL8 & 0x07)  //CTRL_AL8 Remains as a Register even here        
  //          switch(ISA_Addr & 0x07) 

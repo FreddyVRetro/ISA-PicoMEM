@@ -23,6 +23,11 @@ endif()
 
 cmake_minimum_required(VERSION 3.13)
 
+option(PM_RAW_USB_RO "Experimental exclusive raw USB read-only interface" OFF)
+if(PM_RAW_USB_RO)
+    add_compile_definitions(PM_RAW_USB_RO=1 PICO_STACK_SIZE=0x1000 PICO_CORE1_STACK_SIZE=0x800)
+endif()
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
@@ -132,7 +137,10 @@ target_include_directories(picomem
 )
 
 set(CMAKE_EXE_LINKER_FLAGS "-Wl,--print-memory-usage")
-target_compile_options(picomem PRIVATE -save-temps -fverbose-asm -O3) #fast -fmodulo-sched -fmodulo-sched-allow-regmoves) 
+if(PM_RAW_USB_RO)
+    target_compile_options(picomem PRIVATE -fstack-usage)
+endif()
+target_compile_options(picomem PRIVATE -save-temps -fverbose-asm -O3) #fast -fmodulo-sched -fmodulo-sched-allow-regmoves)
 
 if (PICOMEM_BOARD STREQUAL "PICOMEM")
       add_compile_definitions(

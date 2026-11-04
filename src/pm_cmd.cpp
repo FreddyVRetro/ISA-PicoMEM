@@ -1,3 +1,6 @@
+#ifdef PM_RAW_USB_RO
+#include "rawblock/service.h"
+#endif
 /* Copyright (C) 2023 Freddy VETELE
 
 This program is free software; you can redistribute it and/or
@@ -2181,6 +2184,9 @@ continue;  // Skip all ISA-specific update code below
 if (USB_Host_Enabled)
  {
   tuh_task();
+#ifdef PM_RAW_USB_RO
+  pm_raw_task();
+#endif
 
   if (pm_mouse.event&&MOUSE_Enabled)
    {
