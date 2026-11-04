@@ -1,0 +1,58 @@
+--- a/src/class/msc/msc_host.h
++++ b/src/class/msc/msc_host.h
+@@ -45,6 +45,9 @@
+   msc_cbw_t const* cbw; // SCSI command
+   msc_csw_t const* csw; // SCSI status
+   void* scsi_data;      // SCSI Data
++#ifdef PM_RAW_USB_RO
++  bool raw_read_complete; /* exact successful DATA and CSW transport lengths */
++#endif
+   uintptr_t user_arg;   // user argument
+ }tuh_msc_complete_data_t;
+ 
+--- a/src/class/msc/msc_host.c
++++ b/src/class/msc/msc_host.c
+@@ -61,6 +61,9 @@
+ 
+   // SCSI command data
+   uint8_t stage;
++#ifdef PM_RAW_USB_RO
++  bool raw_data_complete;
++#endif
+   void* buffer;
+   tuh_msc_complete_cb_t complete_cb;
+   uintptr_t complete_arg;
+@@ -150,6 +153,9 @@
+   p_msc->complete_cb = complete_cb;
+   p_msc->complete_arg = arg;
+   p_msc->stage = MSC_STAGE_CMD;
++#ifdef PM_RAW_USB_RO
++  p_msc->raw_data_complete = false;
++#endif
+ 
+   if (!usbh_edpt_xfer(daddr, p_msc->ep_out, (uint8_t*) &epbuf->cbw, sizeof(msc_cbw_t))) {
+     usbh_edpt_release(daddr, p_msc->ep_out);
+@@ -342,6 +348,11 @@
+       TU_ATTR_FALLTHROUGH; // fallthrough to status stage
+ 
+     case MSC_STAGE_DATA:
++#ifdef PM_RAW_USB_RO
++      p_msc->raw_data_complete = cbw->command[0] == SCSI_CMD_READ_10 &&
++          ep_addr == p_msc->ep_in && event == XFER_RESULT_SUCCESS &&
++          xferred_bytes == cbw->total_bytes;
++#endif
+       // Status stage
+       p_msc->stage = MSC_STAGE_STATUS;
+       TU_ASSERT(usbh_edpt_xfer(dev_addr, p_msc->ep_in, (uint8_t*) csw, (uint16_t) sizeof(msc_csw_t)));
+@@ -356,6 +367,11 @@
+             .cbw = cbw,
+             .csw = csw,
+             .scsi_data = p_msc->buffer,
++#ifdef PM_RAW_USB_RO
++            .raw_read_complete = p_msc->raw_data_complete &&
++                ep_addr == p_msc->ep_in && event == XFER_RESULT_SUCCESS &&
++                xferred_bytes == sizeof(msc_csw_t),
++#endif
+             .user_arg = p_msc->complete_arg
+         };
+         p_msc->complete_cb(dev_addr, &cb_data);
