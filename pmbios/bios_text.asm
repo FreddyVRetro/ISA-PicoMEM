@@ -229,13 +229,14 @@ BIOS_RestoreRectangle:
 	PUSH CS
 	POP DS
 	MOV SI,PM_DISKB+2048
-	
+	INC byte [Color_Bypass]	; Saved attributes already have the menu colors
+
 	ADD word [RW_DX],2
 	ADD word [RW_DY],2
 	MOV DX,[RW_XY]
 	XOR CX,CX
 	MOV CL,[RW_DY]
-	
+
 RestRect_LoopY:
 	PUSH CX
 	MOV CL,[RW_DX]
@@ -256,9 +257,10 @@ RestRect_LoopX:
 	SUB DL,[RW_DX]
 	POP CX
 	LOOP RestRect_LoopY
-	
+
 	SUB word [RW_DX],2
 	SUB word [RW_DY],2
+	DEC byte [Color_Bypass]
 	RET
 
 ;IBM PC BIOS Functions (Don't use other function)

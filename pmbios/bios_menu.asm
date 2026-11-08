@@ -9,12 +9,6 @@ STR_Inactive DB '----',0
 STR_Off DB 'Off',0
 STR_On DB 'On ',0
 
-Color_Profiles DW Profile_0,Profile_1,Profile_2
-
-Profile_0 DB  4,7,23,48,63,112,113,0
-Profile_1 DB  4,7,23,48,63,112,112,0
-Profile_2 DB  4,7,23,48,63,112,113,0
-
 I_R_BK  EQU 0
 I_G_BK  EQU 1
 I_G_B   EQU 2   ;Grey on Blue
@@ -35,6 +29,22 @@ BL_G  EQU 0x71  ;Blue on Grey    Not working on most of the Mono screens
 R_G   EQU 0x74  ;Red on Grey
 
 ; Blue is not visible on some mono display
+
+; ** Menu color profiles **
+; Key 'C' in the menu cycles through the profiles (saved in the config).
+; While the menu is open, INT 10h is hooked and every attribute listed in
+; Color_Source is replaced by the value at the same position in the
+; active profile. Edit the profiles to fit a screen with an odd palette.
+Color_Source DB R_BK, G_BK, G_B,  BL_LB,W_LB, BK_G, BL_G, R_G
+Color_Src_Nb EQU 8
+
+Profile_0    DB 0x04, 0x07, 0x17, 0x30, 0x3F, 0x70, 0x71, 0x74 ; Default colors
+Profile_1    DB 0x0F, 0x07, 0x07, 0x70, 0x0F, 0x70, 0x70, 0x0F ; Black, grey and white, no white on grey
+Profile_2    DB 0x07, 0x07, 0x07, 0x70, 0x70, 0x70, 0x70, 0x70 ; Monochrome (MDA)
+
+Color_Profiles DW Profile_0,Profile_1,Profile_2
+Color_Prof_Nb   EQU 3
+Color_Prof_Mono EQU 2   ; Profile used by default on a mono screen
 
 ; Display Data Format : Screen Offset, Attribute,0 :Char 1: String, NbRepet (If Char) , Char or String
 
@@ -60,6 +70,7 @@ BIOS_BotKey  DB 2,23,W_LB,1,'Esc',0
              DB 14,23,W_LB,1,25,24,0
 			 DB 32,23,W_LB,1,'Enter',0
 			 DB 14,24,W_LB,1,27,26,0
+			 DB 32,24,W_LB,1,'C',0
 
 			 DB 0xFF,0xFF
 
@@ -67,6 +78,7 @@ BIOS_BotText DB 7,23,BL_LB,1,'Exit',0
              DB 18,23,BL_LB,1,'Select Item',0
              DB 38,23,BL_LB,1,'Change Value',0
              DB 18,24,BL_LB,1,'Select Menu',0
+             DB 38,24,BL_LB,1,'Colors',0
 ;             DB 39,24,BL_LB,1,'Select Sub-Menu',0		
 			 DB 0xFF,0xFF			 
 
@@ -426,20 +438,72 @@ D_EMS_NoSeg   DW 256*14+30
 D_EMS_NoPSRAM DW 256*14+30
 ;             DB 20,3,DT_Any,'Can''t Add EMS: Memory Failure',0
 
-; Get the real attribute based on a color "Code"
- ; Input  : BL, "Color" needed
-; Output : Attribute
-GetAttribute:
+; INT 10h hook, installed only while the setup menu is open.
+; For "write char/attribute" (AH=09h), replace the attribute in BL with
+; the one of the active color profile. Other functions are not changed.
+PM_Int10h_Color:
+	CMP AH,09h
+	JNE .Chain
+	CMP byte CS:[Color_Bypass],0
+	JNE .Chain
 	PUSH BX
-	PUSH AX
-	MOV AL,BH
-	XOR BH,BH
-	SHL BX,1
-	ADD BX,[ColorOffset]
-	MOV BL,[BX]
-	MOV BH,AL
-	POP AX
+	PUSH CX
+	PUSH SI
+	MOV SI,Color_Source
+	MOV CX,Color_Src_Nb
+.Search:
+	CMP BL,CS:[SI]
+	JE .Found
+	INC SI
+	LOOP .Search
+	JMP .Call				; Not in the list: keep the attribute
+.Found:
+	SUB SI,Color_Source
+	ADD SI,CS:[ColorOffset]
+	MOV BL,CS:[SI]
+.Call:
+	POP SI
+	POP CX					; CX: Nb of chars for the BIOS
+	PUSHF
+	CALL FAR [CS:OldInt10h]
 	POP BX
+	IRET
+.Chain:
+	JMP FAR [CS:OldInt10h]
+
+; Select the color table of the profile in PMCFG_ColorPr
+Color_SetProfile:
+	PUSH BX
+	XOR BH,BH
+	MOV BL,CS:[PMCFG_ColorPr]
+	SHL BX,1
+	MOV BX,CS:[Color_Profiles+BX]
+	MOV CS:[ColorOffset],BX
+	POP BX
+	RET
+
+Color_HookInt10h:
+	PUSH ES
+	CALL Color_SetProfile
+	MOV byte CS:[Color_Bypass],0
+	MOV AX,10h
+	MOV DX,PM_Int10h_Color
+	MOV BX,OldInt10h
+	CALL BIOS_HookIRQ
+	POP ES
+	RET
+
+Color_UnhookInt10h:
+	PUSH ES
+	XOR AX,AX
+	MOV ES,AX
+	CLI
+	MOV AX,CS:[OldInt10h]
+	MOV ES:[10h*4],AX
+	MOV AX,CS:[OldInt10h+2]
+	MOV ES:[10h*4+2],AX
+	STI
+	POP ES
 	RET
 
 ; Start the BIOS Menu, then restore the video mode at the end
@@ -448,7 +512,7 @@ Do_BIOS_Menu:
 	BIOSPOST 0x30		; 30h Start the Menu
 
     MOV AL,[PMCFG_ColorPr]
-	CMP AL,4
+	CMP AL,Color_Prof_Nb
 	JB ColorProfileOk
 	MOV AL,0
     MOV byte [PMCFG_ColorPr],0
@@ -495,29 +559,29 @@ MODE_SET8025C:
 	
 MODE_8025M:
 ; Video mode is 80x25 Mono (MDA)
-	MOV byte [PMCFG_ColorPr],2	; Force MDA "Color" Profile
-	
+; Use the MDA profile, unless the user selected another one (Key C)
+	CMP byte [PMCFG_ColorPr],0
+	JNE MODE_8025C
+	MOV byte [PMCFG_ColorPr],Color_Prof_Mono
+
 MODE_8025C:
 ; Video mode is 80x25 color text or other (No profile change)
-
-;Set the Offset of the colors/Attribute table
-;	XOR AH,AH
-;	SHL AL,1
-;	MOV BX,AX
-;	MOV AX,[Color_Profiles+BX]
-;	MOV [ColorOffset],AX
 
 Skipnew:
 
     MOV byte CS:[Conf_Changed],0			; Config is not changed
 
+	CALL Color_HookInt10h	; Apply the color profile while in the menu
+
 	BIOSPOST 0x31
     CALL BIOS_PrintMainScreen
-	
-	BIOSPOST 0x32	
+
+	BIOSPOST 0x32
 	CALL Wait_Key_Menu
 
-; clear Screen / Restore Video Mode 
+	CALL Color_UnhookInt10h
+
+; clear Screen / Restore Video Mode
 
 	POP AX		; Restore Video Mode
 ;	MOV AL,3
@@ -529,6 +593,9 @@ Skipnew:
 
 ; BIOS Menu code
 BIOS_PrintMainScreen:
+    MOV byte [Menu_Current],0
+; Redraw the whole screen, keep the current menu
+BIOS_RedrawMainScreen:
     MOV SI,BIOS_MainScreen_TopBott
     CALL BIOS_PrintScreenBloc
 
@@ -545,7 +612,6 @@ BIOS_PrintMainScreen:
     CALL BIOS_PrintScreenBloc
     CALL BIOS_PrintScreenBloc
 
-    MOV byte [Menu_Current],0
 	CALL Display_Menu
 
 	RET ; BIOS_PrintMainScreen End
@@ -625,8 +691,28 @@ M_DoSubMenuAction:
 	
 M_TestKey3:
 
-; Add Here
+; C : Next color profile, then redraw the screen
+; (Works even if the screen can't be read: press C until it looks right)
+	OR AH,AH		; Not an extended key (F9 has the same code as 'C')
+	JNZ M_TestKeyEsc
+	CMP AL,'C'
+	JE M_CPressed
+	CMP AL,'c'
+	JNE M_TestKeyEsc
+M_CPressed:
+	MOV AL,[PMCFG_ColorPr]
+	INC AL
+	CMP AL,Color_Prof_Nb
+	JB M_CProfileOk
+	XOR AL,AL
+M_CProfileOk:
+	MOV [PMCFG_ColorPr],AL
+	MOV byte [Conf_Changed],1	; Config is changed
+	CALL Color_SetProfile
+	CALL BIOS_RedrawMainScreen
+	JMP Wait_Key_Menu
 
+M_TestKeyEsc:
 	CMP AL,KeyEsc
 	JNE TestKeyEnd
     RET  ; Quit
