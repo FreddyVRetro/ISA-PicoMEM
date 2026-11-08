@@ -260,6 +260,8 @@ OldIrq7h       DD 0
 OldInt9h       DD 0		 ; Previously saved Int9h Code
 OldInt13h      DD 0      ; Previously saved Int13h code, to be called if disk not emulated
 OldInt19h      DD 0      ; Previously saved Int19h code, to call if PM BOOT Strap disabled
+OldInt10h      DD 0      ; BIOS Int10h, saved while the setup menu is open (color profiles)
+Color_Bypass   DB 0      ; If not 0, the menu Int10h hook does not change the colors
 OldInt21h      DD 0      ; Previously saved Int21h, for DOS command debug
 OldInt2Fh      DD 0      ; Previously saved Int2Fh, for DOS command debug
 OLD_DPT0       DD 0
