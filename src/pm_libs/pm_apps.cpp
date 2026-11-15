@@ -13,15 +13,148 @@
 #include "pm_board.h"       // PicoMEM Board Definitions (GPIO, PSRAM...)
 #include "pm_pccmd.h"
 #include "pmdev.h"
+#include "pm_bluetooth.h"
+#include "pm_bluetooth_scan.h"
 
 #include "dev_dma.h"
 #include "dev_memory.h"
+
+//#include "BIOS.H"
 
 #define DISP_X 18
 
 #define PM_IOBASEPORT 0x2A0
 
 extern uint32_t PC_DB_Start;  // Start of the Shared disk buffer in the Host (PC) RAM
+
+static pm_bluetooth_device_t bluetooth_devices[PM_BLUETOOTH_MAX_DEVICES];
+static uint8_t bluetooth_device_count;
+
+static bool pm_bluetooth_type_is_specific(pm_bluetooth_device_type_t type)
+{
+  return type != PM_BLUETOOTH_DEVICE_UNKNOWN &&
+         type != PM_BLUETOOTH_DEVICE_HID;
+}
+
+void pm_bluetooth_record_device(const uint8_t address[6], const char *name, int8_t rssi)
+{
+  pm_bluetooth_record_device_info(address, name, rssi, 0, PM_BLUETOOTH_DEVICE_UNKNOWN,
+                                  0xffff, 0, 0);
+}
+
+void pm_bluetooth_record_device_info(const uint8_t address[6], const char *name, int8_t rssi,
+                                     uint8_t address_type, pm_bluetooth_device_type_t type,
+                                     uint16_t appearance, uint8_t hid_service,
+                                     uint8_t advertisement_length)
+{
+  uint8_t index;
+
+  for (index = 0; index < bluetooth_device_count; ++index) {
+    if (memcmp(bluetooth_devices[index].address, address, sizeof(bluetooth_devices[index].address)) == 0) {
+      break;
+    }
+  }
+
+  if (index == bluetooth_device_count) {
+    if (bluetooth_device_count == PM_BLUETOOTH_MAX_DEVICES) {
+      return;
+    }
+    bluetooth_devices[index].appearance = 0xffff;
+    bluetooth_devices[index].hid_service = 0;
+    ++bluetooth_device_count;
+  }
+
+  memcpy(bluetooth_devices[index].address, address, sizeof(bluetooth_devices[index].address));
+  if (name && strcmp(name, "Unknown") != 0) {
+    strncpy(bluetooth_devices[index].name, name, PM_BLUETOOTH_NAME_LEN - 1);
+    bluetooth_devices[index].name[PM_BLUETOOTH_NAME_LEN - 1] = '\0';
+  } else if (bluetooth_devices[index].name[0] == '\0') {
+    strcpy(bluetooth_devices[index].name, "Unknown");
+  }
+  bluetooth_devices[index].rssi = rssi;
+  bluetooth_devices[index].address_type = address_type;
+  if (appearance != 0xffff) {
+    bluetooth_devices[index].appearance = appearance;
+  }
+  bluetooth_devices[index].hid_service |= hid_service;
+  bluetooth_devices[index].advertisement_length = advertisement_length;
+  /*
+   * Appearance and service UUIDs are optional and are not necessarily
+   * repeated in every advertising packet. Keep the strongest classification
+   * observed instead of downgrading a known device on a sparse packet.
+   */
+  if (pm_bluetooth_type_is_specific(type) ||
+      !pm_bluetooth_type_is_specific(bluetooth_devices[index].type)) {
+    bluetooth_devices[index].type = type;
+  }
+}
+
+uint8_t pm_bluetooth_device_count(void)
+{
+  return bluetooth_device_count;
+}
+
+const pm_bluetooth_device_t *pm_bluetooth_get_device(uint8_t index)
+{
+  return index < bluetooth_device_count ? &bluetooth_devices[index] : NULL;
+}
+
+void pm_app_bluetooth()
+{
+  uint8_t y = 4;
+  uint8_t device_count = pm_bluetooth_device_count();
+
+  PC_Setpos(DISP_X, y++);
+  PC_printf("Bluetooth devices:");
+
+  pm_bluetooth_scan_start();
+  PC_Setpos(DISP_X, y++);
+  PC_printf("Status: %s", pm_bluetooth_mouse_status());
+  PC_Setpos(DISP_X, y++);
+  PC_printf("Mouse: %s  Keyboard: %s  Joypad: %s",
+            pm_bluetooth_slot_status(PM_BT_SLOT_MOUSE),
+            pm_bluetooth_slot_status(PM_BT_SLOT_KEYBOARD),
+            pm_bluetooth_slot_status(PM_BT_SLOT_JOYPAD));
+
+  if (!device_count) {
+    PC_Setpos(DISP_X, y);
+    PC_printf("No devices discovered");
+    return;
+  }
+
+  for (uint8_t index = 0; index < device_count; ++index) {
+    const pm_bluetooth_device_t *device = pm_bluetooth_get_device(index);
+    char appearance[5];
+    const char *type = device->type == PM_BLUETOOTH_DEVICE_MOUSE ? "Mouse" :
+               device->type == PM_BLUETOOTH_DEVICE_KEYBOARD ? "Keyboard" :
+               device->type == PM_BLUETOOTH_DEVICE_JOYPAD ? "Joypad" :
+               device->type == PM_BLUETOOTH_DEVICE_HEADPHONES ? "Headphones" :
+               device->type == PM_BLUETOOTH_DEVICE_SPEAKER ? "Speaker" :
+               device->type == PM_BLUETOOTH_DEVICE_PHONE ? "Phone" :
+               device->type == PM_BLUETOOTH_DEVICE_COMPUTER ? "Computer" :
+               device->type == PM_BLUETOOTH_DEVICE_WATCH ? "Watch" :
+               device->type == PM_BLUETOOTH_DEVICE_HEART_RATE ? "Heart rate" :
+               device->type == PM_BLUETOOTH_DEVICE_THERMOMETER ? "Thermometer" :
+               device->type == PM_BLUETOOTH_DEVICE_HID ? "HID" : "Unknown";
+
+    if (device->appearance == 0xffff) {
+      strcpy(appearance, "----");
+    } else {
+      snprintf(appearance, sizeof(appearance), "%04X", device->appearance);
+    }
+    PC_Setpos(DISP_X, y++);
+    PC_printf("%d. %s %s %ddBm A:%s H:%d L:%d T:%d",
+              index + 1,
+              device->name,
+              type,
+              device->rssi,
+              appearance,
+              device->hid_service,
+              device->advertisement_length,
+              device->address_type);
+    PM_INFO("%d. %s %s %ddBm", index + 1, device->name, type, device->rssi);
+  }
+}
 
 void PM_RAM_to_file(uint32_t addr, uint32_t sectors, char *filename)
 {
@@ -60,6 +193,42 @@ void PM_RAM_to_file(uint32_t addr, uint32_t sectors, char *filename)
     PM_PICO_EnablePSRAM();   // Re enable the PSRAM for the Memory emulation
 }
 
+void pm_app_diskinfo()
+{
+/*
+    struct diskinfo {
+        uint8_t char drive;      // Drive number (0=A, 1=B, etc.)
+        uint8_t type;            // Drive type (0=unknown, 1=floppy, 2=hard disk)
+        uint8_t short spt;       // Sectors per track
+        uint8_t short heads;     // Number of heads
+        uint8_t long cylinders;  // Number of cylinders
+        uint8_t long total_sectors;
+    } di; 
+
+    _ibm_diskinfo_t disk;
+    
+    disk.drive = 0x80;  // First hard disk
+    if (_bios_disk(_DISK_STATUS, &disk) != 0) {
+        PC_printf("Disk not ready\n");
+        return;
+    }
+
+  reg_dl = (uint8_t)disk.drive;
+  reg_ah = 0x8h;  // Get drive parameters
+  reg_esl = 0;
+  reg_esh = 0;
+  PC_Int13();
+  if (reg_ah != 0) {
+      PC_printf("Error getting drive parameters: %02X\n", reg_ah);
+      return;
+  
+  
+
+  }
+
+  */
+}
+
 void pm_apps_biosmenu(uint8_t menu,uint8_t sub)
 {
   uint8_t X,Y;
@@ -69,6 +238,9 @@ void pm_apps_biosmenu(uint8_t menu,uint8_t sub)
   FRESULT fr; /* Return value */
   FIL f;  
   uint bw;    // Nb of Bytes Written
+
+  // Set text attribute to Black on Grey
+  PC_SetTextAttr(0x70);
 
     switch(PM_CmdDataL)
     {
@@ -147,7 +319,7 @@ void pm_apps_biosmenu(uint8_t menu,uint8_t sub)
            }
          if (PM_Config->UseRTC) {
             PC_Setpos(DISP_X,Y++);
-            PC_printf("RTC         >  Port: 2C0-2C7\n");
+            PC_printf("RTC         >  Port: 2C0-2D4\n");
            }
           if (PM_Config->ne2000Port) {
             PC_Setpos(DISP_X,Y++);
@@ -176,9 +348,13 @@ void pm_apps_biosmenu(uint8_t menu,uint8_t sub)
          break;
 
    case 3 :  // Memory speed test Command
-
-         float test_speed;
          uint32_t test_begin, test_elapsed;
+
+         PC_Setpos(DISP_X,4);
+         PC_printf("Not Implemented Yet");
+   /*
+         float test_speed;
+
          uint16_t PC_RamSize;
          PC_RamSize = PC_MEM+PC_MEM_H*256;
 
@@ -192,8 +368,8 @@ void pm_apps_biosmenu(uint8_t menu,uint8_t sub)
          test_speed = 1000000.0 * 4* 1024.0 / test_elapsed;
          PC_Setpos(DISP_X,Y++);
          PC_printf("PC RAM R/W Speed  : %d KB/s", (uint16_t)test_speed);
+*/
          break;
-
     case 2 :  // PC ROM DUMP         
 
           test_begin = time_us_32();
@@ -234,6 +410,25 @@ void pm_apps_biosmenu(uint8_t menu,uint8_t sub)
          PC_printf("> Completed");
 
          break;
+    case 4: // Disk info/Copy app
+          pm_app_diskinfo();
+         break;
+    case 5: // Bluetooth devices pairing
+         pm_app_bluetooth();
+         break;
+        case 6:
+        case 7:
+        case 8:
+        case 9:
+        case 10:
+        case 11:
+        case 12:
+        case 13: // Bluetooth device selection: cached index 0 through 7
+          if (!pm_bluetooth_connect_device(PM_CmdDataL - 6)) {
+         PM_INFO("[BT] Invalid Bluetooth device selection %d\n", PM_CmdDataL - 6);
+          }
+          pm_app_bluetooth();
+          break;
     }  // Sub Menu nb
 
 }

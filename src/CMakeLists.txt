@@ -26,17 +26,9 @@ cmake_minimum_required(VERSION 3.13)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
-# FINAL /RELEASE Firmware settings PicoMEM 1.5:
-#    set(PICO_BOARD pico_w CACHE STRING "Board type")
-#    set(STDIO_UART 1)
-#    PM_ENABLE_STDIO=0
-#    PM_PRINTF=0
-#    USE_AUDIO_I2S=1
-#    DO_FAST_RAM=0
-#    USE_SPI_PSRAM=1
-#    USE_SPI_PSRAM_DMA=1
-
 # Declare the Pi Pico Board used
+# Use the Pimoroni Pico Plus 2 RP2350 board for PicoMEM > 1.14 and WonderMCA
+# Use pico_w otheryise
 
 set(PICO_BOARD pimoroni_pico_plus2_rp2350 CACHE STRING "Board type")
 #set(PICO_BOARD pico_w CACHE STRING "Board type")
@@ -48,14 +40,15 @@ set(PICO_BOARD pimoroni_pico_plus2_rp2350 CACHE STRING "Board type")
 #set(PICOMEM_BOARD "PICOMEM_13")
 #set(PICOMEM_BOARD "PICOMEM_15")
 set(PICOMEM_BOARD "PICOMEM_20")
+#set(PICOMEM_BOARD "PICOMEM_JR")  # PicoMEM 2 in PC JR Mode
 #set(PICOMEM_BOARD "WONDERMCA_10")
 
 # ** UART (Debug) and USB Host definition **
  set(STDIO_UART 0)   # REL
  set(ASYNC_UART 0)
  set(USB_UART 0)
- set(DO_USBHOST 1)
 
+ set(DO_USBHOST 1)
  set(FAST_RAM 0)   # 1 to enable the Fast RAM Mode (No PSRAM based memory)
 
 #set(CMAKE_BUILD_TYPE "Debug")
@@ -68,11 +61,19 @@ include(pico_sdk_import.cmake)
 
 project(picomem C CXX ASM)
 
+
 # Tell the Pico SDK to use our local tinyusb instead of the one included in the SDK
 set(PICO_TINYUSB_PATH ${CMAKE_CURRENT_LIST_DIR}/lib/tinyusb)
 
-if (PICOMEM_BOARD STREQUAL "PICOMEM_20")
+if (PICOMEM_BOARD STREQUAL "PICOMEM_20" OR PICOMEM_BOARD STREQUAL "PICOMEM_JR")
  set(PICO_FLASH_SIZE_BYTES 16777216)  # 16Mb PicoMEM2
+ set(PICO_CYW43_SUPPORTED "1")
+ pico_register_common_scope_var(PICO_CYW43_SUPPORTED)
+endif()
+
+# WonderMCA RM2 (CYW43439) WiFi: enable cyw43 support BEFORE pico_sdk_init()
+# so the SDK creates the pico_cyw43_arch_* targets we link into picomem.
+if (PICOMEM_BOARD STREQUAL "WONDERMCA_10")
  set(PICO_CYW43_SUPPORTED "1")
  pico_register_common_scope_var(PICO_CYW43_SUPPORTED)
 endif()
@@ -83,27 +84,30 @@ pico_sdk_init()
 ####### Add the Sub directories containing libraries  ########
 
 add_subdirectory(lib/FatFs_SPI)
-add_subdirectory(rom)                       # PicoMEM BIOS binary
+# Canonical PicoMEM BIOS images (pmbios.bin / pm2bios.bin) -- built for
+# every board variant. The wmbios.bin (+ pmbios_image.h regeneration)
+# build lives in the WonderMCA submodule and is loaded only for the
+# WONDERMCA_10 board (see the conditional add_subdirectory below).
+add_subdirectory(rom)
 add_subdirectory(isa_devices)               # all ISA devices IO and MEM code
 add_subdirectory(audio_devices)
 add_subdirectory(audio_devices/opl)
 add_subdirectory(lib/pm_audio/pm_audio_i2s)
 add_subdirectory(lib/my_etherdfs)
+add_subdirectory(bios_wrappers)
 add_subdirectory(pm_libs)
 add_subdirectory(pm_boards)
 add_subdirectory(lib/picoOled)
-#add_subdirectory(isa_devices/cdrom)
+add_subdirectory(isa_devices/cdrom)         # CD-ROM core (86Box data layer + image manager)
 add_subdirectory(lib/rp2040-psram)          # RP2040 PSRAM with DMA
 
-if (PICO_BOARD STREQUAL "pimoroni_pico_plus2_rp2350")
-    add_subdirectory(lib/pico_psram)        # RP2350 PSRAM
+if (PICO_BOARD STREQUAL "pimoroni_pico_plus2_rp2350" OR PICOMEM_BOARD STREQUAL "WONDERMCA_10")
+    add_subdirectory(lib/pico_psram)        # RP2350 PSRAM (QMI/QSPI). INTERFACE lib:
+                                            # psram.cpp compiles in the consumer target,
+                                            # so it inherits BOARD_WM10 -> RP2350_PSRAM_CS=0.
 endif()
 
-if (PICOMEM_BOARD STREQUAL "WONDERMCA_10")
-    add_subdirectory(wondermca)            # WonderMCA MCA bus and devices
-endif()
-
-if (PICOMEM_BOARD STREQUAL "PICOMEM_20" OR PICO_BOARD STREQUAL "pico_w")
+if (PICOMEM_BOARD STREQUAL "PICOMEM_20" OR PICOMEM_BOARD STREQUAL "PICOMEM_JR" OR PICO_BOARD STREQUAL "pico_w" OR PICOMEM_BOARD STREQUAL "WONDERMCA_10")
     add_subdirectory(ne2000)               # Add Wifi/ne2000 for pico_w
 endif()
 if (DO_USBHOST)
@@ -115,11 +119,10 @@ if (ASYNC_UART)
 endif()
 
 # Add executable. Default name is the project name, version 0.1
-add_executable(picomem 
+add_executable(picomem
                picomem.cpp
                pm_cmd.cpp
-               pm_libs/pico_rtc.cpp                
-               dosbox/bios_disk.cpp
+               pm_libs/pico_rtc.cpp
 #               RTElib/rtedbg.c
                )
 
@@ -133,6 +136,13 @@ target_include_directories(picomem
 
 set(CMAKE_EXE_LINKER_FLAGS "-Wl,--print-memory-usage")
 target_compile_options(picomem PRIVATE -save-temps -fverbose-asm -O3) #fast -fmodulo-sched -fmodulo-sched-allow-regmoves) 
+
+# TEMP (cyw43 gSPI diagnostics): force the per-step cyw43 debug prints on.
+# Must go via compile_options -- function-like macros are dropped by
+# add_compile_definitions. Remove once WiFi bring-up is confirmed.
+if (PICOMEM_BOARD STREQUAL "WONDERMCA_10")
+    target_compile_options(picomem PRIVATE "-DCYW43_DEBUG(...)=printf(__VA_ARGS__)")
+endif()
 
 if (PICOMEM_BOARD STREQUAL "PICOMEM")
       add_compile_definitions(
@@ -196,10 +206,10 @@ if (PICOMEM_BOARD STREQUAL "PICOMEM_15")
         USE_MPU=0
         USE_CDROM=0
         USE_CD_AUDIO_FIFO=0
+        USE_CD_AUDIO=0
       )
 elseif (PICOMEM_BOARD STREQUAL "PICOMEM_20")
-      set(USE_FRONTPANEL 1)
-# PicoMEM 2.0 + Parameters
+      set(USE_FRONTPANEL 1)  # PicoMEM 2.0 + Parameters
       add_compile_definitions(
         BOARD_PM20=1
         MUX_V2=1
@@ -209,6 +219,8 @@ elseif (PICOMEM_BOARD STREQUAL "PICOMEM_20")
 #        PM_SYS_CLK=280    # Possible values : 130,133,160,170,...,240,260,270,280
         CYW43_PIO_CLOCK_DIV_INT=6  # For the Wifi Chip PIO clock : 2 for 133MHz
 
+        CORE0_WATCHDOG=1        # Watchdog debugger to display the crash location
+
         MAX_PMRAM=16            # Maximum Nb of 16Kb RAM for the Pico emulated RAM (Reduce to allow all, for test) (8 for 128Kb maximum)
 
         USE_SDIO=0              # To remove SDIO form the SD Code (Save space and RAM)
@@ -217,6 +229,7 @@ elseif (PICOMEM_BOARD STREQUAL "PICOMEM_20")
         USE_SPI_PSRAM_DMA=0     # PicoMEM 15 Does not have SPI PSRAM
         PSRAM_HEAP=1            # Enable the PSRAM HEAP
 
+#Audio Defines        
         USE_AUDIO_I2S=1
         I2S_CLK_INVERT=1                  # Invert the I2S Clock signals
         PICO_AUDIO_I2S_DATA_PIN=15        #DIN
@@ -225,7 +238,10 @@ elseif (PICOMEM_BOARD STREQUAL "PICOMEM_20")
         PICO_AUDIO_I2S_SM=3
         PICO_AUDIO_I2S_DMA_IRQ=1
 
-# Wifi / CYW43
+# Network Defines
+        USE_NE2000=1
+
+# Wifi / CYW43 Defines
         CYW43_DEFAULT_PIN_WL_REG_ON=4
         CYW43_DEFAULT_PIN_WL_DATA_OUT=5
         CYW43_DEFAULT_PIN_WL_DATA_IN=5
@@ -245,9 +261,11 @@ elseif (PICOMEM_BOARD STREQUAL "PICOMEM_20")
 
         PICO_STDIO_USB_CONNECT_WAIT_TIMEOUT_MS=5000000
 
-        USE_DEV_IRQ=0       # IRQ Debug display
+        USE_DEV_IRQ=0       # IRQ Debug display (out to Port 21h)
         DBG_PIN_AUDIO=0
-        ENABLE_CDROM_LOG=0  # Comment to disable CD LOG
+        ENABLE_CDROM_LOG=1  # Comment to disable CD LOG
+        PGDEBUG_CDROM_IMAGE=1
+        PGDEBUG_CDROM_BACKEND=1
 
         ONBOARD_RTC=1
         USE_OLED=1          # Detect and Use OLED (PicoMEM 1.5/2 only)
@@ -256,22 +274,25 @@ elseif (PICOMEM_BOARD STREQUAL "PICOMEM_20")
         USE_SBDSP=1
         USE_GUS=1
         USE_MPU=1
-        SF2_GMGSx=1        # 1 to use the GMGSx sound font
-        USE_CDROM=0
-        USE_CD_AUDIO_FIFO=0
+        SF2_GMGSx=1         # 1 to use the GMGSx sound font
+        USE_CDROM=1
+        USE_CD_AUDIO_FIFO=1
+        USE_CD_AUDIO=1
+        USE_DISK_CACHE=0   # Disk cache to the PSRAM (Does not work for the moment, PSRAM not reliable)
       )
-elseif (PICOMEM_BOARD STREQUAL "WONDERMCA_10")
-      set(USE_FRONTPANEL 0)
-# PicoMEM 2.0 + Parameters
+elseif (PICOMEM_BOARD STREQUAL "PICOMEM_JR")
+      set(USE_FRONTPANEL 1)  # PicoMEM 2.0 + Parameters
       add_compile_definitions(
-
-        BOARD_WM10=1
-
-        PM_ENABLE_STDIO=1     # Enable the Serial Display to the defined serial device (ASYNC_UART)
-        PM_PRINTF=1           # 1 To enable the Debug Printf
+        BOARD_PM20=1
+        BOARD_PMJR=1   # PCJR is a PicoMEM 2 variant
+        MUX_V2=1
 
 # Pico Main frequency (280, 340 or 360)
-        PM_SYS_CLK=320    # Temporary: 280 to bypass QMI flash timing code for debug
+        PM_SYS_CLK=360    # Possible values : 130,133,160,170,...,240,260,270,280
+#        PM_SYS_CLK=280    # Possible values : 130,133,160,170,...,240,260,270,280
+        CYW43_PIO_CLOCK_DIV_INT=6  # For the Wifi Chip PIO clock : 2 for 133MHz
+
+        CORE0_WATCHDOG=1        # Watchdog debugger to display the crash location
 
         MAX_PMRAM=16            # Maximum Nb of 16Kb RAM for the Pico emulated RAM (Reduce to allow all, for test) (8 for 128Kb maximum)
 
@@ -281,6 +302,7 @@ elseif (PICOMEM_BOARD STREQUAL "WONDERMCA_10")
         USE_SPI_PSRAM_DMA=0     # PicoMEM 15 Does not have SPI PSRAM
         PSRAM_HEAP=1            # Enable the PSRAM HEAP
 
+#Audio Defines        
         USE_AUDIO_I2S=1
         I2S_CLK_INVERT=1                  # Invert the I2S Clock signals
         PICO_AUDIO_I2S_DATA_PIN=15        #DIN
@@ -289,25 +311,157 @@ elseif (PICOMEM_BOARD STREQUAL "WONDERMCA_10")
         PICO_AUDIO_I2S_SM=3
         PICO_AUDIO_I2S_DMA_IRQ=1
 
+# Network Defines
+        USE_NE2000=1
+
+# Wifi / CYW43 Defines
+        CYW43_DEFAULT_PIN_WL_REG_ON=4
+        CYW43_DEFAULT_PIN_WL_DATA_OUT=5
+        CYW43_DEFAULT_PIN_WL_DATA_IN=5
+        CYW43_DEFAULT_PIN_WL_HOST_WAKE=5
+        CYW43_DEFAULT_PIN_WL_CLOCK=7
+        CYW43_DEFAULT_PIN_WL_CS=6
+
+        CYW43_PIN_WL_DYNAMIC=0
+        CYW43_LOGIC_DEBUG=0
+
 # ! ASYNC UART values defined in picomem.cpp        
         PICO_DEFAULT_UART=0
-        PICO_DEFAULT_UART_TX_PIN=44       # 44/45
-        PICO_DEFAULT_UART_RX_PIN=45
+#        PICO_DEFAULT_UART_TX_PIN=46       # 46/47 For PicoMEM 2.0.0 (Bug)
+#        PICO_DEFAULT_UART_RX_PIN=47
+        PICO_DEFAULT_UART_TX_PIN=12        # 12/13 For PicoMEM 2.0.1
+        PICO_DEFAULT_UART_RX_PIN=13
 
         PICO_STDIO_USB_CONNECT_WAIT_TIMEOUT_MS=5000000
 
-        USE_DEV_IRQ=0       # IRQ Debug display
-        DBG_PIN_AUDIO=0
-        ENABLE_CDROM_LOG=0  # Comment to disable CD LOG
-
+        ONBOARD_RTC=1
+        USE_OLED=1          # Detect and Use OLED (PicoMEM 1.5/2 only)
         USE_HWIRQ=1         # for the PicoMEM 1.5, use the extra interrupt lines
         USE_HWDMA=1
         USE_SBDSP=1
         USE_GUS=1
         USE_MPU=0
-        USE_CDROM=0
+        SF2_GMGSx=1         # 1 to use the GMGSx sound font
+        
+        USE_CDROM=1
         USE_CD_AUDIO_FIFO=0
+        USE_CD_AUDIO=1
+        USE_DEV_IRQ=0       # IRQ Debug display
+        DBG_PIN_AUDIO=0
+        ENABLE_CDROM_LOG=0  # Comment to disable CD LOG
+
+        USE_DISK_CACHE=0   # Disk cache to the PSRAM (Does not work for the moment, PSRAM not reliable)
       )      
+elseif (PICOMEM_BOARD STREQUAL "WONDERMCA_10")
+      set(USE_FRONTPANEL 0)
+# PicoMEM 2.0 + Parameters
+      add_compile_definitions(
+
+        BOARD_WM10=1
+        PICO_PIO_USE_GPIO_BASE=1    # RP2350B: PIO needs gpio_base for GPIO 32-47
+
+        BUS_8BIT=1                 # Firmware  8Bits data bus, CFG Switch 02 OFF
+        #BUS_16BIT=1                 # Firmware 16Bits data bus, CFG Switch 02 ON
+
+        SB_TC_INSTR=1               # DIAG: bound the iow_handler_done /CMD-HIGH spin + count timeouts (post-TC hang detector). Surfaced in [wm_dma] trace as spin_to=. Remove once the SBDIAG hang is fixed.
+
+        PM_ENABLE_STDIO=1           # Enable the Serial Display to the defined serial device
+        #PM_PRINTF=1                # Define below in the PROJECT_TYPE 1 To enable the Debug Printf
+
+# Pico Main frequency (280, 340 or 360)
+        PM_SYS_CLK=280              # Stable on 8557; pcctest passes 100% at this rate.
+
+        MAX_PMRAM=16                # Maximum Nb of 16Kb RAM for the Pico emulated RAM (Reduce to allow all, for test) (8 for 128Kb maximum)
+        USE_SDIO=0                  # To remove SDIO form the SD Code (Save space and RAM)
+        
+        
+        USE_SPI_PSRAM=0             # PicoMEM 15 Does not have SPI PSRAM
+        USE_SPI_PSRAM_DMA=0         # PicoMEM 15 Does not have SPI PSRAM
+        PSRAM_HEAP=1                # Enable the PSRAM HEAP
+        
+        USE_AUDIO=1                 # Enable AUDIO
+        USE_AUDIO_I2S=1             # Enable I2S Audio
+        I2S_CLK_INVERT=1            # Invert the I2S Clock signals
+        # WonderMCA 1.0 I2S pin assignment (verified working -- OPL2 self-test audible):
+        
+        
+        
+        
+        PICO_AUDIO_I2S_DATA_PIN=8           #   GPIO 8  = DIN  (data)     -> PCM5102 pin 14
+        PICO_AUDIO_I2S_CLOCK_PIN_BASE=9     #   GPIO 9  = BCK  (bit clk)  -> PCM5102 pin 13
+        PICO_AUDIO_I2S_PIO=1                #   GPIO 10 = LRCK (word clk) -> PCM5102 pin 15  (= CLOCK_PIN_BASE + 1)
+        PICO_AUDIO_I2S_SM=3
+        PICO_AUDIO_I2S_DMA_IRQ=1
+
+# ! ASYNC UART values defined in picomem.cpp        
+        PICO_DEFAULT_UART=0
+        PICO_DEFAULT_UART_TX_PIN=44         # GPIO44 = UART0 TX (TX-only console)
+        PICO_DEFAULT_UART_RX_PIN=45         # NOTE: GPIO45 is also /CD-SETUP (POS gate).
+                                            # The SDK requires a real UART0-RX-capable pin
+                                            # here and there's no spare one, so it stays 45.
+                                            # The conflict is mitigated in firmware: stdio is
+                                            # init'd ONCE (before the Core1 launch), Core1 then
+                                            # reclaims GPIO45 as SIO/CD-SETUP (wm_mca..h:234),
+                                            # and we do NOT re-run stdio_init_all() after the
+                                            # launch (picomem.cpp). Do not add a post-launch
+                                            # stdio_init_all() on WM10 -- it re-grabs GPIO45.
+
+        PICO_STDIO_USB_CONNECT_WAIT_TIMEOUT_MS=5000000
+
+        USE_DEV_IRQ=0                       # IRQ Debug display
+        DBG_PIN_AUDIO=0
+        ENABLE_CDROM_LOG=0                  # Comment to disable CD LOG
+
+        USE_HWIRQ=1                         # for the PicoMEM 1.5, use the extra interrupt lines
+        USE_HWDMA=0                         # ISA-style PIO HWDMA path is not used on MCA;
+                                            # MCA slave DMA goes through wm_dma instead.
+        
+        USE_SBDSP=1                         # SB DSP emulation enabled (MCA slave DMA via wm_dma)
+        USE_GUS=1                           # GUS: 3X0 window via CPLD blk_320 (rev 77); DMA via wm_dma (WIP)
+        USE_SERMOUSE=1                      # Serial mouse (COM2 0x2F8/IRQ3 via CPLD blk_2F8 rev 78) -- Win+DOS mouse
+        USE_MPU=0
+        USE_CDROM=1                         # MKE CD-ROM at 0x250 (CPLD blk_250, rev 80); images in 0:/CDROM
+        USE_CD_AUDIO_FIFO=0                 # PicoGUS FIFO path off (volctrl/audio_fifo layout differs)
+        USE_CD_AUDIO=1                      # CD-DA via cdrom_audio_callback_simple pulled from pm_audio_domix
+
+        USE_NE2000=1
+        USE_NE2000_W5500=1                  # Enable W5500 Module
+        USE_NE2000_CYW43=1                  # Enable CYW43 WiFi (WonderMCA); gates the WiFi boot-time init
+        USE_NE2000_CDCECM=1                 # USB Ethernet (CDC-ECM) host driver -> NE2000 backend
+                                            # (WonderMCA/src/wm_devices/usbeth; registered in oldxinput.c)
+        USE_NE2000_ASIX=1                   # USB Ethernet ASIX AX88772/A/B vendor driver -> same backend
+        USE_NE2000_RTL8150=1                # USB Ethernet Realtek RTL8150 vendor driver -> same backend
+                                            # (RTL8152/8153 use their CDC-ECM config via usbeth_ecm.c)
+        
+        CYW43_DEFAULT_PIN_WL_REG_ON=13
+        CYW43_DEFAULT_PIN_WL_DATA_OUT=14
+        CYW43_DEFAULT_PIN_WL_DATA_IN=14
+        CYW43_DEFAULT_PIN_WL_HOST_WAKE=14
+        CYW43_DEFAULT_PIN_WL_CLOCK=15
+        CYW43_DEFAULT_PIN_WL_CS=11
+        CYW43_PIO_CLOCK_DIV_INT=6           # Match PM20 gSPI rate (~23 MHz PIO clock).
+
+        CYW43_SPI_PROGRAM_NAME=spi_gap0_sample1
+      )
+
+      # WonderMCA subdirectories -- pulled in only when targeting WM10 so
+      # PicoMEM 1.x / 2.0 builds never depend on the WonderMCA submodule.
+      add_subdirectory(wondermca)            # WonderMCA MCA bus and devices
+      
+      # WonderMCA-specific wmbios build (regenerates pmbios_image.h that
+      # wm_mca_rp2350_v10.h embeds and the WM10 bus handler serves).
+      # Binary-dir alias "wmbios" keeps the build path stable.
+      add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../WonderMCA/wmbios wmbios)
+
+      # wm_mca_rp2350_v10.h includes pmbios_image.h, which is generated by
+      # the WonderMCA-side wmbios custom target. Force wmbios to run before
+      # any picomem.cpp compile. Non-WM10 builds never load the wmbios
+      # subdirectory, so this edge only exists when we're here.
+      add_dependencies(picomem wmbios)
+
+      # CMake-time selector consumed by src/ne2000/CMakeLists.txt and
+      # src/wondermca/CMakeLists.txt to pick the right backend TU.
+      set(USE_NE2000_W5500 1)
 else()  # PicoMEM Boards < 1.5
       set(USE_FRONTPANEL 0)
  
@@ -361,17 +515,12 @@ if (PROJECT_TYPE STREQUAL "TEST")
 
     target_compile_definitions(picomem PRIVATE
   
-    BOARD_PICOMEM=1        # Declare it is a PicoMEMP Board
-
-# - Define the BIOS default base address
-# Don't use C000 Segment (0xC0000u) if the PC is configured to use an external video BIOS
-# To Configure the ROM, Be carefull that the XTIDE ROM is 32Kb, even if only 16Kb is used
-    ROM_BIOS=0x0D0000u      # @ of the PM BIOS           12Kb
+    BOARD_PICOMEM=1        # Declare it is a PicoMEM Board
 
     USE_RTC=1
 
-    USE_SDCARD=1            # 1 To enable SD Support   
-    SD_CRC_ENABLED=0        # Disable CRC checking for SPI-attached cards.
+    USE_SDCARD=1            # 1 To enable SD Support
+    SD_CRC_ENABLED=0        # CRC off for speed. Real fix for the SD corruption was HW (short W5500 ribbon + WiFi power-down); CRC was the debug safety net. Set to 1 to make SPI transfer errors fail+retry (visible) instead of silent if SI ever regresses.
 
 # - Defines for the rp2040 psram library (ian scott)
     PSRAM_ASYNC=1
@@ -384,16 +533,13 @@ if (PROJECT_TYPE STREQUAL "TEST")
 # - Audio Defines -
     USE_AUDIO=1
  
-# - Adlib defs  
-    USE_EMU8950_OPL=1
+# - Adlib/EMU8950 defs
     EMU8950_ASM=1
-    EMU8950_NO_TLL=1               # Free 128Kb of RAM, but maybe slower
-#    EMU8950_NO_WAVE_TABLE_MAP=1   # Free 8Kb ?
-#    EMU8950_LINEAR=1
-#    EMU8950_NO_PERCUSSION_MODE=1
-    EMU8950_NO_TEST_FLAG=1
-    USE_ALARM=1                    # pic.c used for audio interrupts.
-# To compile with EMU8950_LINEAR, Needed to comment this in OPL Code (2 Times) if (hack_ch == 0 && s == 12)
+    EMU8950_TLL_FLASH=1 # pre-computed TLL table stored in flash via .flashdata section (not copied to RAM)
+    EMU8950_NO_FLOAT=1  # RP2040 has no FPU; float only used in TLL init anyway
+    EMU8950_NO_TIMER=1  # disable timer which isn't used
+    EMU8950_NO_TEST_FLAG=1 # disable test flags (which aren't used)
+    USE_ALARM=1         # pic.c used for audio interrupts.
 
 # Debug variables (Debug)
     PM_ENABLE_STDIO=0     # Enable the Serial Display to the defined serial device (ASYNC_UART)
@@ -414,13 +560,6 @@ if (PROJECT_TYPE STREQUAL "TEST")
     TEST_DFS=0    
     TEST_OTHER=0            # Other various test added temporarily
     )
-   
-
-
-#    pico_enable_stdio_uart(picomem 0)
-#    pico_enable_stdio_semihosting(picomem 0)
-#    pico_enable_stdio_usb(picomem 0)
-#    pico_enable_stdio_uart(picomem 1)
 
 endif()  #(PROJECT_TYPE STREQUAL "TEST")
 
@@ -432,9 +571,9 @@ if( PICO_BOARD STREQUAL "pico_w")
         )
 endif()        
 
-if( PICO_BOARD STREQUAL "pico_w" OR PICOMEM_BOARD STREQUAL "PICOMEM_20")
+if( PICO_BOARD STREQUAL "pico_w" OR PICOMEM_BOARD STREQUAL "PICOMEM_20" OR PICOMEM_BOARD STREQUAL "PICOMEM_JR")
         add_compile_definitions( 
-            PM_WIFI=1 
+            PM_WIFI=1
 # - NETWORK Defines -
             USE_NE2000=1
 
@@ -461,7 +600,7 @@ if (DO_USBHOST)
             USE_USBHOST=0 
         )        
         )        
-    endif()
+endif()
 
 if (FAST_RAM)
         add_compile_definitions( 
@@ -472,7 +611,7 @@ if (FAST_RAM)
             DO_FAST_RAM=0 
         )        
         )        
-    endif()    
+endif()    
 
 # If ASYNC_UART is set to 1 : STDIO use ASYNC_UART Library, otherwise use USB Serial emulation
 if(ASYNC_UART)
@@ -482,23 +621,38 @@ if(ASYNC_UART)
     else()
         add_compile_definitions(
          ASYNC_UART=0
-         )     
-        if(STDIO_UART)
-          pico_enable_stdio_uart(picomem 1)
-        endif()
-    endif()
+         )
+endif()
+
+if(STDIO_UART)
+   pico_enable_stdio_uart(picomem 1)
+endif()
 
 if(USB_UART)
         add_compile_definitions(
-         USB_UART=1        
+         USB_UART=1
          )
-        pico_enable_stdio_usb(picomem 1)         
+        pico_enable_stdio_usb(picomem 1)
     else()
         add_compile_definitions(
-         USB_UART=0       
+         USB_UART=0
          )
         pico_enable_stdio_usb(picomem 0)
-    endif()   
+endif()
+
+# stdio behavior:
+# Default Pico SDK printf() can block the caller indefinitely if the
+# USB-CDC TX FIFO is full and the host terminal isn't draining bytes.
+# On WonderMCA Core 0 that blocks the FIFO-poll loop and stalls every
+# CMD coming from PMBIOS.  We previously dropped chars by setting
+# PICO_STDIO_DEADLOCK_TIMEOUT_MS=0 -- but that loses log output, which
+# we now need back so we can see the CMDs leading up to the failure.
+# Use 100ms timeout: blocks briefly to let stdio catch up, but won't
+# wait forever on a disconnected terminal.
+add_compile_definitions(
+    PICO_STDIO_DEADLOCK_TIMEOUT_MS=100
+    PICO_STDIO_DEFAULT_CRLF=0
+)
 
 pico_set_program_name(picomem "picomem")
 pico_set_program_version(picomem "0.5")
@@ -510,7 +664,7 @@ pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/isa_iomem_m2.pio)    
 if (PICOMEM_BOARD STREQUAL "PICOMEM_15")
 pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/isa_iomem_m2_v15.pio)    # PicoMEM 1.5 With Multiplexer V2
 endif()
-if (PICOMEM_BOARD STREQUAL "PICOMEM_20")
+if (PICOMEM_BOARD STREQUAL "PICOMEM_20" OR PICOMEM_BOARD STREQUAL "PICOMEM_JR")
 pico_generate_pio_header(picomem ${CMAKE_CURRENT_LIST_DIR}/isa_iomem_m2_v15.pio)    # PicoMEM 1.5 With Multiplexer V2
 endif()
 if (PICOMEM_BOARD STREQUAL "WONDERMCA_10")
@@ -545,18 +699,17 @@ target_link_libraries( picomem
     pm_boards
     pm_libs    
     isa_devices
+    bios_wrappers
     qwiic
 
     # ** Audio libs    
     pm_audio_i2s
     audio_devices
-    opl  
+    opl_dbopl
 
-    # ** CD-ROM lib
-#    cdrom
-
-    # ** etherdfs server
-    pm_etherdfs
+    # ** CD-ROM lib (every source is #if USE_CDROM guarded -- empty for
+    # boards built with USE_CDROM=0)
+    cdrom
 
 ) 
  
@@ -570,13 +723,15 @@ endif()
 
 if (PICOMEM_BOARD STREQUAL "WONDERMCA_10")
     target_link_libraries( picomem
-       wondermca
+       wondermca ne2000 pico_psram pico_cyw43_arch_none
 )
 endif()
 
-if (PICOMEM_BOARD STREQUAL "PICOMEM_20")
+if (PICOMEM_BOARD STREQUAL "PICOMEM_20" OR PICOMEM_BOARD STREQUAL "PICOMEM_JR")
     target_link_libraries( picomem
-       ne2000
+    ne2000
+    pico_btstack_cyw43
+    pico_btstack_ble
 )
 endif()
 
@@ -586,9 +741,15 @@ if( PICO_BOARD STREQUAL "pico_w")
 )
 endif()
 
-if (PICOMEM_BOARD STREQUAL "PICOMEM_15" OR PICOMEM_BOARD STREQUAL "PICOMEM_20" OR PICOMEM_BOARD STREQUAL "WONDERMCA_10")
+if (PICOMEM_BOARD STREQUAL "PICOMEM_15" OR PICOMEM_BOARD STREQUAL "PICOMEM_20" OR PICOMEM_BOARD STREQUAL "PICOMEM_JR")
     target_link_libraries( picomem
        pm2bios
+       picoOled
+    )
+elseif (PICOMEM_BOARD STREQUAL "WONDERMCA_10")
+    # WM10 uses original pmbios + picoOled (screenpad)
+    target_link_libraries( picomem
+       pmbios
        picoOled
     )
 else()

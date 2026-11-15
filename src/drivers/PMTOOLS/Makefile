@@ -5,8 +5,11 @@ CC = wcc
 CFLAGS = -za99 -0 -s -d2
 LD = wlink
 
+# 'system dos' is mandatory: without it wlink falls back to the WLSYSTEM
+# default (win16 on a modern Open Watcom install) and silently produces an
+# NE binary that DOS refuses with "This is a Windows 16-bit executable".
 $(bin): $(obj)
-	$(LD) name $@ file pminit.obj, pm_lib.obj
+	$(LD) system dos name $@ file pminit.obj, pm_lib.obj
 
 fstest.exe : fstest.obj
 #    	$(LD) name $@ file fstest.obj -fm=fstest.map

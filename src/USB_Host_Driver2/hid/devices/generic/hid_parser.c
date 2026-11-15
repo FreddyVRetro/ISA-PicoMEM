@@ -78,6 +78,19 @@ void USB_FreeReportInfo(HID_ReportInfo_t *ReportInfo)
 	}
 }
 
+/* Default implementation: accept every non-constant report item. Individual
+ * drivers can override this by defining their own strong
+ * CALLBACK_HIDParser_FilterHIDReportItem() elsewhere in the link, but no
+ * driver currently needs to filter items, so nothing is dropped by default. */
+__attribute__((weak)) bool CALLBACK_HIDParser_FilterHIDReportItem(uint8_t dev_addr, uint8_t instance,
+																   HID_ReportItem_t *const CurrentItem)
+{
+	(void)dev_addr;
+	(void)instance;
+	(void)CurrentItem;
+	return true;
+}
+
 uint8_t USB_ProcessHIDReport(uint8_t dev_addr,
 							 uint8_t instance,
 							 const uint8_t *ReportData,

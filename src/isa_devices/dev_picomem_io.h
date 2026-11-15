@@ -50,3 +50,8 @@ extern void dev_pmio_update();
 extern void dev_pmio_do_rw(uint8_t * buffer,uint16_t size,bool isread, bool do16bit);
 extern bool dev_pmio_ior(uint32_t CTRL_AL8,uint8_t *Data );
 extern void dev_pmio_iow(uint32_t CTRL_AL8,uint8_t Data);
+
+// PMIO trace ring drain -- consumer side. Call from Core 0 main loop.
+// Prints up to 32 entries per call (rate-limited to keep main loop
+// responsive). See dev_picomem_io.cpp for the producer + entry format.
+extern void pmio_trace_drain(void);

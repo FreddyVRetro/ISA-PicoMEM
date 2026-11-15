@@ -107,6 +107,14 @@ typedef struct {
     uint32_t buttons;           // Button bitmap (JP_BUTTON_* defines from globals.h)
     uint32_t keys;              // Keyboard keys (modifier + scancodes)
 
+    // Extra digital buttons beyond the JP_BUTTON_* set, for inputs with more
+    // buttons than the standard bitmap covers (e.g. the Atari Jaguar keypad's
+    // 12 keys). Bit i is a generic "aux button i"; outputs with a wide button
+    // space (SInput's 32) map these to spare slots (paddles/misc), narrower
+    // outputs ignore them. Output-agnostic: the input sets bit indices, the
+    // output owns the slot assignment.
+    uint32_t aux_buttons;
+
     // Absolute analog inputs (0-255, centered at 128 for sticks, 0 for triggers)
     // All values are normalized regardless of device type
     uint8_t analog[ANALOG_COUNT]; // Standard analog axes (see analog_axis_index_t)
@@ -161,6 +169,33 @@ typedef struct {
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+// Touchpad coordinate normalization. input_event.touch is stored device-agnostic
+// as 0..65535 per axis (0 = left/top). Inputs map their native scale IN, outputs
+// scale it OUT. int16 helpers suit devices whose native coord is a signed int16
+// centered at 0 (Steam Controller 2, SInput); range helpers suit 0..max devices
+// (DS4 1919x942, DualSense 1919x1079).
+static inline uint16_t touch_norm_from_s16(int16_t v) {
+    return (uint16_t)((int32_t)v + 32768);         // -32768..32767 -> 0..65535
+}
+static inline int16_t touch_norm_to_s16(uint16_t c) {
+    return (int16_t)((int32_t)c - 32768);          // 0..65535 -> -32768..32767
+}
+static inline uint16_t touch_norm_from_range(int32_t v, int32_t max) {
+    if (v < 0) v = 0;
+    if (max <= 0) return 0;
+    if (v > max) v = max;
+    return (uint16_t)((v * 65535) / max);          // 0..max -> 0..65535
+}
+static inline uint16_t touch_norm_to_range(uint16_t c, int32_t max) {
+    return (uint16_t)(((int32_t)c * max) / 65535);  // 0..65535 -> 0..max
+}
+
+// Saturating int16 negate for IMU axis sign flips in the SDL frame transforms.
+// Plain -v overflows undefined at INT16_MIN (-32768); clamp it to INT16_MAX.
+static inline int16_t imu_negate_s16(int16_t v) {
+    return v == INT16_MIN ? INT16_MAX : (int16_t)(-v);
+}
 
 // Initialize event with safe defaults
 static inline void init_input_event(input_event_t* event) {

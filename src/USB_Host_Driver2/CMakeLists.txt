@@ -15,6 +15,8 @@ target_sources(USB_Host_Driver INTERFACE
     ${CMAKE_CURRENT_LIST_DIR}/hid/devices/vendors/sony/sony_ds3.c
     ${CMAKE_CURRENT_LIST_DIR}/hid/devices/vendors/sony/sony_ds4.c
     ${CMAKE_CURRENT_LIST_DIR}/hid/devices/vendors/sony/sony_ds5.c
+    ${CMAKE_CURRENT_LIST_DIR}/hid/devices/vendors/sony/ds5_auth.c
+    ${CMAKE_CURRENT_LIST_DIR}/hid/devices/vendors/sony/p5general_host.c
     ${CMAKE_CURRENT_LIST_DIR}/hid/devices/vendors/sony/sony_psc.c
     ${CMAKE_CURRENT_LIST_DIR}/hid/devices/vendors/8bitdo/8bitdo_bta.c
     ${CMAKE_CURRENT_LIST_DIR}/hid/devices/vendors/8bitdo/8bitdo_m30.c

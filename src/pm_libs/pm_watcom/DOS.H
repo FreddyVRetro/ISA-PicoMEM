@@ -22,7 +22,7 @@
 #endif
 
 #ifndef _COMDEF_H_INCLUDED
- #include <_comdef.h>
+ #include "w_compat.h"   // PicoMEM: stand-in for the Watcom-only <_comdef.h> (see w_compat.h)
 #endif
 
 #if defined(__WATCOM_LFN__) && defined(__DOS__) && !defined(__LFNDOS_H_INCLUDED)
@@ -100,6 +100,11 @@ struct dostime_t {
 };
 #define _dostime_t dostime_t
 
+// PicoMEM: byte-packed, unlike the rest of this header -- w_bios.cpp
+// memcpy()s this struct verbatim to/from the real (43-byte, no padding)
+// DOS Find-First/Next DTA layout through the shared PC RAM buffer, so the
+// C struct layout must match it exactly, with no compiler-inserted padding.
+#pragma pack(push, 1)
 struct find_t {
     char            reserved[21];       /* reserved for use by DOS    */
     char            attrib;             /* attribute byte for file    */
@@ -108,6 +113,7 @@ struct find_t {
     unsigned long   size;               /* length of file in bytes    */
     char            name[NAME_MAX+1];   /* null-terminated filename   */
 };
+#pragma pack(pop)
 struct _wfind_t {
     char            reserved[21];       /* reserved for use by DOS    */
     char            attrib;             /* attribute byte for file    */

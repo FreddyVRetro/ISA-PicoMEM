@@ -1,0 +1,21 @@
+# Build JWasm v2.18 from source and produce a tiny runner image.
+# Build:  docker build -t jwasm-build -f Dockerfile.jwasm .
+# Run:    docker run --rm -v "$(pwd):/src" -w /src jwasm-build <jwasm args>
+FROM debian:bookworm-slim AS builder
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential ca-certificates wget && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /tmp
+# JWasm forked + maintained by Baron-von-Riedesel
+RUN wget -q https://github.com/Baron-von-Riedesel/JWasm/archive/refs/tags/v2.18.tar.gz && \
+    tar xzf v2.18.tar.gz && \
+    cd JWasm-2.18 && \
+    make -f GccUnix.mak && \
+    cp build/GccUnixR/jwasm /usr/local/bin/
+
+FROM debian:bookworm-slim
+COPY --from=builder /usr/local/bin/jwasm /usr/local/bin/jwasm
+WORKDIR /src
+ENTRYPOINT ["jwasm"]

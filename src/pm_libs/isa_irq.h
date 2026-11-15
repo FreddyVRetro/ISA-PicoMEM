@@ -7,6 +7,10 @@
 #include "pico/critical_section.h"
 extern critical_section_t pm_irq_crit;
 extern bool PM_IRQ_raised;
+extern bool IRQ_raise_inprogress;
+extern bool IRQ_Crit_initialized;
+extern volatile uint64_t PM_IRQ_AckTime;
+extern volatile uint64_t PM_IRQ_SendTime;
 
 #define  IRQ_Stat_REQUESTED     1   // Set by the Pico, IRQ Request in progress
 #define  IRQ_Stat_INPROGRESS    2   // Set by the BIOS, IRQ Received
@@ -39,13 +43,12 @@ typedef struct pm_irq_svar_t {    // shared variable for the Interrupt mux (Betw
 } pm_irq_svar_t;
 
 extern pm_irq_svar_t *SVAR_IRQ;
+extern volatile uint64_t PM_IRQ_AckTime;
+extern volatile uint64_t PM_IRQ_SendTime;
 
 #ifdef __cplusplus
 extern "C" {  // To be usable from C code
 #endif
-
-extern volatile uint64_t PM_IRQ_AckTime;
-extern volatile uint64_t PM_IRQ_SendTime;
 
 
 

@@ -514,7 +514,6 @@ template <int F_NUM, typename F> uint32_t slot_envelope_loop(F&& fn, SLOT_RENDER
                 if (unlikely((++eg_counter & eg_shift_mask) == 0)) {
                     uint8_t step = eg_step_table[(eg_counter >> slot->eg_shift) & 7];
                     slot->eg_out += (~slot->eg_out * step) >> 3;
-
                     slot->eg_out_tll_lsl3 = std::min(EG_MAX/*EG_MUTE*/, slot->eg_out + slot->tll) << 3; // note EG_MAX not EG_MUTE to avoid overflow check later
                     if (unlikely(slot->eg_out == 0)) {
                         slot->eg_state = DECAY;

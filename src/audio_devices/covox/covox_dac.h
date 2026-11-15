@@ -1,5 +1,5 @@
 #pragma once
-#include "audio_fifo.h"
+#include "audio_fifo8.h"
 
 #define CVX_TYPE_NONE       0
 #define CVX_TYPE_DAC        1  // Covox DAC

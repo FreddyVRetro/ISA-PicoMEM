@@ -7,7 +7,7 @@
 #define PM_AUDIO_FREQUENCY 49716   // Adlib output frequency
 //#define PM_AUDIO_FREQUENCY 44100
 #define PM_SAMPLES_PER_BUFFER 64
-#define PM_AUDIO_BUFFERS  5
+#define PM_AUDIO_BUFFERS  8        // Was 5 before AI try (CD Debug)
 #define PM_SAMPLES_STRIDE 4        // (Nb of byte per sample 16Bit X 2)
 // 8*64*4 buffer (16Bit Stereo) is 2KB
 
@@ -34,6 +34,7 @@ typedef struct pm_audio
  } pm_audio_t;
 
 extern volatile pm_audio_t pm_audio;
+extern volatile uint32_t audio_underruns;
 
 extern bool pm_audio_init(uint32_t sample_freq);
 extern bool pm_audio_stop();
@@ -59,7 +60,7 @@ if ((pm_buffers_ready)!=0)
     if (pm_audio.playing_buffer>=pm_audio.poolend) pm_audio.playing_buffer=pm_audio.bufferpool;
     return pm_audio.playing_buffer;
    }
-//PM_INFO("!Z");
+audio_underruns++;     /* I2S DMA starved: no filled buffer ready           */
 return pm_audio.poolend;  // poolend contains an empty buffer
 }
 

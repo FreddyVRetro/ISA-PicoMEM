@@ -12,6 +12,8 @@
 //#include "/hid/vendors/sony/sony_ds4.h"
 #include "usb.h"
 #include "../../../pm_debug.h"
+#include "../../../pm_defines.h"
+#include "../../../qwiic/pm_display.h"
 
 
 // Auth task - called from main loop to handle async operations
@@ -274,7 +276,8 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_re
 
   if ((dev_type!=CONTROLLER_KEYBOARD)&&(dev_type!=CONTROLLER_MOUSE)&&(dev_type!=CONTROLLER_UNKNOWN))
      {
-      add_player(dev_addr, instance);
+      int player_nb = add_player(dev_addr, instance);
+      pm_display_event(D_PAD_EVENT, player_nb+1, 0, device_interfaces[dev_type]->name);
      }
 
   if (dev_type == CONTROLLER_UNKNOWN)
@@ -359,17 +362,20 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
     switch (itf_protocol)
     {
       case HID_ITF_PROTOCOL_KEYBOARD:
-        PM_INFO("HID receive boot keyboard report\r\n");
+        // PM_INFO removed -- fires on every USB HID report. At mouse-
+        // movement rates (~100-1000/s) the CDC printf ring saturates
+        // and Core 0 blocks inside this callback, freezing disk
+        // emulation. Same fix class as dev_pmio_iow / dev_sbdsp_iow.
         device_interfaces[CONTROLLER_KEYBOARD]->process(dev_addr, instance, report, len);
       break;
 
       case HID_ITF_PROTOCOL_MOUSE:
-        PM_INFO("HID receive boot mouse report\r\n");
+        // PM_INFO removed -- per-report printf storm; see comment above.
         device_interfaces[CONTROLLER_MOUSE]->process(dev_addr, instance, report, len);
       break;
 
       default:
-        PM_INFO("HID receive generic report\r\n");
+        // PM_INFO removed -- per-report printf storm; see comment above.
         process_generic_report(dev_addr, instance, report, len);
       break;
     }

@@ -11,6 +11,7 @@
 #include "dev_oled.h"
 #include "pm_i2c.h"
 #include "pm_display.h"
+#include "pm_menu.h"
 
 #include "dev_audiomix.h"
 #include "picoOled.h"
@@ -454,9 +455,11 @@ void oled_init(t_OledParams *oled,uint8_t oled_type) {
        oled->height      = H_64;
        oled->width       = W_128;
       } else return;
+#if !BOARD_WM10
    oled->i2c         = FP_I2C;
    oled->SDA_PIN     = FP_SDA;
    oled->SCL_PIN     = FP_SCL;
+#endif
 
 // Initialize the I2C I/O
    i2c_init(oled->i2c, 200000);
@@ -545,11 +548,14 @@ void pm_display_img_list(uint8_t img_index, uint8_t img_list_nb, FSizeName_t *pm
       {
        char *imgname=pm_img_list[i].name;
        PM_INFO("Displaying image %d: %s\n", i, imgname);
-       if ((i==img_index)&(pm_img_list[i].size==0xFFFE)) sprintf(buf,">%-13s]",imgname);
-          else if (pm_img_list[i].size==0xFFFE) sprintf(buf,"[%-13s]",imgname);           // Folder name
-            else if (i==img_index) sprintf(buf,">%-13s<",imgname);
-              else sprintf(buf," %s ",imgname);                                           // Regular image
-       oledDraw_string(&dev_oled_screen,x ,(i-(line_per_page*page_index))*8 ,buf , WHITE);
+       if (pm_img_list[i].size==0xFFFE) sprintf(buf,"[%-13s]",imgname);    // Folder name
+            else if (i==img_index) sprintf(buf,">%-13s<",imgname);         // Selected image
+              else sprintf(buf," %s ",imgname);                            // Regular image
+       if (i==img_index) {
+        oledInverse(&dev_oled_screen);
+        oledDraw_string(&dev_oled_screen,x ,(i-(line_per_page*page_index))*8 ,buf , WHITE);
+        oledNoInverse(&dev_oled_screen);
+       } else oledDraw_string(&dev_oled_screen,x ,(i-(line_per_page*page_index))*8 ,buf , WHITE);
       }
    }
 
@@ -579,6 +585,72 @@ void pm_display_floppy_confirm(uint8_t choice)
   pm_display_contrast(CONTRAST_HIGH);
   pm_display.hc_delay=50;   // (5s before going low)
 } 
+
+void pm_display_cdrom_confirm(bool eject, uint8_t choice)
+{
+  pm_display.screen=D_FDD_CONF; // Reuse temporary screen id for prompt
+  oledClear(&dev_oled_screen, BLACK);
+//  oledDraw_rectangle(&dev_oled_screen, 4*8-2, 6, 20*8+2, 32-6,SOLID, BLACK);
+//  oledDraw_rectangle(&dev_oled_screen, 4*8-2, 6, 20*8+2, 32-6,HOLLOW, WHITE );
+  oled_setfont(oled_font8x8mdos);
+  const char *buf1 = eject ? "- Eject CD-ROM -" : "- Mount CD-ROM -";
+  oledDraw_line(&dev_oled_screen, 0, 10, dev_oled_screen.width-1, 10, WHITE);
+  oledDraw_string(&dev_oled_screen,0 ,0 , buf1, WHITE);
+  const char *buf2 = "Yes";
+  oledDraw_string(&dev_oled_screen,5*8 ,8*2 , buf2, WHITE);
+  const char *buf3 = "No";
+  oledDraw_string(&dev_oled_screen,5*8 ,8*3 , buf3, WHITE);
+  const char *buf4 = ">";
+  if (choice==0) oledDraw_string(&dev_oled_screen,4*8 ,8*2 , buf4, WHITE);
+    else oledDraw_string(&dev_oled_screen,4*8 ,8*3 , buf4, WHITE);
+  oledDisplay(&dev_oled_screen);
+  pm_display_contrast(CONTRAST_HIGH);
+  pm_display.hc_delay=50;
+}
+
+void pm_display_cdrom_status(bool success, const char *msg)
+{
+  pm_display.screen=D_CDROM_STATUS;
+  oledClear(&dev_oled_screen, BLACK);
+  oled_setfont(oled_font8x8mdos);
+  const char *header =  "- Mount CD-ROM -";
+  oledDraw_line(&dev_oled_screen, 0, 10, dev_oled_screen.width-1, 10, WHITE);
+  oledDraw_string(&dev_oled_screen,0,0, header, WHITE);
+  if (success) {
+    const char *line = "Image Mounted";
+    oledDraw_string(&dev_oled_screen, 8*2, 8*2, line, WHITE);
+  } else {
+    const char *line = msg ? msg : "Unknown error";
+    oledDraw_string(&dev_oled_screen, 0, 8*2, line, WHITE);
+  }
+  oledDisplay(&dev_oled_screen);
+  pm_display_contrast(CONTRAST_HIGH);
+  pm_display.hc_delay=80;
+}
+
+void pm_display_cdrom_audio_status(uint8_t track, const char *state, const char *msg)
+{
+  pm_display.screen=D_CDAUDIO_STATUS;
+  oledClear(&dev_oled_screen, BLACK);
+  oled_setfont(oled_font8x8mdos);
+  const char *header = "- CD Audio -";
+  oledDraw_line(&dev_oled_screen, 0, 10, dev_oled_screen.width-1, 10, WHITE);
+  oledDraw_string(&dev_oled_screen,8*2,0, header, WHITE);
+
+  char line1[20];
+  if (track)
+    snprintf(line1, sizeof(line1), "%s Track %02u", state ? state : "",track);
+  else
+    snprintf(line1, sizeof(line1), "%s", state ? state : "");
+  oledDraw_string(&dev_oled_screen, 0, 8*2, line1, WHITE);
+
+  if (msg)
+    oledDraw_string(&dev_oled_screen, 0, 8*3, msg, WHITE);
+
+  oledDisplay(&dev_oled_screen);
+  pm_display_contrast(CONTRAST_HIGH);
+  pm_display.hc_delay=80;
+}
 
 // PicoMEM Home Screen : Displayed after boot
 void pm_display_pmhome()
@@ -640,22 +712,23 @@ void pm_display_pmpost_event(uint8_t code)
         case 0x42: strcpy(&poststr[0],"DEV INIT   "); break;
         case 0x43: strcpy(&poststr[0],"INST HWIRQ "); break;
         case 0x45: strcpy(&poststr[0],"INST INT13h"); break;
-        case 0x4F: strcpy(&poststr[0]," SETUP END "); break;
+        case 0x4F: strcpy(&poststr[0],"SETUP END  "); break;
         case 0x60: strcpy(&poststr[0],"START SETUP"); break;
         case 0x61: strcpy(&poststr[0],"CONF DETECT"); break;
         case 0x62: strcpy(&poststr[0],"MEM DETECT "); break;
         case 0x63: strcpy(&poststr[0],"DISP HEADER"); break;
         case 0x64: strcpy(&poststr[0],"SETUP KEY  "); break;
+        case 0x65: strcpy(&poststr[0],"SETUP MENU "); break;
         case 0x50: strcpy(&poststr[0],"BOOT KEY   "); break;
-        case 0x51: strcpy(&poststr[0],"  ROM BOOT "); break;
-        case 0x52: strcpy(&poststr[0],"  FDD BOOT "); break;
-        case 0x53: strcpy(&poststr[0],"  HDD BOOT "); break;
-        case 0x55: strcpy(&poststr[0],"  BOOT OS  "); break;
+        case 0x51: strcpy(&poststr[0],"ROM BOOT   "); break;
+        case 0x52: strcpy(&poststr[0],"FDD BOOT   "); break;
+        case 0x53: strcpy(&poststr[0],"HDD BOOT   "); break;
+        case 0x55: strcpy(&poststr[0],"BOOT OS    "); break;
         case 0x80: strcpy(&poststr[0],"PORT Error "); break;
         case 0x81: strcpy(&poststr[0],"RAM Error  "); break;
         case 0x82: strcpy(&poststr[0],"Cmd Failure"); break;
-        case 0x85: strcpy(&poststr[0]," BOOT Fail "); break;
-        case 0x86: strcpy(&poststr[0],"  BAD MBR  "); break;
+        case 0x85: strcpy(&poststr[0],"BOOT Fail  "); break;
+        case 0x86: strcpy(&poststr[0],"BAD MBR    "); break;
         default:
                    sprintf(&poststr[0],"POST :%2X  ",code); break;
        }
@@ -695,30 +768,36 @@ void pm_display_pcpost_event(uint8_t code,uint8_t code2)
     pm_display.hc_delay=50;   // (5s before going low)    
 }
 
-// Display PAD/Joytick event messages
-void pm_display_pad_event(uint8_t code,char *msg)
+// Display PAD/Joystick event messages : USB Joypad ADDED / model / Player number, one per line
+void pm_display_pad_event(uint8_t player_nb, const char *model)
 {
   if (!dev_oled_screen.enabled) return;
-  if (code==0) return;  // Ignore POST Code 0
-  if (pm_display.screen!=D_PAD)
+  if (player_nb==0) return;  // No player slot assigned
+
+  if (pm_display.screen!=D_PAD_EVENT)  // Only save prev_screen on first entry, else timeout can never return to it
   {
     pm_display.prev_screen=pm_display.screen;
-    pm_display.screen=D_PAD;
-  
-    oledClear(&dev_oled_screen, BLACK);
-    oledDraw_img(&dev_oled_screen,0,0,32,32,oled_info_32x32,false);  // To do: To replace with PAD image
-
-    oled_setfont(oled_font8x16);
-    const char *buf1 = " * JOYPAD *";
-    oledDraw_string(&dev_oled_screen,8*4 ,LINE_0 , buf1, WHITE);
+    pm_display.screen=D_PAD_EVENT;
   }
 
-    oledDraw_rectangle(&dev_oled_screen, 42+5*8, LINE_1, 42+10*8, LINE_1 + 16, SOLID, BLACK);
-    oledDraw_string(&dev_oled_screen, 42+5*8,LINE_1, msg, WHITE);
+  oledClear(&dev_oled_screen, BLACK);
+  oled_setfont(oled_font8x16);
+  oledDraw_string(&dev_oled_screen, 0, LINE_0, "* Joypad ADDED *", WHITE);  
 
-    oledDisplay(&dev_oled_screen);
-    pm_display_contrast(CONTRAST_HIGH);
-    pm_display.hc_delay=50;   // (5s before going low)    
+  oled_setfont(oled_font6x8);
+  char model_line[22];
+  snprintf(model_line, sizeof(model_line), ">%.21s", model);
+  oledDraw_string(&dev_oled_screen, 0, LINE_2, model_line, WHITE);
+
+  char player_line[16];
+  snprintf(player_line, sizeof(player_line), ">Player %d", player_nb);
+  oledDraw_string(&dev_oled_screen, 0, LINE_3, player_line, WHITE);
+  
+  PM_INFO("[OLED] PAD Event: Player %d, Model: %s\n", player_nb, model);
+
+  oledDisplay(&dev_oled_screen);
+  pm_display_contrast(CONTRAST_HIGH);
+  pm_display.hc_delay=50;   // (5s before going low)    
 }
 
 // GMIDI Display : When GMIDI is detected, display the General MIDI Logo plus volume bar
@@ -815,8 +894,72 @@ void pm_display_menu_floppy_select()
     oled_setfont(oled_font6x8);
     const char *buf2 = " Select Floppy";
     oledDraw_string(&dev_oled_screen, 8*4, LINE_2, buf2, WHITE);
-//    const char *buf2 = "Up/Dn: Change";
-//    oledDraw_string(&dev_oled_screen, 48, LINE_2, buf2, WHITE); 
+
+    const char *image_name = PM_Config && PM_Config->FDD[0].name[0]
+        ? PM_Config->FDD[0].name : "No Floppy Mnt";
+    char mounted_image[14];
+    snprintf(mounted_image, sizeof(mounted_image), "%.13s", image_name);
+    oledDraw_string(&dev_oled_screen, 8*4, LINE_3, mounted_image, WHITE);
+
+    oledDisplay(&dev_oled_screen);
+    pm_display_contrast(CONTRAST_HIGH);    
+  }
+}
+
+void pm_display_menu_cdrom_select()
+{  
+  if (pm_display.screen!=D_CDROM_S)
+  {
+    pm_display.prev_screen=pm_display.screen;
+    pm_display.screen=D_CDROM_S;
+
+    oledClear(&dev_oled_screen, BLACK);
+    oledDraw_img(&dev_oled_screen,0,0,32,32,oled_cd_32x32,false);
+
+    oled_setfont(oled_font8x16);
+    const char *buf1 = "* CD-ROM *";
+    oledDraw_string(&dev_oled_screen,8*5 ,LINE_0 , buf1, WHITE);
+
+    oled_setfont(oled_font6x8);
+    const char *buf2 = " Select CD-ROM";
+    oledDraw_string(&dev_oled_screen, 8*4, LINE_2, buf2, WHITE);
+  #if USE_CDROM
+      const char *image_name = PM_Config && PM_Config->CDR.name[0]
+        ? PM_Config->CDR.name : "No CD Mounted";
+    char mounted_image[14];
+      snprintf(mounted_image, sizeof(mounted_image), "%.13s", image_name);
+    oledDraw_string(&dev_oled_screen, 8*4, LINE_3, mounted_image, WHITE);
+  #endif
+
+    oledDisplay(&dev_oled_screen);
+    pm_display_contrast(CONTRAST_HIGH);    
+  }
+}
+
+void pm_display_menu_cdaudio_select()
+{  
+  if (pm_display.screen!=D_CDAUDIO_S)
+  {
+    pm_display.prev_screen=pm_display.screen;
+    pm_display.screen=D_CDAUDIO_S;
+
+    oledClear(&dev_oled_screen, BLACK);
+    oledDraw_img(&dev_oled_screen,0,0,32,32,oled_cd_32x32,false);
+
+    oled_setfont(oled_font8x16);
+    const char *buf1 = "* Audio  *";
+    oledDraw_string(&dev_oled_screen,8*5 ,LINE_0 , buf1, WHITE);
+
+    oled_setfont(oled_font6x8);
+    const char *buf2 = " Select track";
+    oledDraw_string(&dev_oled_screen, 8*4, LINE_2, buf2, WHITE);
+  #if USE_CDROM
+      const char *image_name = PM_Config && PM_Config->CDR.name[0]
+        ? PM_Config->CDR.name : "No CD Mounted";
+    char mounted_image[17];
+      snprintf(mounted_image, sizeof(mounted_image), "%.16s", image_name);
+    oledDraw_string(&dev_oled_screen, 8*4, LINE_3, mounted_image, WHITE);
+  #endif
 
     oledDisplay(&dev_oled_screen);
     pm_display_contrast(CONTRAST_HIGH);    
@@ -843,6 +986,26 @@ void pm_display_menu_info_select()
 
     oledDisplay(&dev_oled_screen);
     pm_display_contrast(CONTRAST_HIGH);    
+  }
+}
+
+void pm_display_menu_bluetooth_select()
+{
+  if (pm_display.screen != D_BLUETOOTH_S)
+  {
+    pm_display.prev_screen = pm_display.screen;
+    pm_display.screen = D_BLUETOOTH_S;
+
+    oledClear(&dev_oled_screen, BLACK);
+    oled_setfont(oled_font8x16);
+    oledDraw_string(&dev_oled_screen, 8 * 3, LINE_0, "*  BT  *", WHITE);
+
+    oled_setfont(oled_font6x8);
+    oledDraw_string(&dev_oled_screen, 8 * 3, LINE_2, "Scan devices", WHITE);
+    oledDraw_string(&dev_oled_screen, 8 * 3, LINE_3, "Select mouse", WHITE);
+
+    oledDisplay(&dev_oled_screen);
+    pm_display_contrast(CONTRAST_HIGH);
   }
 }
 
@@ -877,6 +1040,9 @@ void pm_display_prevScreen()
             break;
        case D_FLOPPY_S:
           break;          
+       default:
+            pm_display_pmhome();  // Fallback so the screen never gets stuck on a temporary event
+            break;
           }  
 }
 
@@ -889,7 +1055,28 @@ void pm_display_contrast(uint8_t contrast)
   }
 }
 
-void pm_display_event(uint8_t ScreenID, uint8_t code1, uint8_t code2, char *event_msg)
+// Latched by event-posting functions and drawn in pm_display_worker()
+static volatile bool display_event_pending;
+static uint8_t display_event_screen;
+static uint8_t display_event_code1;
+static uint8_t display_event_code2;
+static char display_event_msg[22];
+
+static void pm_display_event_queue(uint8_t screen, uint8_t code1, uint8_t code2, const char *event_msg)
+{
+  display_event_screen = screen;
+  display_event_code1 = code1;
+  display_event_code2 = code2;
+  snprintf(display_event_msg, sizeof(display_event_msg), "%s", event_msg ? event_msg : "");
+  display_event_pending = true;
+}
+
+void pm_display_event(uint8_t ScreenID, uint8_t code1, uint8_t code2, const char *event_msg)
+{
+  pm_display_event_queue(ScreenID, code1, code2, event_msg);
+}
+ 
+static void pm_display_draw_event(uint8_t ScreenID, uint8_t code1, uint8_t code2, const char *event_msg)
 {
   switch(ScreenID)
       {
@@ -903,16 +1090,17 @@ void pm_display_event(uint8_t ScreenID, uint8_t code1, uint8_t code2, char *even
             pm_display.temporary_screen=true;
             pm_display.temporary_delay=60;   // (6s before going back to previous screen)            
             break;
-       case D_PAD:
-            pm_display_pad_event(code1,event_msg);
+       case D_PAD_EVENT:
+            pm_display_pad_event(code1, event_msg);  // code1 = player number, event_msg = device model name
             pm_display.temporary_screen=true;
-            pm_display.temporary_delay=60;   // (6s before going back to previous screen)            
+            pm_display.temporary_delay=40;   // (4s before going back to previous screen)            
             break;
        case D_GMIDI:
        case D_SB:
        case D_ADLIB:
        case D_GUS:
        case D_FLOPPY_S:
+       case D_CDROM_S:
        case D_INFO_S:
        break;          
       }  
@@ -923,6 +1111,13 @@ void pm_display_worker(uint32_t ms_since_last)
   static uint32_t pm_display_dev_active =0;
 
   if (!dev_oled_screen.enabled) return;
+
+  if (display_event_pending)
+    {
+     display_event_pending=false;
+     pm_display_draw_event(display_event_screen, display_event_code1, display_event_code2, display_event_msg);
+    }
+
   if (pm_display.hc_delay--==0) pm_display_contrast(CONTRAST_LOW);
 
   if (dev_audiomix.dev_active!=pm_display_dev_active) {
@@ -932,7 +1127,7 @@ void pm_display_worker(uint32_t ms_since_last)
       PM_INFO("Audio Device Active : %04X\n",dev_audiomix.dev_active);
       if (dev_audiomix.dev_active & AD_ADLIB) {
          PM_INFO("AdLib detected\n");
-         pm_display_adlib();      
+         pm_display_adlib();
       } else if (dev_audiomix.dev_active & AD_MPU) {
          PM_INFO("General MIDI detected\n");        
          pm_display_gmidi();
@@ -942,7 +1137,10 @@ void pm_display_worker(uint32_t ms_since_last)
       } else if (dev_audiomix.dev_active & AD_SBDSP) {
          PM_INFO("Sound Blaster detected\n");
          pm_display_sb();
-        }
+       } else if (dev_audiomix.dev_active & AD_CD) {
+         PM_INFO("CD-ROM detected\n");
+//         pm_display_cdrom();
+        }        
       }
    } else {
      //Go back to the previous Display Screen if no more audio device active
@@ -957,6 +1155,10 @@ void pm_display_worker(uint32_t ms_since_last)
           pm_display.temporary_screen=false;
          }
       }
+
+  #if USE_CD_AUDIO
+    pm_menu_cdrom_audio_worker();
+  #endif
 
    // Screen needing regular refresh
    switch(pm_display.screen)
@@ -973,6 +1175,9 @@ void pm_display_worker(uint32_t ms_since_last)
        case D_GUS:
             pm_display_gus();
             break;
+        case D_IMG_LIST:
+          pm_menu_bluetooth_refresh();
+          break;
           break;
       }
 }

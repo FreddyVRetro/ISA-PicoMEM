@@ -78,7 +78,7 @@ void OPL_Pico_simple16(int16_t *buffer, uint32_t nsamples) {
     OPL_calc_buffer(emu8950_opl, buffer, nsamples);
 }
 
-void OPL_Pico_stereo_int16(int16_t *buffer, uint32_t nsamples) {
+void OPL_Pico_stereo16(int16_t *buffer, uint32_t nsamples) {
   OPL_calc_buffer_stereo(emu8950_opl, (int32_t*) buffer, nsamples);
 }
 

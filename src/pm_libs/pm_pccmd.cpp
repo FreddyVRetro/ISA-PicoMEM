@@ -40,27 +40,34 @@ uint32_t PCC_API_STATUS;      // What the API is waiting for ? (To track crash)
 uint32_t PCC_CMD_IP;          // Command In Progress
 
 // Send a command to the PC, need to check that the PC is ready to receive a command first
-void Send_PC_CMD(uint8_t CommandNB)    // Send a Command, don't touch parameters and wait for its start
-{  
+bool Send_PC_CMD(uint8_t CommandNB)    // Send a Command, don't touch parameters and wait for its start
+{
 //  PM_INFO("Send_PC_CMD: Sending Command %d, Current State %d\n",CommandNB,PCCR_PCSTATE);
+   if (PCCR_PCSTATE==PCC_PCS_INPROGRESS)
+    {
+      PM_ERROR("Send_PC_CMD: Can't send a command if another is in progress\n");
+      return false;
+    }
    if (PCCR_PCSTATE==PCC_PCS_CMDEND) // Acknowledge the end of the previous command
         {
-          PCCR_PMSTATE=PCC_PMS_CMDACK;
+          PCCR_PMSTATE=PCC_PMS_CMDACK;  // Ask to leave the Command End State
           PCC_API_STATUS=PCC_API_WAITENDACK;
-          do {} while (PCCR_PCSTATE!=PCC_PCS_WAITCMD&&(PCCR_PCSTATE!=PCC_PCS_RESET)); // Wait for the PC to see the Acknowledge
+          do {} while (PCCR_PCSTATE!=PCC_PCS_WAITCMD&&(PCCR_PCSTATE!=PCC_PCS_RESET)); // Wait for the PCC_PCS_WAITCMD State
         }
    if (PCCR_PCSTATE!=PCC_PCS_WAITCMD) {
        // PM_INFO("Send_PC_CMD: PC not waiting for a command, current state %d\n",PCCR_PCSTATE);
         PCC_API_STATUS=PCC_API_WAITWAITCMD;
-        do {} while (PCCR_PCSTATE!=PCC_PCS_WAITCMD&&(PCCR_PCSTATE!=PCC_PCS_RESET)); // Wait for the PC to see the Acknowledge
+        do {} while (PCCR_PCSTATE!=PCC_PCS_WAITCMD&&(PCCR_PCSTATE!=PCC_PCS_RESET)); // Wait for the PCC_PCS_WAITCMD State
         }
-   if (PCCR_PCSTATE==PCC_PCS_RESET) return; // Can't send a command if the PC is in Reset State
+   if (PCCR_PCSTATE==PCC_PCS_RESET) return false; // Can't send a command if the PC is in Reset State
 
    PCCR_CMD=CommandNB;             // Send the Command value
    PCCR_PMSTATE=PCC_PMS_CMDSENT;   // Inform the PC that a command is sent
    // Wait the Start of the command (PC no more in Wait CMD State)
    PCC_API_STATUS=PCC_API_WAITCMDSTART;
-   do {} while ((PCCR_PCSTATE==PCC_PCS_WAITCMD)&&(PCCR_PCSTATE!=PCC_PCS_RESET)); 
+   do {} while ((PCCR_PCSTATE==PCC_PCS_WAITCMD)&&(PCCR_PCSTATE!=PCC_PCS_RESET));
+   if (PCCR_PCSTATE==PCC_PCS_RESET) return false; // Can't send a command if the PC is in Reset State
+   return true;
 }
 
 // Wait for the PC BIOS to be ready to receive a command
@@ -88,7 +95,12 @@ bool PC_Wait_CMD_End_Timeout(uint32_t delay)
   PCC_API_STATUS=PCC_API_WAITCMDEND;
   initial_time=time_us_64();
   do {
-      if ((time_us_64()-initial_time)>delay) { PCC_API_STATUS=PCC_API_END; return false; }
+      if ((time_us_64()-initial_time)>delay) {
+          PM_ERROR("PC_Wait_CMD_End_Timeout: timed out after %u us pcs=%02X pms=%02X cmd=%02X src=%d\n",
+                   (unsigned)delay, PCCR_PCSTATE, PCCR_PMSTATE, PCCR_CMD, BV_PCCMD_SOURCE);
+          PCC_API_STATUS=PCC_API_END;
+          return false;
+      }
      } while ((PCCR_PCSTATE!=PCC_PCS_CMDEND)&&(PCCR_PCSTATE!=PCC_PCS_WAITCMD)&&(PCCR_PCSTATE!=PCC_PCS_RESET));
 
   if (PCCR_PCSTATE==PCC_PCS_RESET)  { PCC_API_STATUS=PCC_API_END; return false; } // Reset Status, no more command can be sent
@@ -128,11 +140,26 @@ bool PC_Wait_End_Timeout(uint32_t delay)
   return true; // Command ended
 }
 
-void PC_End()
+bool PC_End()
 {
-  PC_Wait_CMD_End();
+  // If PMBIOS isn't in its sub-command polling loop (pcs=NOTREADY),
+  // it can't receive PCC_EndCommand. Both PC_Wait_CMD_End and
+  // Send_PC_CMD would spin forever. Short-circuit to keep boot moving.
+  if (PCCR_PCSTATE == PCC_PCS_NOTREADY) 
+    {
+      uint64_t initial_time;
+      initial_time=time_us_64();
+      do { // Wait for the PC Commands to start with Timeout (Otherwise, can't send the End command)
+           if ((time_us_64()-initial_time)>2000) 
+             {
+              PM_ERROR("PC_End: Timeout waiting for the PC to start a command");
+              return false; // Timeout after 2ms
+             }
+        } while (PCCR_PCSTATE==PCC_PCS_NOTREADY&&(PCCR_PCSTATE!=PCC_PCS_RESET));
+     }
 
-  Send_PC_CMD(PCC_EndCommand);
+  PC_Wait_CMD_End();
+  return Send_PC_CMD(PCC_EndCommand);
 }
 
 void PC_printstr(char *StrToSend)
@@ -160,6 +187,60 @@ void PC_printf(const char *format, ...)
   Send_PC_CMD(PCC_Printf);
   PC_Wait_CMD_End();
   PCC_API_STATUS=PCC_API_END;  
+}
+
+// Change the BIOS text color/attribute used by the next display string.
+void PC_SetTextAttr(uint8_t attr)
+{
+  PC_Wait_CMD_End();
+
+  PM_DP_RAM[OFFS_PCCMDPARAM] = attr;
+  Send_PC_CMD(PCC_SetTextAttr);
+  PC_Wait_CMD_End();
+  PCC_API_STATUS = PCC_API_END;
+}
+
+static void PackRectangleParams(uint8_t X, uint8_t Y, uint8_t DX, uint8_t DY)
+{
+  PM_DP_RAM[OFFS_PCCMDPARAM] = Y;
+  PM_DP_RAM[OFFS_PCCMDPARAM + 1] = X;
+  PM_DP_RAM[OFFS_PCCMDPARAM + 2] = DX;
+  PM_DP_RAM[OFFS_PCCMDPARAM + 3] = DY;
+}
+
+// Save the BIOS rectangle content to the shared memory buffer. Parameters are
+// row, column, width and height in the same packed form used by the BIOS helper.
+void PC_SaveRectangle(uint8_t X, uint8_t Y, uint8_t DX, uint8_t DY)
+{
+  PC_Wait_CMD_End();
+  PackRectangleParams(X, Y, DX, DY);
+
+  Send_PC_CMD(PCC_SaveRectangle);
+  PC_Wait_CMD_End();
+  PCC_API_STATUS = PCC_API_END;
+}
+
+// Route the C++ rectangle request to the BIOS-side BIOS_PrintRectangle routine
+// from pmbios/bios_menu.asm through the PCC_PrintRectangle command bridge.
+void PC_PrintRectangle(uint8_t X, uint8_t Y, uint8_t DX, uint8_t DY)
+{
+  PC_Wait_CMD_End();
+  PackRectangleParams(X, Y, DX, DY);
+
+  Send_PC_CMD(PCC_PrintRectangle);
+  PC_Wait_CMD_End();
+  PCC_API_STATUS = PCC_API_END;
+}
+
+// Restore a BIOS rectangle area previously saved into the shared memory buffer.
+void PC_RestoreRectangle(uint8_t X, uint8_t Y, uint8_t DX, uint8_t DY)
+{
+  PC_Wait_CMD_End();
+  PackRectangleParams(X, Y, DX, DY);
+
+  Send_PC_CMD(PCC_RestoreRectangle);
+  PC_Wait_CMD_End();
+  PCC_API_STATUS = PCC_API_END;
 }
 
 // Set the screen position (Text mode)
@@ -196,6 +277,16 @@ extern void PC_Int13()
   PC_Wait_CMD_End();  
   PCC_API_STATUS=PCC_API_END;
 }
+
+// Send the DOS Interrupt (INT 21h) using registers and return in registers
+extern void PC_Int21()
+{
+  PC_Wait_CMD_End();
+  Send_PC_CMD(PCC_IRQ21);
+  PC_Wait_CMD_End();
+  PCC_API_STATUS=PCC_API_END;
+}
+
 
 bool PC_KeyPressed()
 {
@@ -322,7 +413,6 @@ void PC_Do_MemCopyW(uint32_t Src, uint32_t Dest,uint16_t Len)
    // Length
    PM_DP_RAM[OFFS_PCCMDPARAM+8]=(uint8_t)Len;
    PM_DP_RAM[OFFS_PCCMDPARAM+9]=(uint8_t)(Len>>8);   
-   
    Send_PC_CMD(PCC_MemCopyW);
   }
   PCC_API_STATUS=PCC_API_END;  
@@ -360,8 +450,11 @@ void PC_Do_MemCopyW_Odd(uint32_t Src, uint32_t Dest,uint16_t Len)
 extern void PC_MemCopy(uint32_t Src, uint32_t Dest, uint16_t Len)
 {
 // Perform the fastest copy method
+// (odd-length test was `Len & 0xFFFE` -- true for EVERY Len>=2, so all even
+//  copies went through W_Odd whose PC handler moves one EXTRA byte. Found
+//  via ELTORITO.SYS: the stray byte cleared its 0x96 sentinel at buf+2048.)
     if (Len<=3) PC_Do_MemCopyB(Src,Dest,Len);
-     else if (Len & 0xFFFE) PC_Do_MemCopyW_Odd(Src,Dest,Len>>1);
+     else if (Len & 1) PC_Do_MemCopyW_Odd(Src,Dest,Len>>1);
       else PC_Do_MemCopyW(Src,Dest,Len>>1);
   PCC_API_STATUS=PCC_API_END;      
 }

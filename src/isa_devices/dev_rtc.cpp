@@ -51,21 +51,25 @@ If not, see <https://www.gnu.org/licenses/>.
 #define RTC_I2C     0x32
 
 #define RTC_PORT         0x2C0
-#define NS_RAM_SIZE      0x10
+#define NS_RAM_SIZE      0x18
 #define BQ32_RAM_SIZE    128
 
-#define REG_NS_MS        0x00
-#define REG_NS_HS        0x01
-#define REG_NS_SECONDS   0x02
-#define REG_NS_MINUTES   0x03
-#define REG_NS_HOURS     0x04
-#define REG_NS_DOTW      0x05
-#define REG_NS_DAY       0x06
-#define REG_NS_MONTH     0x07
+#define REG_NS_MS        0x00 // milliseconds 
+#define REG_NS_HS        0x01 // hundredths/tenths of seconds
+#define REG_NS_SECONDS   0x02 // seconds
+#define REG_NS_MINUTES   0x03 // minutes
+#define REG_NS_HOURS     0x04 // hours
+#define REG_NS_DOTW      0x05 // day of the week
+#define REG_NS_DAY       0x06 // day of the month
+#define REG_NS_MONTH     0x07 // month
 
 #define REG_NS_RAM_MS    0x08 // ms high nibble only, low = 0
 #define REG_NS_YEAR      0x0A // offset from 1980 (AST)
+#define REG_NS_STATE     0x0B // state register
 #define REG_NS_RAM_WEEK  0x0D // RAM week low nibble only, high = 0
+#define REG_NS_STATUS    0x14 // rollover status bit
+
+#define NS_STATE_OK      222  // Clock valid flag for NS_RAM4 (0BH)
 
 #define REG_BQ32_SEC       0x00
 #define REG_BQ32_SEC_ALARM 0x01
@@ -99,10 +103,9 @@ uint8_t dec2bcd(uint8_t x) {
 
 uint8_t BQ32_read(uint8_t reg)
 {
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    time_t tsec = tv.tv_sec;
-    struct tm *t = gmtime(&tsec);
+    struct tm tmv = {};
+    pico_rtc_get_tm(&tmv);
+    struct tm *t = &tmv;
     uint8_t i2c_data;     
 //    printdatetime(t);
 //    printf("Reg: %x\n",reg);
@@ -119,8 +122,8 @@ uint8_t BQ32_read(uint8_t reg)
                              else return dec2bcd(t->tm_wday);         
         case REG_BQ32_DOM : if (bq32_binary_mode) return t->tm_mday;
                              else return dec2bcd(t->tm_mday);
-        case REG_BQ32_MTH : if (bq32_binary_mode) return t->tm_mon;
-                             else return dec2bcd(t->tm_mon);
+        case REG_BQ32_MTH : if (bq32_binary_mode) return t->tm_mon+1;
+                             else return dec2bcd(t->tm_mon+1);
         case REG_BQ32_YEAR: if (bq32_binary_mode) return t->tm_year%100;
                             else return dec2bcd(t->tm_year%100);
         case REG_BQ32_REGD:
@@ -134,10 +137,9 @@ uint8_t BQ32_read(uint8_t reg)
 void BQ32_write(uint8_t reg, uint8_t data)
 {
     bool update_time = false;
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    time_t tsec = tv.tv_sec;
-    struct tm *t = gmtime(&tsec);
+    struct tm tmv = {};
+    pico_rtc_get_tm(&tmv);
+    struct tm *t = &tmv;
     uint8_t i2c_data[2];
 
     i2c_data[1] = data;
@@ -172,13 +174,14 @@ void BQ32_write(uint8_t reg, uint8_t data)
             update_time = true;
             break;
         case REG_BQ32_MTH:
-            if (bq32_binary_mode) t->tm_mon = data;
-               else t->tm_mon = bcd2dec(data);
+            if (bq32_binary_mode) t->tm_mon = data-1;
+               else t->tm_mon = bcd2dec(data)-1;
             update_time = true;
             break;
         case REG_BQ32_YEAR:
-            if (bq32_binary_mode) t->tm_year = data;
-               else t->tm_year = bcd2dec(data); 
+            // register holds a 2-digit year, tm_year counts from 1900
+            if (bq32_binary_mode) t->tm_year = data + 100;
+               else t->tm_year = bcd2dec(data) + 100;
             update_time = true;
             break;
         case REG_BQ32_REGB:
@@ -190,18 +193,15 @@ void BQ32_write(uint8_t reg, uint8_t data)
     if (reg<128) dev_rtc.ram[reg]= data;
 
     if (update_time) {
-       tv.tv_sec = mktime(t);
-       tv.tv_usec = 0; /* microseconds */
-       settimeofday(&tv, nullptr);
+       pico_rtc_set_tm(t);
       }
 }
 
 uint8_t MM58_read(uint8_t reg)
 {
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    time_t tsec = tv.tv_sec;
-    struct tm *t = gmtime(&tsec);
+    struct tm tmv = {};
+    pico_rtc_get_tm(&tmv);
+    struct tm *t = &tmv;
     uint8_t i2c_data;     
 //    printdatetime(t);
 //    printf("Reg: %x\n",reg);
@@ -209,9 +209,9 @@ uint8_t MM58_read(uint8_t reg)
     switch (reg)
     {
         case REG_NS_MS:
-            return ((tv.tv_usec/1000)%10)<<4;   // Low nibble always 0
+            return (((pico_rtc_get_subsec_us()/1000)%10)<<4);   // Low nibble always 0
         case REG_NS_HS:        
-            return dec2bcd(tv.tv_usec/10000);
+            return dec2bcd(pico_rtc_get_subsec_us()/10000);
         case REG_NS_SECONDS:
             return dec2bcd(t->tm_sec);
         case REG_NS_MINUTES:
@@ -223,9 +223,14 @@ uint8_t MM58_read(uint8_t reg)
         case REG_NS_DAY:       
             return dec2bcd(t->tm_mday);
         case REG_NS_MONTH:        
-            return dec2bcd(t->tm_mon);
+            return dec2bcd(t->tm_mon+1);
         case REG_NS_YEAR:
-            return (t->tm_year < 1980) ? 0 : (t->tm_year - 1980);
+            // register holds years since 1980, tm_year counts from 1900
+            return (t->tm_year < 80) ? 0 : (t->tm_year - 80);
+        case REG_NS_STATE:
+            return NS_STATE_OK;  // Clock valid flag for NS_RAM4 (0BH)
+        case REG_NS_STATUS:
+            return 0;            // No rollover (!! To be implemented)
         default:
             if (reg<128) return dev_rtc.ram[reg];
               else return 0xFF;
@@ -235,10 +240,10 @@ uint8_t MM58_read(uint8_t reg)
 
 void MM58_write(uint8_t reg, uint8_t data)
 {
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    time_t tsec = tv.tv_sec;
-    struct tm *t = gmtime(&tsec);
+    bool update_time = false;
+    struct tm tmv = {};
+    pico_rtc_get_tm(&tmv);
+    struct tm *t = &tmv;
     uint8_t i2c_data[2];
 
     i2c_data[1] = data;
@@ -249,34 +254,53 @@ void MM58_write(uint8_t reg, uint8_t data)
     {
         case REG_NS_SECONDS:
             t->tm_sec = bcd2dec(data);
+            update_time = true;
             break;
         case REG_NS_MINUTES:
             t->tm_min = bcd2dec(data);
+            update_time = true;
             break;
         case REG_NS_HOURS:          
             t->tm_hour = bcd2dec(data);
+            update_time = true;
             break;
         case REG_NS_DOTW:
             t->tm_wday = bcd2dec(data);
+            update_time = true;
             break;
         case REG_NS_DAY:
             t->tm_mday = bcd2dec(data);
+            update_time = true;
             break;        
         case REG_NS_MONTH:
-            t->tm_mon = bcd2dec(data);
+            t->tm_mon = bcd2dec(data)-1;
+            update_time = true;
             break;
         case REG_NS_YEAR:
-            t->tm_year = 1980 + data;
+            // register holds years since 1980, tm_year counts from 1900
+            t->tm_year = 80 + data;
+            update_time = true;
+            break;
+        case 0x12:
+        case 0x13:
+            if (data==0xFF) 
+              {
+               if (t->tm_sec>39) {
+                t->tm_sec=0;
+                t->tm_min++;
+                update_time = true;
+               }
+              }
             break;
     }
 
     if (reg==REG_NS_RAM_MS) data=data&0xf0;
     if (reg==REG_NS_RAM_WEEK) data=data&0x0f;
     if (reg<128) dev_rtc.ram[reg]= data;
-    
-    tv.tv_sec = mktime(t);
-    tv.tv_usec = 0; /* microseconds */
-    settimeofday(&tv, nullptr);
+
+    if (update_time) {
+       pico_rtc_set_tm(t);
+      }
 }
 
 uint8_t dev_rtc_install(uint8_t model)
@@ -288,11 +312,12 @@ uint8_t dev_rtc_install(uint8_t model)
         {
          PM_INFO("Install BQ32 RTC at port 0x70\n");
          SetPortType(0x70,DEV_RTC,1);
-         dev_rtc.baseport=RTC_PORT;
+         dev_rtc.baseport=0x70;
         }
        else {
          PM_INFO("Install MM58167 RTC at port 0x2C0\n");
          SetPortType(RTC_PORT,DEV_RTC,NS_RAM_SIZE/0x08);
+         dev_rtc.baseport=RTC_PORT;
         }
      dev_rtc.do_update=false;
      dev_rtc.model=model;
@@ -335,31 +360,34 @@ void dev_rtc_update()
 #if ONBOARD_RTC
  rtc_i2c_setdatetime();
 #endif
+dev_rtc.do_update=false;
 }
 
 bool dev_rtc_ior(uint32_t CTRL_AL8,uint8_t *Data )
-{   
+{ 
   if (dev_rtc.model==RTC_MODEL_BQ32) {
        if (CTRL_AL8&0x7==1) *Data = BQ32_read(bq32_reg);
          else return false;
        }
-     else *Data = MM58_read(CTRL_AL8&(NS_RAM_SIZE-1));
+     else 
+     if (CTRL_AL8-dev_rtc.baseport<=0x14) *Data = MM58_read(CTRL_AL8-dev_rtc.baseport);
+        else return false;
   PM_INFO("rR%X:%X ",CTRL_AL8,*Data);
   return true;
 }
 
-void dev_rtc_iow(uint32_t CTRL_AL8,uint32_t ISAIOW_Data)
+void dev_rtc_iow(uint32_t CTRL_AL8,uint8_t Data)
 {
   if (dev_rtc.model==RTC_MODEL_BQ32) {
        if (CTRL_AL8&0x7==0) bq32_reg;
        else if (CTRL_AL8&0x7==1) {
-              BQ32_write(bq32_reg, ISAIOW_Data&0x0FF);
+              BQ32_write(bq32_reg, Data&0x0FF);
               dev_rtc.do_update=true;
              }
        }
      else {    
-        MM58_write(CTRL_AL8&(NS_RAM_SIZE-1), ISAIOW_Data&0x0FF);
+        MM58_write(CTRL_AL8-dev_rtc.baseport, Data&0x0FF);
         dev_rtc.do_update=true;
        }
-  PM_INFO("rW%X : %X ",CTRL_AL8,ISAIOW_Data);
+  PM_INFO("rW%X : %X ",CTRL_AL8,Data);
 }

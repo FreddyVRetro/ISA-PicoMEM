@@ -311,9 +311,13 @@ void tandy_generator_t::generate_frames(int16_t *dest, uint32_t frames)
             result += m_voice[3].volume;
 #endif
 
-        // output stereo; note that output is inverted
-        *dest++ -= result>>1;
-        *dest++ -= result>>1;
+        /* output stereo; note that output is inverted.
+         * ssat #16: 4 Tandy voices can sum past 32767 >> 1 = 16383; when stacked with
+         * other sources already in dest, plain -= wraps the int16 bus.  Saturate instead. */
+        { int32_t _r = result >> 1, _s;
+          asm("ssat %0, #16, %1" : "=r"(_s) : "r"((int32_t)dest[0] - _r)); dest[0] = (int16_t)_s;
+          asm("ssat %0, #16, %1" : "=r"(_s) : "r"((int32_t)dest[1] - _r)); dest[1] = (int16_t)_s;
+          dest += 2; }
     }
 }
 
@@ -684,9 +688,13 @@ void saa1099_generator_t::generate_frames(int16_t *dest, uint32_t frames)  // Mo
         this->add_voice<5>(lresult, rresult, m_voice[5].lvolume, m_voice[5].rvolume);
 #endif
 
-        // output stereo
-        *dest++ += lresult>>1;
-        *dest++ += rresult>>1;
+        /* output stereo.
+         * ssat #16: 6 SAA1099 voices can push lresult/rresult well above 32767; plain +=
+         * wraps the int16 mix bus when CMS stacks with other active sources.  Saturate. */
+        { int32_t _s;
+          asm("ssat %0, #16, %1" : "=r"(_s) : "r"((int32_t)dest[0] + (lresult>>1))); dest[0] = (int16_t)_s;
+          asm("ssat %0, #16, %1" : "=r"(_s) : "r"((int32_t)dest[1] + (rresult>>1))); dest[1] = (int16_t)_s;
+          dest += 2; }
 
         // noise generator 0
         m_noise[0].pos += m_noise[0].step;

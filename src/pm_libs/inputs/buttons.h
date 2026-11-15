@@ -38,10 +38,10 @@
 // ------    ------    ------    -------    ------
 
 // Face buttons (right cluster)
-#define JP_BUTTON_B1 (1 << 0)   // A         B         Cross      2
-#define JP_BUTTON_B2 (1 << 1)   // B         A         Circle     3
-#define JP_BUTTON_B3 (1 << 2)   // X         Y         Square     1
-#define JP_BUTTON_B4 (1 << 3)   // Y         X         Triangle   4
+#define JP_BUTTON_B1 (1 << 0)   // A         B         Cross      2 (Down)
+#define JP_BUTTON_B2 (1 << 1)   // B         A         Circle     3 (Right)
+#define JP_BUTTON_B3 (1 << 2)   // X         Y         Square     1 (Left)
+#define JP_BUTTON_B4 (1 << 3)   // Y         X         Triangle   4 (Up)
 
 // Shoulder buttons
 #define JP_BUTTON_L1 (1 << 4)   // LB        L         L1         5

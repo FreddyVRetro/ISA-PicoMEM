@@ -12,7 +12,7 @@
 extern cms_buffer_t opl_cmd_buffer;
 #endif
 
-#ifdef BOARD_PICOMEM
+#if BOARD_PICOMEM
 #include "pm_audio.h"
 #endif
 
@@ -51,8 +51,10 @@ static void OPLTimer_CalculateEndTime(opl_timer_t *timer)
 
 static DBOPL::Chip dbopl3(true);
 
+#if BOARD_PICOMEM
 // Temporary buffer as dbopl3 generates 32-bit samples, but we need to return 16-bit samples to the audio mixer.
 static int32_t opl_buf32s[2*PM_SAMPLES_PER_BUFFER];   // interleaved stereo
+#endif
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -146,13 +148,21 @@ void OPL_Pico_simple16(int16_t *buffer, uint32_t nsamples)
     }
 }
 
-void OPL_Pico_stereo_int16(int16_t  *buffer, uint32_t nsamples)
+void OPL_Pico_stereo16(int16_t  *buffer, uint32_t nsamples)
 {
     int32_t *b =opl_buf32s;
     dbopl3.GenerateBlock3(nsamples,b);
 
+    /* Accumulate with ARM saturating add (ssat #16).
+     * The original code did buffer[i] = b[i] (assignment), which silenced any
+     * source mixed before OPL (e.g. MIDI/TSF).  Plain += also wraps on loud
+     * multi-channel FM passages, producing a sign-flip spike.  ssat clamps
+     * the int32 sum to ±32767 so the bus clips cleanly instead of wrapping. */
     for (uint32_t i = 0; i < nsamples*2; i++)
     {
-      buffer[i] = (int16_t) (b[i]);
+      int32_t sum = (int32_t)buffer[i] + b[i];
+      int32_t sat;
+      asm("ssat %0, #16, %1" : "=r"(sat) : "r"(sum));
+      buffer[i] = (int16_t)sat;
     }
 }

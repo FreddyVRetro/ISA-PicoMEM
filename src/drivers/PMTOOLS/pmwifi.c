@@ -63,6 +63,5 @@ int main(int argc, char* argv[]) {
       return 1;
     }
 
-//    printf("PicoMEM Init End.\n");
     return 0;
 }

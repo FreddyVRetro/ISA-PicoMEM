@@ -241,7 +241,7 @@
 /  Note that enabling exFAT discards ANSI C (C89) compatibility. */
 
 
-#define FF_FS_NORTC		1  // Don't use RTC > Fixed date/Time
+#define FF_FS_NORTC		0  // Use the PicoMEM RTC through get_fattime() (src/my_rtc.c)
 #define FF_NORTC_MON	1
 #define FF_NORTC_MDAY	1
 #define FF_NORTC_YEAR	2026

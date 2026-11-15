@@ -26,7 +26,6 @@ SOFTWARE.
 */
 
 // From https://github.com/jburrell7/RPi-Pico-OLED-DRIVER/tree/main
-
 // https://github.com/adafruit/Adafruit_SH110x
 
 #include "pico.h"
@@ -40,6 +39,7 @@ SOFTWARE.
 #include "picoOled.h"
 
 #include "pm_debug.h"
+#include "dev_audiomix.h"
 
 #define USE_MY_I2C_WRITE 1
 
@@ -539,6 +539,12 @@ void oledDisplay(t_OledParams *oled)
             bufIndex = 3;
             bytesToSend += 2;
         }
+        // insert audio mix before sending the display data
+#if BOARD_WM10||BOARD_WM20||BOARD_PM15
+				pm_audio_domix(true);   // Insert Audio Mix during the wait time
+#else
+				pm_audio_domix(false);  // Insert Audio Mix during the wait time
+#endif
         // copy the bit map from the structure buffer to our local buffer
         memcpy(&txBuf[bufIndex], &oled->buffer[index], oled->width);
         // i2c_write_blocking(oled->i2c, oled->i2c_address, txBuf, bytesToSend, false);

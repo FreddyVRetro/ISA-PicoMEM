@@ -39,16 +39,12 @@ Try : https://github.com/Xilinx/qemu/blob/master/hw/net/ne2000.c
 #include <string.h>
 #include <time.h>
 #include "bswap.h"
-#include "pico/cyw43_arch.h"
 #include "pico/multicore.h"
-#include "cyw43.h"
-#include "cyw43_stats.h"
 #include "ne2000.h"
 
 #include "dev_ne2000.h"
+#include "ne2000_backend.h"     // transport vtable
 #include "../pm_debug.h"
-#include "f_util.h"
-#include "ff.h"
 
 #include "../pm_libs/bus_irq.h"       // ISA/PC IRQ code
 
@@ -71,12 +67,7 @@ void ne2000_tx_done(void *p);
 
 bool NE2000_Enabled=false;
 ne2000_t *nic=NULL;
-wifi_infos_t PM_Wifi;   // Wifi Info Structure for PicoMEM
-
-static volatile bool link_up = false;
-
-#define WLC_GET_RATE ( (uint32_t)12 )
-#define WLC_GET_RSSI ( (uint32_t)127 )
+wifi_infos_t PM_Wifi;   // Network info struct -- populated by the active backend.
 
 /*
 This is a terrible temporary hack because  f_reads was not stripping \n\r for me even with
@@ -89,18 +80,9 @@ void TrimString(char *str) {
         }
 }
 
-/*
-#define CYW43_LINK_DOWN         (0)     ///< link is down
-#define CYW43_LINK_JOIN         (1)     ///< Connected to wifi
-#define CYW43_LINK_NOIP         (2)     ///< Connected to wifi, but no IP address
-#define CYW43_LINK_UP           (3)     ///< Connect to wifi with an IP address
-#define CYW43_LINK_FAIL         (-1)    ///< Connection failed
-#define CYW43_LINK_NONET        (-2)    ///< No matching SSID found (could be out of range, or down)
-#define CYW43_LINK_BADAUTH      (-3)    ///< Authenticatation failure
-*/
-
 bool dev_ne2000_install()
 {
+PM_INFO("[NE2K] Installing NE2000 device\n");
 if (nic==NULL) nic = ne2000_init();  // DOS ne2000 driver crash if not init
 if (nic==NULL)
              {
@@ -118,174 +100,49 @@ NE2000_Enabled=false;
 
 void dev_ne2000_cfg(uint16_t port,uint8_t irq)
 {
+#if USE_SERMOUSE
+// The serial mouse (COM2 0x2F8) owns IRQ3 and every mouse driver assumes
+// COM2 == IRQ3, so it is not reassignable. NE2000's IRQ *is* freely
+// reassignable, so it must yield IRQ3. Sharing is impossible here: the MCA
+// IRQ pin is driven as a bare GPIO level with no per-source OR-combining
+// (mca_irq.c), and worse, NE2000 re-asserts on every received frame while a
+// mouse-only guest never services the NE2000 ISR -> IRQ3 stays held low ->
+// the mouse ISR reads the UART, finds nothing (iir=01,lsr=60), EOIs, and the
+// line is still asserted by NE2000 -> phantom IRQ3 storm -> Windows triple
+// -faults on mouse move. Bump NE2000 to IRQ6 so the two never collide.
+// The DOS/Windows packet driver must then be configured for IRQ6. (2026-07-15)
+if (irq == 3) {
+    PM_INFO("[NE2000] IRQ3 reserved for serial mouse -> NE2000 forced to IRQ6\n");
+    irq = 6;
+}
+#endif
 nic->base_address=port;
 nic->irq=irq;
-}        
+}
 
-//https://github.com/czietz/picowifi/blob/master/picowifi.c#L83
+// POST/reboot quiesce (CMD_DEV_Init, every boot warm or cold). The DP8390
+// keeps the previous OS session's state across a PC hot reboot (card
+// started, IMR unmasked) while backend RX frames keep arriving -- every
+// delivery then RE-RAISES the IRQ line during POST (the port-0x96 level
+// drop can't help: the next frame raises it again) and a held IRQ wedges
+// the boot banner. Hardware-reset the chip (stopped, IMR clear, PROM
+// rebuilt from physaddr) and release the line; the packet driver
+// reprograms everything when DOS is up.
+static void ne2000_reset(int type, void *p);   // defined below
 
-void PM_Wifi_GetStatus()
+void dev_ne2000_quiesce(void)
 {
- PM_Wifi.Status=cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
- cyw43_ioctl(&cyw43_state, (uint32_t)WLC_GET_RSSI<<1, sizeof(PM_Wifi.rssi), (uint8_t*)&PM_Wifi.rssi, CYW43_ITF_STA);
- cyw43_ioctl(&cyw43_state, (uint32_t)WLC_GET_RATE<<1, sizeof(PM_Wifi.rate), (uint8_t*)&PM_Wifi.rate, CYW43_ITF_STA);
- switch(PM_Wifi.Status)
-  {  // !! Status string <= 31 chars !!
-    case CYW43_LINK_DOWN : strcpy(PM_Wifi.StatusStr," Err: Link Down");
-                           break;
-    case CYW43_LINK_JOIN :
-    case CYW43_LINK_NOIP :
-    case CYW43_LINK_UP   :
-                           char numbuf[12];
-                           strcpy(PM_Wifi.StatusStr," Connected, Signal ");
-                           strcat(PM_Wifi.StatusStr, itoa(PM_Wifi.rssi, numbuf, 10));
-                           strcat(PM_Wifi.StatusStr,"dB");
-                           break;
-    case CYW43_LINK_FAIL : strcpy(PM_Wifi.StatusStr," Err: Connection failed");
-                           break;
-    case CYW43_LINK_NONET: strcpy(PM_Wifi.StatusStr," Err: SSID not found");
-                           break;
-    case CYW43_LINK_BADAUTH : strcpy(PM_Wifi.StatusStr," Err: Authentication failure");
-                              break;
-    default : 
-  } 
+  if (!NE2000_Enabled || nic == NULL) return;
+  ne2000_reset(BX_RESET_HARDWARE, nic);
+  isa_irq_lower(IRQ_R_NE2000, nic->irq);
 }
 
-// To start only if the Wifi was configured and SSID/Password is set
-void PM_RetryWifi()
-{
-  cyw43_arch_wifi_connect_async(PM_Wifi.WIFI_SSID, PM_Wifi.WIFI_KEY, CYW43_AUTH_WPA2_MIXED_PSK);
-}
+// PM_Wifi_GetStatus / PM_RetryWifi / PM_ConnectWifi
+// (CYW43-specific WiFi management) -- moved to backends/cyw43_backend.c
 
-//https://github.com/czietz/picowifi/blob/master/picowifi.c#L83
-
-// Started all the time
-uint8_t PM_ConnectWifi() 
-{
-  FIL WifiConfigFile;
-  FRESULT fr;
-
-  PM_INFO("cyw43_arch_init();\n");
-
-  int cyw43_err;
-  cyw43_err=cyw43_arch_init();
-  if (cyw43_err!=0) {
-        PM_ERROR("Init failed: %d\n",cyw43_err);
-        sprintf(PM_Wifi.StatusStr,"Init failed: %d\n",cyw43_err);  //Add the error message to the Status String
-        cyw43_arch_deinit();
-        return 1;
-       }
-
-#if PM_WIFI_LED
- cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
-#endif 
-
-  PM_INFO("cyw43_arch_enable_sta_mode();\n");        
-
-  cyw43_arch_enable_sta_mode();    // Station Mode
-
-  cyw43_wifi_set_up(&cyw43_state,CYW43_ITF_STA,true,CYW43_COUNTRY_CANADA);
-  cyw43_wifi_get_mac (&cyw43_state, CYW43_ITF_STA, (uint8_t *)&PM_Wifi.cyw43_mac);     
-  if ((PM_Wifi.cyw43_mac[0]==0)&&(PM_Wifi.cyw43_mac[1]==0)&&(PM_Wifi.cyw43_mac[2]==0)&&(PM_Wifi.cyw43_mac[3]==0))
-     {
-      PM_ERROR("No MAC > Not initialized\n");
-      strcpy(PM_Wifi.StatusStr,"No MAC > Not initialized\n");  //Add the error message to the Status String
-      cyw43_arch_deinit();
-      return 1;        
-     }
-
-  PM_INFO("[WIFI] MAC Address: %02X.%02X.%02X.%02X.%02X.%02X\n\r",PM_Wifi.cyw43_mac[0],PM_Wifi.cyw43_mac[1],PM_Wifi.cyw43_mac[2],PM_Wifi.cyw43_mac[3],PM_Wifi.cyw43_mac[4],PM_Wifi.cyw43_mac[5]);
-
-        //this is proof of concept needs major  error checking and improvement.        
-  fr=f_open(&WifiConfigFile,"Wifi.txt",FA_OPEN_EXISTING | FA_READ);
-	if (FR_OK != fr)
-           {
-             PM_ERROR("Can't open wifi.txt %d\n",fr);         
-             strcpy(PM_Wifi.StatusStr,"Can't open wifi.txt");  //Add the error message to the Status String
-             return 2;
-           }
-        if(f_gets(PM_Wifi.WIFI_SSID,32,&WifiConfigFile) && f_gets(PM_Wifi.WIFI_KEY,63,&WifiConfigFile)) {
-                TrimString(PM_Wifi.WIFI_SSID);
-                TrimString(PM_Wifi.WIFI_KEY);
-                if(strlen(PM_Wifi.WIFI_SSID) && strlen(PM_Wifi.WIFI_KEY)) {
-
-//                   cyw43_wifi_pm(&cyw43_state,CYW43_PERFORMANCE_PM);   // Power management, Performance mode
-//                   cyw43_wifi_pm(&cyw43_state,CYW43_NO_POWERSAVE_MODE);   // Power management, Performance mode
-
-                     PM_INFO("Joining SSID: %s\n",PM_Wifi.WIFI_SSID);                                                
-
-                     int ConnectErr=cyw43_arch_wifi_connect_async(PM_Wifi.WIFI_SSID, PM_Wifi.WIFI_KEY, CYW43_AUTH_WPA2_MIXED_PSK);
-//                   dhcp_stop(&cyw43_state.netif[0]);       // Added to prevent to ask for an IP
-//                   dhcp_stop(&cyw43_state.netif[1]);       // Not needed if no liwp
-
-                     sleep_us(1000); //seemed to be an issue changing power save too quickly
-                     cyw43_wifi_pm(&cyw43_state,CYW43_NO_POWERSAVE_MODE);
-                }
-                else {
-                      PM_ERROR("[WIFI] Missing SSID or Password %s %s",PM_Wifi.WIFI_SSID,PM_Wifi.WIFI_KEY);                   
-                      strcpy(PM_Wifi.StatusStr,"Missing SSID or password");
-                      return 3;
-                     }
-        }
-        else {
-#if PM_PRINTF
-               PM_ERROR("WIFI Configuration file Error.");
-#endif
-               strcpy(PM_Wifi.StatusStr,"Configuration file Error");
-               return 4;
-             }
-
- f_close(&WifiConfigFile);
- 
-/*
-for (;;)
-{
-  busy_wait_ms (1000);
-  PM_Wifi_GetStatus();
-  printf("PM_Wifi.Status %d - ",PM_Wifi.Status);
-  printf("PM_Wifi.rssi %d - ",PM_Wifi.rssi);
-  printf("PM_Wifi.rate %d\n",PM_Wifi.rate);  
-}
-*/
-               
- PM_INFO("ne2000_init\n");
- if (nic==NULL) nic = ne2000_init();  // DOS ne2000 driver crash if not init
- if (nic==NULL) 
-              {
-               strcpy(PM_Wifi.StatusStr,"NE2000 failed to initialized");
-               return 5;
-              } else NE2000_Enabled=true;
- return 0;
-}
-
-#define NOLWIP
-
-#ifdef NOLWIP
-// never called but linker needs it when lwip is removed
-uint16_t pbuf_copy_partial (void *buf, void *dataptr, uint16_t len, uint16_t offset)
-{
-}
-
-void cyw43_cb_tcpip_set_link_up(cyw43_t *self, int itf) {
-#if PM_PRINTF        
-    PM_INFO("Link Up\n");
-#endif    
-    link_up = true;
-#if PM_WIFI_LED    
-    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, link_up);
-#endif    
-}
-
-void cyw43_cb_tcpip_set_link_down(cyw43_t *self, int itf) {
-#if PM_PRINTF
-    PM_INFO("Link Down\n");
-#endif    
-    link_up = false;
-#if PM_WIFI_LED
-    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, link_up);
-#endif    
-}
-#endif
+// PM_ConnectWifi() and the lwIP-less link-up/down stubs
+// (cyw43_cb_tcpip_set_link_up/down, pbuf_copy_partial) -- moved to
+// backends/cyw43_backend.c.
 
 /*
 Base Address: Range Used
@@ -297,8 +154,21 @@ Base Address: Range Used
 0x360 : 0x360 - 0x37F
 */
 
-bool dev_ne2000_ior(uint32_t Addr,uint8_t *Data) {    
+// Forward decls for the trace counters (defined further down alongside
+// the raise/lower helpers). Declared extern here so dev_ne2000_ior/iow
+// can see them without reordering the file.
+extern volatile uint32_t dbg_ne2k_iow_count;
+extern volatile uint32_t dbg_ne2k_ior_count;
+// Per-offset hit histograms (0x00..0x1F). Helps identify which register
+// the PS/2 BIOS / DOS driver is actually hammering.
+extern volatile uint32_t dbg_ne2k_ior_hist[32];
+extern volatile uint32_t dbg_ne2k_iow_hist[32];
+extern volatile uint8_t  dbg_ne2k_last_iow_data;
+
+bool dev_ne2000_ior(uint32_t Addr,uint8_t *Data) {
+   dbg_ne2k_ior_count++;
    Addr=(Addr-nic->base_address) & 0x1F;
+   dbg_ne2k_ior_hist[Addr & 0x1F]++;
     if(Addr <= 0xF) {
      *Data=ne2000_read(Addr,nic);
      return true;
@@ -313,8 +183,11 @@ bool dev_ne2000_ior(uint32_t Addr,uint8_t *Data) {
 return false;
 }
 
-void dev_ne2000_iow(uint32_t Addr,uint8_t Data) { 
- Addr=(Addr-nic->base_address) & 0x1F;             
+void dev_ne2000_iow(uint32_t Addr,uint8_t Data) {
+ dbg_ne2k_iow_count++;
+ Addr=(Addr-nic->base_address) & 0x1F;
+ dbg_ne2k_iow_hist[Addr & 0x1F]++;
+ dbg_ne2k_last_iow_data = Data;
  if(Addr <= 0xF) {
      ne2000_write(Addr,Data,nic);
     }
@@ -324,33 +197,67 @@ void dev_ne2000_iow(uint32_t Addr,uint8_t Data) {
 
 }
 
-void ne2000_initiate_send() {        
-  cyw43_send_ethernet(&cyw43_state,CYW43_ITF_STA,nic->tx_bytes,&nic->mem[nic->tx_page_start * 256 - BX_NE2K_MEMSTART],false);                  
-  sleep_us(100+nic->tx_bytes);   //1 microsecond per byte plus 100us safety?                                
-  ne2000_tx_done(nic); 
-}
-             
-/*
-I rename cyw43_cb_process_ethernet in the library,  may need to handle this differently in the future.
-One reason is we need option to directly process the packets, but also want the option to let them go
-to lwip stack when using tcp virtual modem,  or contacting ntp servers etc.  this is work in progress.
-*/             
-void _cyw43_cb_process_ethernet(void *cb_data, int itf, size_t len, const uint8_t *buf);
-
-void cyw43_cb_process_ethernet(void *cb_data, int itf, size_t len, const uint8_t *buf) 
-{                                        
-  ne2000_rx_frame(nic, buf, len);             
-  CYW43_STAT_INC(PACKET_IN_COUNT);       
+void ne2000_initiate_send() {
+    // Hand the frame to the active transport. Backend is e.g. CYW43 WiFi
+    // (push-model) or W5500 SPI (pull-model); see ne2000_backend.h.
+    ne2000_backend.send(&nic->mem[nic->tx_page_start * 256 - BX_NE2K_MEMSTART],
+                        (uint16_t)nic->tx_bytes);
+    sleep_us(100 + nic->tx_bytes);   // 1 us/byte + 100 us safety
+    ne2000_tx_done(nic);
 }
 
-static void ne2000_raise_irq(ne2000_t *ne2000) {                   
+// Called by transport backends (push or pull) to deliver one received
+// Ethernet frame into the DP8390 emulator.
+void ne2000_deliver_rx(const uint8_t *frame, uint16_t len)
+{
+    if (nic == NULL) return;
+    ne2000_rx_frame(nic, frame, (int)len);
+}
+
+// True when the DP8390 is in a state where a delivered frame would be
+// accepted into the ring (matches the stop/page_start guard at the top of
+// ne2000_rx_frame). A pull-model backend can consult this to HOLD frames in
+// its own ring across a transient guest stop-start instead of feeding
+// ne2000_rx_frame() -- which would just drop them (dbg_ne2k_rx_drop_stop).
+bool ne2000_rx_ready(void)
+{
+    ne2000_t *ne2000 = (ne2000_t *)nic;
+    return ne2000 != NULL && ne2000->CR.stop == 0 && ne2000->page_start != 0;
+}
+
+// Per-second counters for IRQ traffic (printed by a Core 0 heartbeat
+// in pm_cmd.cpp). The previous PM_INFO("NR"/"NL") spam flooded the
+// serial console when the DOS driver churned IMR writes.
+volatile uint32_t dbg_ne2k_irq_raise_count = 0;
+volatile uint32_t dbg_ne2k_irq_lower_count = 0;
+// Per-write-site counters so we can tell whether the lower_irq flood
+// comes from ISR writes, IMR writes, or another code path.
+volatile uint32_t dbg_ne2k_lower_from_isr = 0;  // ne2000.c line ~653
+volatile uint32_t dbg_ne2k_lower_from_imr = 0;  // ne2000.c line ~749
+// Counts the total number of dev_ne2000_iow/ior dispatches so we can
+// see how often the bus handler is actually hitting the NE2000.
+volatile uint32_t dbg_ne2k_iow_count = 0;
+volatile uint32_t dbg_ne2k_ior_count = 0;
+volatile uint32_t dbg_ne2k_ior_hist[32] = {0};
+volatile uint32_t dbg_ne2k_iow_hist[32] = {0};
+volatile uint8_t  dbg_ne2k_last_iow_data = 0;
+// RX frame disposition from ne2000_rx_frame()
+volatile uint32_t dbg_ne2k_rx_deliver    = 0;  // accepted, queued to ring
+volatile uint32_t dbg_ne2k_rx_drop_stop  = 0;  // CR.stop != 0 -- chip halted
+volatile uint32_t dbg_ne2k_rx_drop_full  = 0;  // ring buffer full
+volatile uint32_t dbg_ne2k_rx_drop_bcast = 0;  // broadcast but RCR.broadcast=0
+volatile uint32_t dbg_ne2k_rx_drop_mcast = 0;  // multicast filtered
+volatile uint32_t dbg_ne2k_rx_drop_unic  = 0;  // unicast to wrong MAC
+volatile uint32_t dbg_ne2k_rx_drop_runt  = 0;  // too short
+
+static void ne2000_raise_irq(ne2000_t *ne2000) {
   bus_irq_raise(IRQ_R_NE2000,ne2000->irq,true);
-  PM_INFO("NR");
+  dbg_ne2k_irq_raise_count++;
 }
 
 static void ne2000_lower_irq(ne2000_t *ne2000) {
-  bus_irq_lower(IRQ_R_NE2000,ne2000->irq);       
-  PM_INFO("NL");
+  bus_irq_lower(IRQ_R_NE2000,ne2000->irq);
+  dbg_ne2k_irq_lower_count++;
 }
 
 //
@@ -828,8 +735,10 @@ void ne2000_write(uint16_t address, uint8_t value, void *p) {
                                 value &= ((ne2000->IMR.rdma_inte << 6) | (ne2000->IMR.cofl_inte << 5) |
                                           (ne2000->IMR.overw_inte << 4) | (ne2000->IMR.txerr_inte << 3) |
                                           (ne2000->IMR.rxerr_inte << 2) | (ne2000->IMR.tx_inte << 1) | (ne2000->IMR.rx_inte));
-                                if (value == 0)
+                                if (value == 0) {
+                                        dbg_ne2k_lower_from_isr++;
                                         ne2000_lower_irq(ne2000);
+                                }
                                 // DEV_pic_lower_irq(ne2000->base_irq);
                                 break;
 
@@ -924,8 +833,10 @@ void ne2000_write(uint16_t address, uint8_t value, void *p) {
                                           (ne2000->IMR.rxerr_inte << 2) | (ne2000->IMR.tx_inte << 1) | (ne2000->IMR.rx_inte));
                                 if (value)
                                         ne2000_raise_irq(ne2000);
-                                else
+                                else {
+                                        dbg_ne2k_lower_from_imr++;
                                         ne2000_lower_irq(ne2000);
+                                }
                                 break;
                         }
                         break;
@@ -1087,10 +998,11 @@ void ne2000_rx_frame(void *p, const void *buf, int io_len) {
         if ((ne2000->CR.stop != 0) ||
 		(ne2000->page_start == 0) /*||
                 ((ne2000->DCR.loop == 0) &&
-                (ne2000->TCR.loop_cntl != 0))*/) {                        
+                (ne2000->TCR.loop_cntl != 0))*/) {
+                        dbg_ne2k_rx_drop_stop++;
                         return;
                 }
-                
+
 
         // Add the pkt header + CRC to the length, and work
         // out how many 256-byte pages the frame would occupy
@@ -1108,11 +1020,13 @@ void ne2000_rx_frame(void *p, const void *buf, int io_len) {
 #if BX_NE2K_NEVER_FULL_RING
             || (avail == pages)
 #endif
-        ) {                        
+        ) {
+                dbg_ne2k_rx_drop_full++;
                 return;
         }
 
-        if ((io_len < 40 /*60*/) && !ne2000->RCR.runts_ok) {                
+        if ((io_len < 40 /*60*/) && !ne2000->RCR.runts_ok) {
+                dbg_ne2k_rx_drop_runt++;
                 return;
         }
         // some computers don't care...
@@ -1122,16 +1036,33 @@ void ne2000_rx_frame(void *p, const void *buf, int io_len) {
         // Do address filtering if not in promiscuous mode
         if (!ne2000->RCR.promisc) {
                 if (!memcmp(buf, bcast_addr, 6)) {
-                        if (!ne2000->RCR.broadcast)
+                        if (!ne2000->RCR.broadcast) {
+                                dbg_ne2k_rx_drop_bcast++;
                                 return;
+                        }
                 } else if (pktbuf[0] & 0x01) {
-                        if (!ne2000->RCR.multicast)
+                        if (!ne2000->RCR.multicast) {
+                                dbg_ne2k_rx_drop_mcast++;
                                 return;
+                        }
                         idx = mcast_index(buf);
-                        if (!(ne2000->mchash[idx >> 3] & (1 << (idx & 0x7))))
+                        if (!(ne2000->mchash[idx >> 3] & (1 << (idx & 0x7)))) {
+                                dbg_ne2k_rx_drop_mcast++;
                                 return;
-                } else if (0 != memcmp(buf, ne2000->physaddr, 6))
+                        }
+                } else if (0 != memcmp(buf, ne2000->physaddr, 6)) {
+                        dbg_ne2k_rx_drop_unic++;
+                        // DIAG: is the dropped unicast addressed to OUR MAC
+                        // (would indicate a PAR/physaddr mismatch -> real bug)
+                        // or to another host (legit -- the USB dongle is in
+                        // accept-all/promiscuous mode)? Rate-limited.
+                        if (dbg_ne2k_rx_drop_unic <= 8 || (dbg_ne2k_rx_drop_unic & 0x3F) == 0)
+                                PM_INFO("[NE2K] uni drop dst=%02X:%02X:%02X:%02X:%02X:%02X par=%02X:%02X:%02X:%02X:%02X:%02X\n",
+                                        pktbuf[0], pktbuf[1], pktbuf[2], pktbuf[3], pktbuf[4], pktbuf[5],
+                                        ne2000->physaddr[0], ne2000->physaddr[1], ne2000->physaddr[2],
+                                        ne2000->physaddr[3], ne2000->physaddr[4], ne2000->physaddr[5]);
                         return;
+                }
         }
         nextpage = ne2000->curr_page + pages;
         if (nextpage >= ne2000->page_stop) {
@@ -1170,10 +1101,11 @@ void ne2000_rx_frame(void *p, const void *buf, int io_len) {
         }
 
         ne2000->ISR.pkt_rx = 1;
+        dbg_ne2k_rx_deliver++;
 
-        if (ne2000->IMR.rx_inte) {                                
-                ne2000_raise_irq(ne2000);                
-        }        
+        if (ne2000->IMR.rx_inte) {
+                ne2000_raise_irq(ne2000);
+        }
 }
 
 void ne2000_tx_done(void *p) {
@@ -1189,20 +1121,18 @@ void ne2000_tx_done(void *p) {
 void *ne2000_common_init() {        
    int rc;
 
-   PM_INFO("ne2000 malloc : %d \n",sizeof(ne2000_t));
+   PM_INFO("[NE2K] malloc : %d \n",sizeof(ne2000_t));
 
    ne2000_t *ne2000 = malloc(sizeof(ne2000_t));
    if (ne2000==NULL) 
           {
-           PM_ERROR("Out of RAM : %d \n",sizeof(ne2000_t));
+           PM_ERROR("[NE2K] Out of RAM : %d \n",sizeof(ne2000_t));
            return NULL;
           }
-   memset(ne2000, 0, sizeof(ne2000_t));
-               
+   memset(ne2000, 0, sizeof(ne2000_t));            
    memcpy(ne2000->physaddr, PM_Wifi.cyw43_mac, 6);
 
    ne2000_reset(BX_RESET_HARDWARE, ne2000); 
-   PM_INFO("Init end\n");
    return ne2000;
 }
 

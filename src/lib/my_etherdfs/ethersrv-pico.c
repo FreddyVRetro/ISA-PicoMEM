@@ -332,8 +332,8 @@ static int process(unsigned char *reqbuff) {
     PM_INFO("Writing %u bytes into file #%u, starting offset %u\n", reqbufflen - 6, fileid, offset);
     writelen = writefile(reqbuff + 6, fileid, offset, reqbufflen - 6);
     if (writelen < 0) {
-      PM_ERROR("ERROR: Access denied");
-      *ax = 5; // "access denied"
+      PM_ERROR("WRITE Error (%d)\n", (int)-writelen);
+      *ax = -writelen; // return the real DOS error code
     } else {
       wansw[0] = writelen;
       reslen += 2;
@@ -363,9 +363,16 @@ static int process(unsigned char *reqbuff) {
     PM_INFO("FindFirst in '%s'\filemaskfcb: '%s' \nattribs: 0x%2X\n", directory, pfcb(filemaskfcb), fattr);
     flags = 0;
 
-      if (fs_find(true, (char *) &directory, (char *) &filemaskfcb, &fprops, fattr) != 0) {
-      PM_INFO("No matching file found\n");
-      *ax = ERR_NOMORE_FILES; // 0x12 is "no more files" -- one would assume 0x02 "file not found" would be better, but that's not what MS-DOS 5.x does, some applications rely on a failing FFirst to return 0x12 (for example LapLink 5)
+      uint16_t srchid = 0;
+      int findres = fs_find(true, (char *) &directory, (char *) &filemaskfcb, &fprops, fattr, &srchid);
+      if (findres != 0) {
+      PM_INFO("No matching file found (err %d)\n", -findres);
+      // a missing directory is a real "path not found"; anything else is
+      // reported as 0x12 "no more files" -- one would assume 0x02 "file not
+      // found" would be better, but that's not what MS-DOS 5.x does, some
+      // applications rely on a failing FFirst to return 0x12 (LapLink 5)
+      if (-findres == ERR_PATH_NOTFOUND) *ax = ERR_PATH_NOTFOUND;
+        else *ax = ERR_NOMORE_FILES;
     } else { // found a file
       PM_INFO("found file: FCB '%s' (attr %02Xh)\n", pfcb(fprops.fcbname), fprops.fattr);
       answ[0] = fprops.fattr; // fattr (1=RO 2=HID 4=SYS 8=VOL 16=DIR 32=ARCH 64=DEVICE)
@@ -378,7 +385,7 @@ static int process(unsigned char *reqbuff) {
       answ[17] = (fprops.fsize >> 8) & 0xff;  // fsize
       answ[18] = (fprops.fsize >> 16) & 0xff; // fsize
       answ[19] = (fprops.fsize >> 24) & 0xff; // fsize
-      wansw[10] = 1;     // dir id     PM : Send 1 as Dir ID
+      wansw[10] = srchid; // dir id : the per-search slot, handed back on FindNext
       wansw[11] = fpos;  // file position in dir
       reslen = 24;
     }
@@ -404,7 +411,7 @@ static int process(unsigned char *reqbuff) {
     // if (isroot(root, sstoitem(dirss)) != 0) flags |= FFILE_ISROOT;  !! A Changer
     // if (drivesfat[reqdrv] != 0) flags |= FFILE_ISFAT;
 
-    if (fs_find(false, (char *) NULL, fcbmask, &fprops, fattr)) {
+    if (fs_find(false, (char *) NULL, fcbmask, &fprops, fattr, &dirss)) {
       PM_INFO("No more matching files found\n");
       *ax = ERR_NOMORE_FILES; // "no more files"
     } else { // found a file
@@ -436,16 +443,20 @@ static int process(unsigned char *reqbuff) {
     charreplace(directory, '\\', '/');
 
     if (query == AL_MKDIR) {
+      int res;
       PM_INFO("MKDIR '%s'\n", directory);
-      if (makedir(directory) != 0) {
-        *ax = 29;
-        PM_ERROR("MKDIR Error\n");
+      res = makedir(directory);
+      if (res != 0) {
+        *ax = -res;
+        PM_ERROR("MKDIR Error (%d)\n", -res);
       }
     } else {
+      int res;
       PM_INFO("RMDIR '%s'\n", directory);
-      if (remdir(directory) != 0) {
-        *ax = 29;
-        PM_ERROR("RMDIR Error\n");
+      res = remdir(directory);
+      if (res != 0) {
+        *ax = -res;
+        PM_ERROR("RMDIR Error (%d)\n", -res);
       }
     }
   } else if (query == AL_CHDIR) { /* check if dir exist, return ax=0 if so, ax=3 otherwise */
@@ -484,7 +495,10 @@ static int process(unsigned char *reqbuff) {
     charreplace(fullpathname, '\\', '/');
 
     PM_INFO("SETATTR [file: '%s', attr: 0x%02X]\n", fullpathname, fattr);
-    if (setitemattr(fullpathname, fattr) != 0) *ax = 2;
+    {
+      int res = setitemattr(fullpathname, fattr);
+      if (res != 0) *ax = -res;
+    }
   } else if ((query == AL_GETATTR) && (reqbufflen > 0)) { /// AL_GETATTR (0x0F)
     char fullpathname[DIR_MAX];
     int offset;
@@ -555,7 +569,7 @@ static int process(unsigned char *reqbuff) {
     charreplace(fullpathname, '\\', '/');
     PM_INFO("DELETE '%s'\n", fullpathname);
 
-    res= delfiles(fullpathname);  // !! To correct: DEL only one and del directory as well
+    res= delfiles(fullpathname);
     if (res < 0) {
       PM_ERROR("DELETE Error (%d)\n",-res);
       *ax = -res;
@@ -590,8 +604,8 @@ static int process(unsigned char *reqbuff) {
     lostring(directory + offset, -1);
     charreplace(directory, '\\', '/');
 
-    if (query==AL_CREATE) stackattr=2;    // Force to create as Read/Write (PicoMEM, for Disktest)
-    ofmode=F_AM_CONVERT[stackattr&0x03];  // convert DOS to FatFS open mode
+    if (query==AL_CREATE) ofmode=FA_READ+FA_WRITE;  // a created file is always read/write
+      else ofmode=F_AM_CONVERT[stackattr&0x03];     // convert DOS to FatFS open mode
 
     // compute a FCB-style version of the filename
     // filename2fcb(fnamefcb, fname);
@@ -599,14 +613,28 @@ static int process(unsigned char *reqbuff) {
     spopres=0;
     if (query==AL_CREATE) // If Create, open with Create directly
        {
-         PM_INFO("CREATEFIL / stackattr (attribs)=%02Xh ofmode=%x  '%s'\n", stackattr,FA_CREATE_ALWAYS+ofmode, fullpathname);
-         fileid = openfile(&fprops, fullpathname,FA_CREATE_ALWAYS+ofmode);  // Create, fail if exist
-         // change attr ofmode
+         // AH of the caller's AX tells 3Ch "create/truncate" (0) apart from
+         // 5Bh "create new" (1). 5Bh must fail if the file already exists.
+         int createnew = ((stackattr >> 8) & 0xff) == 1;
+         unsigned char newattr = stackattr & (FAT_RO | FAT_HID | FAT_SYS);
+         PM_INFO("CREATEFIL / stackattr=%04Xh createnew=%d ofmode=%x '%s'\n", stackattr, createnew, ofmode, fullpathname);
+         fileid = openfile(&fprops, fullpathname,(createnew ? FA_CREATE_NEW : FA_CREATE_ALWAYS)+ofmode);
          if (fileid<0) // fileid contains the error code ?
            {
             PM_INFO("Create fail, code=%x\n",-fileid);
-           } else spopres=2;  // File Created
-         resopenmode = stackattr & 0xff;
+           } else {
+            spopres=2;  // File Created
+            // apply the attributes DOS asked for (RO/HID/SYS)
+            if (newattr != 0) {
+              setitemattr(fullpathname, newattr);
+              fprops.fattr |= newattr;
+            }
+           }
+         // For 3Ch/5Bh the low byte of the caller's AX is the FILE ATTRIBUTE,
+         // not an open mode. A created file is always opened read/write, so the
+         // SFT open mode we hand back must say so (access bits = 2), otherwise
+         // DOS treats the handle as read-only and fails the first write.
+         resopenmode = 0x02;
        }
 
     if (query==AL_OPEN) // If Open, open with Open directly
@@ -617,28 +645,37 @@ static int process(unsigned char *reqbuff) {
             {
              PM_INFO("Open fail, code=%x\n",-fileid);
             } else spopres=1;  // File Opened
-         resopenmode = stackattr & 0xff;
+         resopenmode = stackattr & 0x7f; // strip the inherit bit
        }
 
     if (query==AL_SPOPNFIL) 
        {
         PM_INFO("SPOPNFIL / stackattr=%02Xh / action=%02Xh / openmode=%02Xh '%s'\n", stackattr, actioncode, spopen_openmode, fullpathname); 
 
+        // for 6Ch the access mode lives in the open mode word, not in the
+        // attribute word
+        ofmode = F_AM_CONVERT[spopen_openmode & 0x03];
         attr = getitemattr(fullpathname, &fprops);
         resopenmode = spopen_openmode & 0x7f; /* that's what PHANTOM.C does */
         if (attr == 0xff) { /* file not found - look at high nibble of action code */
           PM_INFO("file doesn't exist -> ");
           if ((actioncode & 0xf0) == 16) { /* create */
+            unsigned char newattr = stackattr & (FAT_RO | FAT_HID | FAT_SYS);
             PM_INFO("create file\n");
-            fileid = openfile(&fprops, fullpathname,FA_CREATE_NEW + FA_WRITE + FA_READ);  // Create, force read/write mode (Is it really correct ?)
-            // change attr ofmode
+            fileid = openfile(&fprops, fullpathname,FA_CREATE_NEW + ofmode);
             if (fileid<0) // fileid contains the error code ?
                {
                 PM_INFO("Create fail, code=%x\n",-fileid);
-               } else spopres=2;  // File Created
-          } else { /* fail */
+               } else {
+                spopres=2;  // File Created
+                if (newattr != 0) {
+                  setitemattr(fullpathname, newattr);
+                  fprops.fattr |= newattr;
+                }
+               }
+          } else { /* fail: DOS wants "file not found" here */
             PM_INFO("fail\n");
-            fileid = -ERR_ACC_DENIED;
+            fileid = -ERR_FILE_NOTFOUND;
            }
         } else if ((attr & (FAT_VOL | FAT_DIR)) != 0) { /* item is a DIR or a VOL */
           PM_INFO("fail: item '%s' is either a DIR or a VOL\n", fullpathname);
@@ -651,15 +688,17 @@ static int process(unsigned char *reqbuff) {
             if (fileid<0) // fileid contains the error code ?
                {
                 PM_INFO("Open fail, code=%x\n",-fileid);
-               } else spopres=1;  // File Opened            
-            spopres = 1; /* spopres == 1 means 'file opened' */
-          } else if ((actioncode & 0x0f) == 2) { /* truncate */
-            PM_INFO("truncate file\n");
-            fileid = -ERR_ACC_DENIED;  // !!! To be done (Truncate)
-            if (fileid>0) spopres = 3; /* spopres == 3 means 'file truncated' */
-          } else { /* fail */
-            PM_INFO("fail\n");
-            fileid = -ERR_ACC_DENIED;
+               } else spopres = 1; /* spopres == 1 means 'file opened' */
+          } else if ((actioncode & 0x0f) == 2) { /* replace (truncate) */
+            PM_INFO("replace file\n");
+            fileid = openfile(&fprops, fullpathname, FA_CREATE_ALWAYS + ofmode);
+            if (fileid<0)
+               {
+                PM_INFO("Replace fail, code=%x\n",-fileid);
+               } else spopres = 3; /* spopres == 3 means 'file replaced' */
+          } else { /* fail-if-exists */
+            PM_INFO("fail (file exists)\n");
+            fileid = -ERR_FILE_EXISTS;
           }
         }
         }
@@ -709,7 +748,7 @@ static int process(unsigned char *reqbuff) {
     fsize = getfopsize(fss);
     if (fsize < 0) {
       PM_INFO("ERROR: file not found or other error\n");
-      *ax = 2;
+      *ax = -fsize;
     } else { // compute new offset and send it back
       PM_INFO("file #%u is %lu bytes long\n", fss, fsize);
       offs += fsize;
@@ -727,7 +766,7 @@ static int process(unsigned char *reqbuff) {
 
 extern void ethdfs_init()
 {
-PM_INFO ("PicoMEM DFS Init\n");
+PM_INFO ("[DFS] Init\n");
 init_fobj();
 PM_ETHDFS_BUFF=0x12;
 PM_DP_RAM[PM_DB_Offset-60+1]=0x34;
@@ -766,21 +805,22 @@ void ethdfs_test()
   int res;
   int res1;
   int res2;
+  uint16_t srchvol = 0, srchall = 0;
 
   PM_INFO("Test findfirst\n");
   // Find Volume
-  fs_find(true,(char *) &directory, (char *) &filemask, &fprops,0x08);
+  fs_find(true,(char *) &directory, (char *) &filemask, &fprops,0x08,&srchvol);
   // Real FindFirst
-  fs_find(true,(char *) &directory, (char *) &filemask, &fprops,0x12);
+  fs_find(true,(char *) &directory, (char *) &filemask, &fprops,0x12,&srchall);
 
 
-  fs_find(false,(char *) &directory, (char *) &filemask, &fprops,0x12);
-  fs_find(false,(char *) &directory, (char *) &filemask, &fprops,0x12);
-  fs_find(false,(char *) &directory, (char *) &filemask, &fprops,0x12);
-  fs_find(false,(char *) &directory, (char *) &filemask, &fprops,0x12);  
-  fs_find(false,(char *) &directory, (char *) &filemask, &fprops,0x12);
-  fs_find(false,(char *) &directory, (char *) &filemask, &fprops,0x12);
-  fs_find(false,(char *) &directory, (char *) &filemask, &fprops,0x12);
+  fs_find(false,(char *) NULL, (char *) &filemask, &fprops,0x12,&srchall);
+  fs_find(false,(char *) NULL, (char *) &filemask, &fprops,0x12,&srchall);
+  fs_find(false,(char *) NULL, (char *) &filemask, &fprops,0x12,&srchall);
+  fs_find(false,(char *) NULL, (char *) &filemask, &fprops,0x12,&srchall);  
+  fs_find(false,(char *) NULL, (char *) &filemask, &fprops,0x12,&srchall);
+  fs_find(false,(char *) NULL, (char *) &filemask, &fprops,0x12,&srchall);
+  fs_find(false,(char *) NULL, (char *) &filemask, &fprops,0x12,&srchall);
 
 
   fileid = openfile(&fprops, "0:/CONFIG.TXT",FA_READ);

@@ -4,6 +4,7 @@
 // Based on procon2tool by HandHeldLegend
 
 #include "switch2_pro.h"
+#include <stdio.h>
 #include "inputs/buttons.h"
 #include "inputs/players/manager.h"
 #include "inputs/router/router.h"
@@ -221,7 +222,7 @@ static const uint8_t* get_init_cmd(uint8_t index, uint8_t* len, uint8_t player_l
 static bool find_bulk_endpoint(uint8_t dev_addr, uint8_t* ep_out, uint8_t* itf_num) {
   // Safety: check device is still mounted
   if (!tuh_mounted(dev_addr)) {
-    PM_INFO("[SWITCH2] Device not mounted, skipping bulk endpoint search\r\n");
+    printf("[SWITCH2] Device not mounted, skipping bulk endpoint search\r\n");
     return false;
   }
 
@@ -229,7 +230,7 @@ static bool find_bulk_endpoint(uint8_t dev_addr, uint8_t* ep_out, uint8_t* itf_n
     dev_addr, 0, switch2_config_buf, sizeof(switch2_config_buf));
 
   if (result != XFER_RESULT_SUCCESS) {
-    PM_INFO("[SWITCH2] Failed to get config descriptor\r\n");
+    printf("[SWITCH2] Failed to get config descriptor\r\n");
     return false;
   }
 
@@ -237,7 +238,7 @@ static bool find_bulk_endpoint(uint8_t dev_addr, uint8_t* ep_out, uint8_t* itf_n
 
   // Safety: validate wTotalLength
   if (cfg->wTotalLength > sizeof(switch2_config_buf) || cfg->wTotalLength < sizeof(tusb_desc_configuration_t)) {
-    PM_INFO("[SWITCH2] Invalid config descriptor length: %d\r\n", cfg->wTotalLength);
+    printf("[SWITCH2] Invalid config descriptor length: %d\r\n", cfg->wTotalLength);
     return false;
   }
 
@@ -253,7 +254,7 @@ static bool find_bulk_endpoint(uint8_t dev_addr, uint8_t* ep_out, uint8_t* itf_n
       if (itf->bInterfaceNumber == 1) {
         found_interface = true;
         *itf_num = itf->bInterfaceNumber;
-        PM_INFO("[SWITCH2] Found interface 1: class=0x%02X endpoints=%d\r\n",
+        printf("[SWITCH2] Found interface 1: class=0x%02X endpoints=%d\r\n",
                 itf->bInterfaceClass, itf->bNumEndpoints);
       } else {
         found_interface = false;
@@ -263,7 +264,7 @@ static bool find_bulk_endpoint(uint8_t dev_addr, uint8_t* ep_out, uint8_t* itf_n
       if (tu_edpt_dir(ep->bEndpointAddress) == TUSB_DIR_OUT &&
           (ep->bmAttributes.xfer == TUSB_XFER_BULK)) {
         *ep_out = ep->bEndpointAddress;
-        PM_INFO("[SWITCH2] Found bulk OUT endpoint: 0x%02X\r\n", *ep_out);
+        printf("[SWITCH2] Found bulk OUT endpoint: 0x%02X\r\n", *ep_out);
         return true;
       }
     }
@@ -271,7 +272,7 @@ static bool find_bulk_endpoint(uint8_t dev_addr, uint8_t* ep_out, uint8_t* itf_n
     p_desc = tu_desc_next(p_desc);
   }
 
-  PM_INFO("[SWITCH2] No bulk OUT endpoint found on interface 1\r\n");
+  printf("[SWITCH2] No bulk OUT endpoint found on interface 1\r\n");
   return false;
 }
 
@@ -320,7 +321,7 @@ void input_switch2_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* report
 
   // Process Report ID 0x09 (Pro Controller) or 0x0A (GameCube Controller)
   if (report_id != 0x09 && report_id != 0x0A) {
-    PM_INFO("[SWITCH2] Unknown report ID: 0x%02X\r\n", report_id);
+    printf("[SWITCH2] Unknown report ID: 0x%02X\r\n", report_id);
     return;
   }
 
@@ -352,7 +353,7 @@ void input_switch2_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* report
     inst->cal_samples++;
 
     if (inst->cal_samples >= CAL_SAMPLES_NEEDED) {
-      PM_INFO("[SWITCH2] Calibrated centers: L(%u,%u) R(%u,%u)\r\n",
+      printf("[SWITCH2] Calibrated centers: L(%u,%u) R(%u,%u)\r\n",
              inst->cal_lx.center, inst->cal_ly.center,
              inst->cal_rx.center, inst->cal_ry.center);
     }
@@ -466,7 +467,7 @@ void input_switch2_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* report
 
 static void output_rumble(uint8_t dev_addr, uint8_t instance, uint8_t rumble_left, uint8_t rumble_right) {
   switch2_instance_t* inst = &switch2_devices[dev_addr].instances[instance];
-  uint32_t now = to_ms_since_boot(get_absolute_time());
+  uint32_t now = time_us_32();
 
   // Check if we need to send:
   // - Always send on change
@@ -480,7 +481,7 @@ static void output_rumble(uint8_t dev_addr, uint8_t instance, uint8_t rumble_lef
   }
 
   if (changed) {
-    PM_INFO("[SWITCH2] Rumble: L %d->%d, R %d->%d\r\n",
+    printf("[SWITCH2] Rumble: L %d->%d, R %d->%d\r\n",
            inst->rumble_left, rumble_left, inst->rumble_right, rumble_right);
   }
   inst->rumble_left = rumble_left;
@@ -533,7 +534,7 @@ static void output_rumble(uint8_t dev_addr, uint8_t instance, uint8_t rumble_lef
 
     sent = tuh_hid_send_report(dev_addr, instance, 0x02, switch2_haptic_buf + 1, 63);
     if (changed) {
-      printf("[SWITCH2] HID send: %s\r\n", sent ? "OK" : "FAIL");
+      PM_INFO("[SWITCH2] HID send: %s\r\n", sent ? "OK" : "FAIL");
     }
   }
 }
@@ -548,7 +549,7 @@ static void reinit_on_player_assign(uint8_t dev_addr, uint8_t instance) {
     return;
   }
 
-  PM_INFO("[SWITCH2] Re-running init on player assign\r\n");
+  printf("[SWITCH2] Re-running init on player assign\r\n");
 
   // Reset to init state - will run full sequence again
   inst->state = SWITCH2_STATE_INIT_SEQUENCE;
@@ -577,7 +578,7 @@ static void output_player_led(uint8_t dev_addr, uint8_t instance, uint8_t player
     return;
   }
 
-  PM_INFO("[SWITCH2] Player LED: %d -> %d\r\n", inst->player_led, player_index);
+  printf("[SWITCH2] Player LED: %d -> %d\r\n", inst->player_led, player_index);
   inst->player_led = player_index;
 
   // Build LED command
@@ -598,11 +599,11 @@ static void output_player_led(uint8_t dev_addr, uint8_t instance, uint8_t player
   if (inst->pid == SWITCH2_GC_PID) {
     // GameCube: send via HID output report (report ID 0x03)
     sent = tuh_hid_send_report(dev_addr, instance, 0x03, led_cmd, 63);
-    PM_INFO("[SWITCH2] GC LED send: %s\r\n", sent ? "OK" : "FAIL");
+    printf("[SWITCH2] GC LED send: %s\r\n", sent ? "OK" : "FAIL");
   } else {
     // Pro Controller: send via bulk endpoint
     if (inst->ep_out == 0) {
-      PM_INFO("[SWITCH2] LED: No bulk endpoint!\r\n");
+      printf("[SWITCH2] LED: No bulk endpoint!\r\n");
       return;
     }
     if (inst->xfer_pending) {
@@ -612,7 +613,7 @@ static void output_player_led(uint8_t dev_addr, uint8_t instance, uint8_t player
     if (sent) {
       inst->xfer_pending = true;
     }
-    PM_INFO("[SWITCH2] LED send: %s (ep=0x%02X)\r\n", sent ? "OK" : "FAIL", inst->ep_out);
+    printf("[SWITCH2] LED send: %s (ep=0x%02X)\r\n", sent ? "OK" : "FAIL", inst->ep_out);
   }
 }
 
@@ -622,7 +623,7 @@ void task_switch2_pro(uint8_t dev_addr, uint8_t instance, device_output_config_t
 
   // Debug: trace rumble calls
   if (config->rumble_left || config->rumble_right) {
-    PM_INFO("[SWITCH2] task: state=%d rumble L=%d R=%d\r\n",
+    printf("[SWITCH2] task: state=%d rumble L=%d R=%d\r\n",
            inst->state, config->rumble_left, config->rumble_right);
   }
 
@@ -635,7 +636,7 @@ void task_switch2_pro(uint8_t dev_addr, uint8_t instance, device_output_config_t
 
   // Deferred bulk endpoint init (avoids crash on PIO USB if done too early)
   if (inst->state == SWITCH2_STATE_FIND_ENDPOINT) {
-    uint32_t now = to_ms_since_boot(get_absolute_time());
+    uint32_t now = time_us_32();
     // Wait 100ms after mount before accessing config descriptor
     if (now - inst->init_delay_ms < 100) {
       return;
@@ -661,12 +662,12 @@ void task_switch2_pro(uint8_t dev_addr, uint8_t instance, device_output_config_t
     };
 
     if (!tuh_edpt_open(dev_addr, &ep_desc)) {
-      PM_INFO("[SWITCH2] Failed to open endpoint 0x%02X - rumble/LED disabled\r\n", ep_out);
+      printf("[SWITCH2] Failed to open endpoint 0x%02X - rumble/LED disabled\r\n", ep_out);
       inst->state = SWITCH2_STATE_READY;
       return;
     }
 
-    PM_INFO("[SWITCH2] Opened bulk OUT endpoint 0x%02X\r\n", ep_out);
+    printf("[SWITCH2] Opened bulk OUT endpoint 0x%02X\r\n", ep_out);
     inst->ep_out = ep_out;
     inst->itf_num = itf_num;
     inst->state = SWITCH2_STATE_INIT_SEQUENCE;
@@ -692,12 +693,12 @@ void task_switch2_pro(uint8_t dev_addr, uint8_t instance, device_output_config_t
   // Check if done
   if (inst->cmd_index >= SWITCH2_INIT_CMD_COUNT) {
     inst->init_run_count++;
-    PM_INFO("[SWITCH2] Init sequence %d complete\r\n", inst->init_run_count);
+    printf("[SWITCH2] Init sequence %d complete\r\n", inst->init_run_count);
 
     // GameCube controller: run init sequence twice for reliable rumble/LED
     // (empirically discovered - single init doesn't always enable features)
     if (inst->pid == SWITCH2_GC_PID && inst->init_run_count < 2) {
-      PM_INFO("[SWITCH2] GC: re-running init sequence\r\n");
+      printf("[SWITCH2] GC: re-running init sequence\r\n");
       inst->cmd_index = 0;
       inst->cmd_sent = false;
       return;
@@ -706,7 +707,7 @@ void task_switch2_pro(uint8_t dev_addr, uint8_t instance, device_output_config_t
     inst->state = SWITCH2_STATE_READY;
     // Re-request HID reports in case they got stuck during bulk init
     if (!tuh_hid_receive_report(dev_addr, instance)) {
-      PM_INFO("[SWITCH2] Warning: failed to re-request HID report\r\n");
+      printf("[SWITCH2] Warning: failed to re-request HID report\r\n");
     }
     return;
   }
@@ -718,7 +719,7 @@ void task_switch2_pro(uint8_t dev_addr, uint8_t instance, device_output_config_t
   const uint8_t* cmd = get_init_cmd(inst->cmd_index, &cmd_len, player_led);
 
   if (cmd && cmd_len > 0) {
-    PM_INFO("[SWITCH2] Sending cmd %d/18: 0x%02X\r\n", inst->cmd_index + 1, cmd[0]);
+    printf("[SWITCH2] Sending cmd %d/18: 0x%02X\r\n", inst->cmd_index + 1, cmd[0]);
     if (send_command(dev_addr, instance, inst->ep_out, cmd, cmd_len)) {
       inst->xfer_pending = true;
       inst->cmd_sent = true;
@@ -733,7 +734,7 @@ static bool init_switch2_pro(uint8_t dev_addr, uint8_t instance) {
   uint16_t vid, pid;
   tuh_vid_pid_get(dev_addr, &vid, &pid);
   const char* type_str = (pid == SWITCH2_GC_PID) ? "GameCube" : "Pro";
-  PM_INFO("[SWITCH2] Init %s dev=%d instance=%d (PID=0x%04X)\r\n", type_str, dev_addr, instance, pid);
+  printf("[SWITCH2] Init %s dev=%d instance=%d (PID=0x%04X)\r\n", type_str, dev_addr, instance, pid);
 
   switch2_instance_t* inst = &switch2_devices[dev_addr].instances[instance];
   memset(inst, 0, sizeof(*inst));
@@ -764,7 +765,7 @@ static bool init_switch2_pro(uint8_t dev_addr, uint8_t instance) {
 
 // Unmount device
 void unmount_switch2_pro(uint8_t dev_addr, uint8_t instance) {
-  PM_INFO("[SWITCH2] Unmount dev=%d instance=%d\r\n", dev_addr, instance);
+  printf("[SWITCH2] Unmount dev=%d instance=%d\r\n", dev_addr, instance);
 
   // Clear ep_out first to signal to callbacks that device is gone
   // This prevents the bulk_xfer_complete_cb from accessing stale state

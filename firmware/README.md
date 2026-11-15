@@ -31,6 +31,30 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 
 ## Firmwares Revision History :
 
+### PM_x_11_05_26_x : OPL3, ROM, Bug Fix...  (Nov 5, 2026)
+
+- + Long file name and up to 5000 image per folder
+- + HDD and Floppy images sorted alphabetically
+- + ROM emulation added : ROM image is configured in the config.txt file
+- + HDD and Floppy images can now be selected from USB
+- + .VHD Hard drive image support (Fixed size only)
+- + .IMG disk geometry can be defined in a .CHS file
+- + OPL3 emulation added
+- + ADPCM added in the Sound Blaster emulation (Duke Nukem 2)
+- + SB DSP commands E2 and 24 added
+- + Lot of USB Joystick added (PS4/Switch/Generic....) and 2 players support
+- + Added Color profiles for the BIOS Setup (No more need Mono build)
+- ! SB DSP Does not answer init end directly
+- ! IO ports emulation code called from a table
+- ! Multiple bug fix in the RTC emulation for GlaTick support
+- ! Now the PicoMEM written file has the correct date/time (PMDFS, Config)
+- ! Multiple bug fix in the DFS code (USB/SD access)
+- ! Sound Blaster IRQ/DMA config was not implemented (Was using default)
+- ! Define Use PicoMEM Boot by default
+- ! Corrected a BUG in IRQ detection (prevented some PC to BOOT)
+- ! Improved RAM detection code in the BIOS init (Issue 165)
+- ! NE2000 correction : Crash in EKLS network driver (Issue 155)
+
 ### PM_x_11_16_25_x : Sound Blaster, Covox, ROM Dump....  (Nov 16, 2025)
 - New : Sound Blaster emulation with DMA emulation (Not working on Slow PC/XT, check Wiki for more infos)
 - New : Covox support added, enable it using PMININT

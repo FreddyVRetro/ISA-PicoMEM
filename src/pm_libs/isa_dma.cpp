@@ -63,7 +63,7 @@ void isa_dma_init()
 // To be started early in the code, at Pico startup
 void isa_dma_install()
 {
-  PM_INFO("isa_dma_install\n");
+  PM_INFO("[DMA] isa_dma_install\n");
 #if USE_HWDMA
 if (pio_sm_is_claimed(DMA_PIO, DMA_SM)) PM_ERROR("pio/sm %s/%d already claimed\n",DMA_PIO, DMA_SM);
    else PM_INFO("Claiming PIO %s SM %d\n",DMA_PIO, DMA_SM); 
@@ -78,13 +78,11 @@ PM_INFO(" > Add ISA DMA Write SM with TC\n");
   isa_dma_w_offset = pio_add_program(DMA_PIO, &isa_dma_w_tc_program);
   isa_dma_w_tc_program_init(DMA_PIO, DMA_SM, isa_dma_w_offset);
 #endif
-
   irq_set_enabled(PIO0_IRQ_0, false);
   pio_set_irq0_source_enabled(DMA_PIO, pis_sm3_rx_fifo_not_empty, true);  // !! To change if the DMA SM value change
   irq_set_priority(PIO0_IRQ_0, PICO_HIGHEST_IRQ_PRIORITY);
   irq_set_exclusive_handler(PIO0_IRQ_0, isa_dma_isr);
   irq_set_enabled(PIO0_IRQ_0, true);
-
 #endif
   
   isa_dma_init();

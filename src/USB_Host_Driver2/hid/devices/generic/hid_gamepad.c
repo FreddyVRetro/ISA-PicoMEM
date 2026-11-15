@@ -4,12 +4,14 @@
 #include "inputs/buttons.h"
 #include "inputs/router/router.h"
 #include "inputs/input_event.h"
+#include <string.h>
 
 typedef struct
 {
-  uint8_t byteIndex;
+  uint8_t  byteIndex;
   uint16_t bitMask;
-  uint32_t max;
+  uint16_t max;   // logical maximum (16-bit is plenty for gamepad axes)
+  int16_t  min;   // logical minimum — <0 marks a signed/centered axis
 } dinput_usage_t;
 
 // Generic HID instance state
@@ -22,9 +24,10 @@ typedef struct TU_ATTR_PACKED
   dinput_usage_t rxLoc;
   dinput_usage_t ryLoc;
   dinput_usage_t hatLoc;
-  dinput_usage_t buttonLoc[MAX_BUTTONS]; // assuming a maximum of 12 buttons
+  dinput_usage_t buttonLoc[MAX_TOTAL_BUTTONS]; // 12 named + 12 spillover-to-aux
   uint8_t buttonCnt;
   uint8_t type;
+  bool xbox_axes;  // Xbox HID convention: Rx/Ry=right stick, Z=triggers
 } dinput_instance_t;
 
 // Cached device report properties on mount
@@ -128,6 +131,7 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
             hid_devices[dev_addr].instances[instance].xLoc.byteIndex = byteIndex;
             hid_devices[dev_addr].instances[instance].xLoc.bitMask = bitMask;
             hid_devices[dev_addr].instances[instance].xLoc.max = item->Attributes.Logical.Maximum;
+            hid_devices[dev_addr].instances[instance].xLoc.min = item->Attributes.Logical.Minimum;
             break;
           }
           case HID_USAGE_DESKTOP_Y: // Left Analog Y
@@ -136,6 +140,7 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
             hid_devices[dev_addr].instances[instance].yLoc.byteIndex = byteIndex;
             hid_devices[dev_addr].instances[instance].yLoc.bitMask = bitMask;
             hid_devices[dev_addr].instances[instance].yLoc.max = item->Attributes.Logical.Maximum;
+            hid_devices[dev_addr].instances[instance].yLoc.min = item->Attributes.Logical.Minimum;
             break;
           }
           case HID_USAGE_DESKTOP_Z: // Right Analog X
@@ -144,6 +149,7 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
             hid_devices[dev_addr].instances[instance].zLoc.byteIndex = byteIndex;
             hid_devices[dev_addr].instances[instance].zLoc.bitMask = bitMask;
             hid_devices[dev_addr].instances[instance].zLoc.max = item->Attributes.Logical.Maximum;
+            hid_devices[dev_addr].instances[instance].zLoc.min = item->Attributes.Logical.Minimum;
             break;
           }
           case HID_USAGE_DESKTOP_RZ: // Right Analog Y
@@ -152,6 +158,7 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
             hid_devices[dev_addr].instances[instance].rzLoc.byteIndex = byteIndex;
             hid_devices[dev_addr].instances[instance].rzLoc.bitMask = bitMask;
             hid_devices[dev_addr].instances[instance].rzLoc.max = item->Attributes.Logical.Maximum;
+            hid_devices[dev_addr].instances[instance].rzLoc.min = item->Attributes.Logical.Minimum;
             break;
           }
           case HID_USAGE_DESKTOP_RX: // Left Analog Trigger
@@ -160,6 +167,7 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
             hid_devices[dev_addr].instances[instance].rxLoc.byteIndex = byteIndex;
             hid_devices[dev_addr].instances[instance].rxLoc.bitMask = bitMask;
             hid_devices[dev_addr].instances[instance].rxLoc.max = item->Attributes.Logical.Maximum;
+            hid_devices[dev_addr].instances[instance].rxLoc.min = item->Attributes.Logical.Minimum;
             break;
           }
           case HID_USAGE_DESKTOP_RY: // Right Analog Trigger
@@ -168,6 +176,7 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
             hid_devices[dev_addr].instances[instance].ryLoc.byteIndex = byteIndex;
             hid_devices[dev_addr].instances[instance].ryLoc.bitMask = bitMask;
             hid_devices[dev_addr].instances[instance].ryLoc.max = item->Attributes.Logical.Maximum;
+            hid_devices[dev_addr].instances[instance].ryLoc.min = item->Attributes.Logical.Minimum;
             break;
           }
           case HID_USAGE_DESKTOP_HAT_SWITCH:
@@ -198,12 +207,37 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
           }
           break;
         }
+        case HID_USAGE_PAGE_SIMULATE:
+        {
+          // Xbox-style analog triggers live on Simulation Controls: Brake (0xC5)
+          // and Accelerator (0xC4). Map them onto the trigger locs (rx=L2, ry=R2)
+          // — same slots the Generic Desktop RX/RY path uses.
+          switch (item->Attributes.Usage.Usage)
+          {
+          case 0xC5: // Brake -> Left trigger (L2)
+            hid_devices[dev_addr].instances[instance].rxLoc.byteIndex = byteIndex;
+            hid_devices[dev_addr].instances[instance].rxLoc.bitMask = bitMask;
+            hid_devices[dev_addr].instances[instance].rxLoc.max = item->Attributes.Logical.Maximum;
+            hid_devices[dev_addr].instances[instance].rxLoc.min = item->Attributes.Logical.Minimum;
+            break;
+          case 0xC4: // Accelerator -> Right trigger (R2)
+            hid_devices[dev_addr].instances[instance].ryLoc.byteIndex = byteIndex;
+            hid_devices[dev_addr].instances[instance].ryLoc.bitMask = bitMask;
+            hid_devices[dev_addr].instances[instance].ryLoc.max = item->Attributes.Logical.Maximum;
+            hid_devices[dev_addr].instances[instance].ryLoc.min = item->Attributes.Logical.Minimum;
+            break;
+          default: break;
+          }
+          break;
+        }
         case HID_USAGE_PAGE_BUTTON:
         {
           if (HID_DEBUG) TU_LOG1(" HID_USAGE_PAGE_BUTTON ");
           uint8_t usage = item->Attributes.Usage.Usage;
 
-          if (usage >= 1 && usage <= MAX_BUTTONS) {
+          // Store up to MAX_TOTAL_BUTTONS locations: usages 1..12 feed the named
+          // JP_BUTTON mapping, usages 13..24 spill into aux_buttons (see below).
+          if (usage >= 1 && usage <= MAX_TOTAL_BUTTONS) {
             hid_devices[dev_addr].instances[instance].buttonLoc[usage - 1].byteIndex = byteIndex;
             hid_devices[dev_addr].instances[instance].buttonLoc[usage - 1].bitMask = bitMask;
           }
@@ -220,7 +254,21 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
   }
 
   hid_devices[dev_addr].instances[instance].buttonCnt = btns_count;
-  // hid_devices[dev_addr].instances[instance].reportID = item->ReportID;
+
+  // Detect Xbox HID axis convention: Rx/Ry present (right stick) but no Rz
+  // DInput: Z/Rz = right stick, Rx/Ry = triggers
+  // Xbox HID: Rx/Ry = right stick, Z = triggers
+  dinput_instance_t *inst = &hid_devices[dev_addr].instances[instance];
+  if (inst->rxLoc.max && inst->ryLoc.max && !inst->rzLoc.max) {
+    inst->xbox_axes = true;
+    TU_LOG1("HID Gamepad: Xbox axis convention detected (Rx/Ry=sticks, Z=triggers)\n");
+    // Remap so output mapping stays consistent: z/rz = right stick, rx/ry = triggers
+    dinput_usage_t old_z = inst->zLoc;
+    inst->zLoc = inst->rxLoc;     // Rx → right stick X
+    inst->rzLoc = inst->ryLoc;    // Ry → right stick Y
+    inst->rxLoc = old_z;          // Z → left trigger
+    inst->ryLoc = (dinput_usage_t){0};  // No separate right trigger
+  }
 }
 
 //
@@ -261,47 +309,6 @@ bool parse_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_r
 // {
 // }
 
-// called from parser for filtering report items
-bool CALLBACK_HIDParser_FilterHIDReportItem(uint8_t dev_addr, uint8_t instance, HID_ReportItem_t *const CurrentItem)
-{
-  if (CurrentItem->ItemType != HID_REPORT_ITEM_In)
-    return false;
-
-  // if (hid_devices[dev_addr].instances[instance].reportID == INVALID_REPORT_ID)
-  // {
-  //   hid_devices[dev_addr].instances[instance].reportID = CurrentItem->ReportID;
-  // }
-
-  TU_LOG1("ITEM_PAGE: 0x%x", CurrentItem->Attributes.Usage.Page);
-  TU_LOG1(" USAGE: 0x%x\n", CurrentItem->Attributes.Usage.Usage);
-  switch (CurrentItem->Attributes.Usage.Page)
-  {
-    case HID_USAGE_PAGE_DESKTOP:
-      switch (CurrentItem->Attributes.Usage.Usage)
-      {
-        case HID_USAGE_DESKTOP_X:
-        case HID_USAGE_DESKTOP_Y:
-        case HID_USAGE_DESKTOP_Z:
-        case HID_USAGE_DESKTOP_RZ:
-        case HID_USAGE_DESKTOP_RX:
-        case HID_USAGE_DESKTOP_RY:
-        case HID_USAGE_DESKTOP_HAT_SWITCH:
-        case HID_USAGE_DESKTOP_DPAD_UP:
-        case HID_USAGE_DESKTOP_DPAD_DOWN:
-        case HID_USAGE_DESKTOP_DPAD_LEFT:
-        case HID_USAGE_DESKTOP_DPAD_RIGHT:
-        case HID_USAGE_DESKTOP_WHEEL:
-        case HID_USAGE_DESKTOP_MOUSE:
-        case HID_USAGE_DESKTOP_KEYBOARD:
-          return true;
-      }
-      return false;
-    case HID_USAGE_PAGE_BUTTON:
-      return true;
-  }
-  return false;
-}
-
 // scales down switch analog value to a single byte
 uint8_t scale_analog_hid_gamepad(uint16_t value, uint32_t max_value)
 {
@@ -319,80 +326,63 @@ uint8_t scale_analog_hid_gamepad(uint16_t value, uint32_t max_value)
   return scaled_value;
 }
 
+// Read a 16-bit or 8-bit axis value from HID report (little-endian)
+static uint16_t read_axis_value(const uint8_t *report, const dinput_usage_t *loc)
+{
+  if (loc->bitMask > 0xFF) {
+    // 16-bit: USB HID is little-endian (low byte first)
+    uint16_t combined = (uint16_t)report[loc->byteIndex] | ((uint16_t)report[loc->byteIndex + 1] << 8);
+    return (combined & loc->bitMask) >> __builtin_ctz(loc->bitMask);
+  } else if (loc->bitMask) {
+    return report[loc->byteIndex] & loc->bitMask;
+  }
+  return 0;
+}
+
+// Scale a parsed axis to 0-255. Most HID pads use unsigned axes (logical 0..max);
+// some (e.g. ELO Vagabond) declare SIGNED axes centered at 0 (logicalMin < 0),
+// where the unsigned path would read center as ~1. For signed axes, sign-extend
+// the field and map [min,max] -> [1,255] so 0 lands at 128.
+static uint8_t scale_axis(const dinput_usage_t *loc, uint16_t raw)
+{
+  if (loc->min < 0) {
+    int32_t sval = (loc->bitMask > 0xFF) ? (int16_t)raw : (int8_t)raw;
+    int32_t span = (int32_t)loc->max - (int32_t)loc->min;
+    if (span <= 0) return 128;
+    int32_t out = 1 + (int32_t)(sval - loc->min) * 254 / span;
+    return out < 1 ? 1 : (out > 255 ? 255 : (uint8_t)out);
+  }
+  return scale_analog_hid_gamepad(raw, loc->max);
+}
+
 // process generic usb hid input reports (from parsed HID descriptor byteIndexes & bitMasks)
 void process_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len)
 {
   uint32_t buttons = 0;
-  static dinput_gamepad_t previous[5][5];
+  static dinput_gamepad_t previous[MAX_DEVICES][5];
+  static uint32_t previous_aux[MAX_DEVICES][5];   // spillover buttons (usages 13..24)
   dinput_gamepad_t current = {0};
   current.value = 0;
 
-  uint16_t xValue, yValue, zValue, rzValue, rxValue, ryValue;
+  dinput_instance_t *inst = &hid_devices[dev_addr].instances[instance];
+  dinput_usage_t xLoc = inst->xLoc;
+  dinput_usage_t yLoc = inst->yLoc;
+  dinput_usage_t zLoc = inst->zLoc;
+  dinput_usage_t rzLoc = inst->rzLoc;
+  dinput_usage_t rxLoc = inst->rxLoc;
+  dinput_usage_t ryLoc = inst->ryLoc;
 
-  if (hid_devices[dev_addr].instances[instance].xLoc.bitMask > 0xFF) { // if bitmask is larger than 8 bits
-    // Combine the current byte and the next byte into a 16-bit value
-    uint16_t combinedBytes = ((uint16_t)report[hid_devices[dev_addr].instances[instance].xLoc.byteIndex] << 8) | report[hid_devices[dev_addr].instances[instance].xLoc.byteIndex + 1];
-    // Apply the bitmask to the combined 16-bit value
-    xValue = (combinedBytes & hid_devices[dev_addr].instances[instance].xLoc.bitMask) >> (__builtin_ctz(hid_devices[dev_addr].instances[instance].xLoc.bitMask));
-  } else if (hid_devices[dev_addr].instances[instance].xLoc.bitMask) {
-    // Apply the bitmask to the single byte value (your existing implementation)
-    xValue = report[hid_devices[dev_addr].instances[instance].xLoc.byteIndex] & hid_devices[dev_addr].instances[instance].xLoc.bitMask;
-  }
+  uint16_t xValue = read_axis_value(report, &xLoc);
+  uint16_t yValue = read_axis_value(report, &yLoc);
+  uint16_t zValue = read_axis_value(report, &zLoc);
+  uint16_t rzValue = read_axis_value(report, &rzLoc);
+  uint16_t rxValue = read_axis_value(report, &rxLoc);
+  uint16_t ryValue = read_axis_value(report, &ryLoc);
 
-  if (hid_devices[dev_addr].instances[instance].yLoc.bitMask > 0xFF) { // if bitmask is larger than 8 bits
-    // Combine the current byte and the next byte into a 16-bit value
-    uint16_t combinedBytes = ((uint16_t)report[hid_devices[dev_addr].instances[instance].yLoc.byteIndex] << 8) | report[hid_devices[dev_addr].instances[instance].yLoc.byteIndex + 1];
-    // Apply the bitmask to the combined 16-bit value
-    yValue = (combinedBytes & hid_devices[dev_addr].instances[instance].yLoc.bitMask) >> (__builtin_ctz(hid_devices[dev_addr].instances[instance].yLoc.bitMask));
-  } else if (hid_devices[dev_addr].instances[instance].yLoc.bitMask) {
-    // Apply the bitmask to the single byte value (your existing implementation)
-    yValue = report[hid_devices[dev_addr].instances[instance].yLoc.byteIndex] & hid_devices[dev_addr].instances[instance].yLoc.bitMask;
-  }
-
-  if (hid_devices[dev_addr].instances[instance].zLoc.bitMask > 0xFF) { // if bitmask is larger than 8 bits
-    // Combine the current byte and the next byte into a 16-bit value
-    uint16_t combinedBytes = ((uint16_t)report[hid_devices[dev_addr].instances[instance].zLoc.byteIndex] << 8) | report[hid_devices[dev_addr].instances[instance].zLoc.byteIndex + 1];
-    // Apply the bitmask to the combined 16-bit value
-    zValue = (combinedBytes & hid_devices[dev_addr].instances[instance].zLoc.bitMask) >> (__builtin_ctz(hid_devices[dev_addr].instances[instance].zLoc.bitMask));
-  } else if (hid_devices[dev_addr].instances[instance].zLoc.bitMask) {
-    // Apply the bitmask to the single byte value (your existing implementation)
-    zValue = report[hid_devices[dev_addr].instances[instance].zLoc.byteIndex] & hid_devices[dev_addr].instances[instance].zLoc.bitMask;
-  }
-
-  if (hid_devices[dev_addr].instances[instance].rzLoc.bitMask > 0xFF) { // if bitmask is larger than 8 bits
-    // Combine the current byte and the next byte into a 16-bit value
-    uint16_t combinedBytes = ((uint16_t)report[hid_devices[dev_addr].instances[instance].rzLoc.byteIndex] << 8) | report[hid_devices[dev_addr].instances[instance].rzLoc.byteIndex + 1];
-    // Apply the bitmask to the combined 16-bit value
-    rzValue = (combinedBytes & hid_devices[dev_addr].instances[instance].rzLoc.bitMask) >> (__builtin_ctz(hid_devices[dev_addr].instances[instance].rzLoc.bitMask));
-  } else if (hid_devices[dev_addr].instances[instance].rzLoc.bitMask) {
-    // Apply the bitmask to the single byte value (your existing implementation)
-    rzValue = report[hid_devices[dev_addr].instances[instance].rzLoc.byteIndex] & hid_devices[dev_addr].instances[instance].rzLoc.bitMask;
-  }
-
-  if (hid_devices[dev_addr].instances[instance].rxLoc.bitMask > 0xFF) { // if bitmask is larger than 8 bits
-    // Combine the current byte and the next byte into a 16-bit value
-    uint16_t combinedBytes = ((uint16_t)report[hid_devices[dev_addr].instances[instance].rxLoc.byteIndex] << 8) | report[hid_devices[dev_addr].instances[instance].rxLoc.byteIndex + 1];
-    // Apply the bitmask to the combined 16-bit value
-    rxValue = (combinedBytes & hid_devices[dev_addr].instances[instance].rxLoc.bitMask) >> (__builtin_ctz(hid_devices[dev_addr].instances[instance].rxLoc.bitMask));
-  } else if (hid_devices[dev_addr].instances[instance].rxLoc.bitMask) {
-    // Apply the bitmask to the single byte value (your existing implementation)
-    rxValue = report[hid_devices[dev_addr].instances[instance].rxLoc.byteIndex] & hid_devices[dev_addr].instances[instance].rxLoc.bitMask;
-  }
-
-  if (hid_devices[dev_addr].instances[instance].ryLoc.bitMask > 0xFF) { // if bitmask is larger than 8 bits
-    // Combine the current byte and the next byte into a 16-bit value
-    uint16_t combinedBytes = ((uint16_t)report[hid_devices[dev_addr].instances[instance].ryLoc.byteIndex] << 8) | report[hid_devices[dev_addr].instances[instance].ryLoc.byteIndex + 1];
-    // Apply the bitmask to the combined 16-bit value
-    ryValue = (combinedBytes & hid_devices[dev_addr].instances[instance].ryLoc.bitMask) >> (__builtin_ctz(hid_devices[dev_addr].instances[instance].ryLoc.bitMask));
-  } else if (hid_devices[dev_addr].instances[instance].ryLoc.bitMask) {
-    // Apply the bitmask to the single byte value (your existing implementation)
-    ryValue = report[hid_devices[dev_addr].instances[instance].ryLoc.byteIndex] & hid_devices[dev_addr].instances[instance].ryLoc.bitMask;
-  }
-
-  uint8_t hatValue = report[hid_devices[dev_addr].instances[instance].hatLoc.byteIndex] & hid_devices[dev_addr].instances[instance].hatLoc.bitMask;
+  uint8_t hatValue = report[inst->hatLoc.byteIndex] & inst->hatLoc.bitMask;
 
   // parse hat from report
-  if (hid_devices[dev_addr].instances[instance].hatLoc.bitMask) {
+  if (inst->hatLoc.bitMask) {
     uint8_t direction = hatValue <= 8 ? hatValue : 8; // fix for hats with pressed state greater than 8
     current.all_direction |= HAT_SWITCH_TO_DIRECTION_BUTTONS[direction];
   } else {
@@ -401,99 +391,110 @@ void process_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
 
   // parse buttons from report
   current.all_buttons = 0;
-  for (int i = 0; i < 12; i++) {
-    if (report[hid_devices[dev_addr].instances[instance].buttonLoc[i].byteIndex] & hid_devices[dev_addr].instances[instance].buttonLoc[i].bitMask) {
+  for (int i = 0; i < MAX_BUTTONS; i++) {
+    if (inst->buttonLoc[i].bitMask &&
+        (report[inst->buttonLoc[i].byteIndex] & inst->buttonLoc[i].bitMask)) {
       current.all_buttons |= (0x01 << i);
     }
   }
 
-  // parse analog from report
-  if (hid_devices[dev_addr].instances[instance].xLoc.max) {
-    current.x = scale_analog_hid_gamepad(xValue, hid_devices[dev_addr].instances[instance].xLoc.max);
-  } else {
-    current.x = 128;
+  // Spillover net: capture buttons past the 12 named slots (usages 13..24) into
+  // aux bits 0..11. These never reach current.value (the 12-bit union), so a
+  // controller with >12 buttons would otherwise silently drop them — this routes
+  // them to input_event.aux_buttons (spare SInput slots) so they stay bindable.
+  uint32_t aux_buttons = 0;
+  for (int i = MAX_BUTTONS; i < MAX_TOTAL_BUTTONS; i++) {
+    if (inst->buttonLoc[i].bitMask &&
+        (report[inst->buttonLoc[i].byteIndex] & inst->buttonLoc[i].bitMask)) {
+      aux_buttons |= (1u << (i - MAX_BUTTONS));
+    }
   }
-  if (hid_devices[dev_addr].instances[instance].yLoc.max) {
-    current.y = scale_analog_hid_gamepad(yValue, hid_devices[dev_addr].instances[instance].yLoc.max);
-  } else {
-    current.y = 128;
-  }
-  if (hid_devices[dev_addr].instances[instance].zLoc.max) {
-    current.z = scale_analog_hid_gamepad(zValue, hid_devices[dev_addr].instances[instance].zLoc.max);
-  } else {
-    current.z = 128;
-  }
-  if (hid_devices[dev_addr].instances[instance].rzLoc.max) {
-    current.rz = scale_analog_hid_gamepad(rzValue, hid_devices[dev_addr].instances[instance].rzLoc.max);
-  } else {
-    current.rz = 128;
-  }
-  if (hid_devices[dev_addr].instances[instance].rxLoc.max) {
-    current.rx = scale_analog_hid_gamepad(rxValue, hid_devices[dev_addr].instances[instance].rxLoc.max);
-  } else {
-    current.rx = 0;
-  }
-  if (hid_devices[dev_addr].instances[instance].ryLoc.max) {
-    current.ry = scale_analog_hid_gamepad(ryValue, hid_devices[dev_addr].instances[instance].ryLoc.max);
-  } else {
-    current.ry = 0;
-  }
+
+  // parse analog from report (sign-aware; sticks default centered, triggers to 0)
+  current.x  = xLoc.bitMask  ? scale_axis(&xLoc, xValue)   : 128;
+  current.y  = yLoc.bitMask  ? scale_axis(&yLoc, yValue)   : 128;
+  current.z  = zLoc.bitMask  ? scale_axis(&zLoc, zValue)   : 128;
+  current.rz = rzLoc.bitMask ? scale_axis(&rzLoc, rzValue) : 128;
+  current.rx = rxLoc.bitMask ? scale_axis(&rxLoc, rxValue) : 0;
+  current.ry = ryLoc.bitMask ? scale_axis(&ryLoc, ryValue) : 0;
 
   // TODO: based on diff report rather than current's datastructure in order to get subtle analog changes
-  if (previous[dev_addr-1][instance].value != current.value)
+  if (previous[dev_addr-1][instance].value != current.value ||
+      previous_aux[dev_addr-1][instance] != aux_buttons)
   {
     previous[dev_addr-1][instance] = current;
+    previous_aux[dev_addr-1][instance] = aux_buttons;
+
+    uint8_t buttonCount = inst->buttonCnt;
+    if (buttonCount > MAX_BUTTONS) buttonCount = MAX_BUTTONS;
 
     if (HID_DEBUG) {
-      TU_LOG1("Super HID Report: ");
-      TU_LOG1("Button Count: %d\n", hid_devices[dev_addr].instances[instance].buttonCnt);
-      TU_LOG1(" x:%d, y:%d, z:%d, rz:%d dPad:%d \n", current.x, current.y, current.z, current.rz, hatValue);
-      for (int i = 0; i < 12; i++) {
-        TU_LOG1(" B%d:%d", i + 1, (report[hid_devices[dev_addr].instances[instance].buttonLoc[i].byteIndex] & hid_devices[dev_addr].instances[instance].buttonLoc[i].bitMask) ? 1 : 0 );
+      TU_LOG1("HID Report [%s]: ", inst->xbox_axes ? "Xbox" : "DInput");
+      TU_LOG1("Buttons: %d", buttonCount);
+      TU_LOG1(" x:%d y:%d z:%d rz:%d rx:%d ry:%d dPad:%d\n",
+        current.x, current.y, current.z, current.rz, current.rx, current.ry, hatValue);
+      for (int i = 0; i < buttonCount && i < MAX_BUTTONS; i++) {
+        TU_LOG1(" B%d:%d", i + 1, (current.all_buttons & (0x01 << i)) ? 1 : 0);
       }
       TU_LOG1("\n");
     }
 
-    uint8_t buttonCount = hid_devices[dev_addr].instances[instance].buttonCnt;
-    if (buttonCount > 12) buttonCount = 12;
-    bool buttonSelect = current.all_buttons & (0x01 << (buttonCount-2));
-    bool buttonStart = current.all_buttons & (0x01 << (buttonCount-1));
-    bool buttonI = current.button1;
-    bool buttonIII = current.button3;
-    bool buttonIV = current.button4;
-    bool buttonV = buttonCount >=7 ? current.button5 : 0;
-    bool buttonVI = buttonCount >=8 ? current.button6 : 0;
-    bool buttonVII = buttonCount >=9 ? current.button7 : 0;
-    bool buttonVIII = buttonCount >=10 ? current.button8 : 0;
-    bool buttonIX = buttonCount >=11 ? current.button9 : 0;
-    bool buttonX = buttonCount >=12 ? current.button10 : 0;
+    if (inst->xbox_axes) {
+      // Xbox HID: buttons in W3C order (A,B,X,Y,LB,RB,Back,Start,LS,RS,Guide)
+      buttons = ((current.up)       ? JP_BUTTON_DU : 0) |
+                ((current.down)     ? JP_BUTTON_DD : 0) |
+                ((current.left)     ? JP_BUTTON_DL : 0) |
+                ((current.right)    ? JP_BUTTON_DR : 0) |
+                ((current.button1)  ? JP_BUTTON_B1 : 0) |
+                ((current.button2)  ? JP_BUTTON_B2 : 0) |
+                ((current.button3)  ? JP_BUTTON_B3 : 0) |
+                ((current.button4)  ? JP_BUTTON_B4 : 0) |
+                ((current.button5)  ? JP_BUTTON_L1 : 0) |
+                ((current.button6)  ? JP_BUTTON_R1 : 0) |
+                ((current.button7)  ? JP_BUTTON_S1 : 0) |
+                ((current.button8)  ? JP_BUTTON_S2 : 0) |
+                ((current.button9)  ? JP_BUTTON_L3 : 0) |
+                ((current.button10) ? JP_BUTTON_R3 : 0) |
+                ((current.button11) ? JP_BUTTON_A1 : 0);
+    } else {
+      // DInput: remap face buttons and Select/Start
+      bool buttonSelect, buttonStart;
+      bool buttonI = current.button1;
+      bool buttonIII = current.button3;
+      bool buttonIV = current.button4;
+      bool buttonV = buttonCount >= 7 ? current.button5 : 0;
+      bool buttonVI = buttonCount >= 8 ? current.button6 : 0;
+      bool buttonVII = buttonCount >= 9 ? current.button7 : 0;
+      bool buttonVIII = buttonCount >= 10 ? current.button8 : 0;
 
-    // assume DirectInput mapping
-    if (buttonCount >= 10) {
-      buttonSelect = current.button9;
-      buttonStart = current.button10;
-      buttonI = current.button3;
-      buttonIII = current.button4;
-      buttonIV = current.button1;
+      if (buttonCount >= 10) {
+        buttonSelect = current.button9;
+        buttonStart = current.button10;
+        buttonI = current.button3;
+        buttonIII = current.button4;
+        buttonIV = current.button1;
+      } else {
+        buttonSelect = current.all_buttons & (0x01 << (buttonCount-2));
+        buttonStart = current.all_buttons & (0x01 << (buttonCount-1));
+      }
+
+      buttons = ((current.up)       ? JP_BUTTON_DU : 0) |
+                ((current.down)     ? JP_BUTTON_DD : 0) |
+                ((current.left)     ? JP_BUTTON_DL : 0) |
+                ((current.right)    ? JP_BUTTON_DR : 0) |
+                ((current.button2)  ? JP_BUTTON_B1 : 0) |
+                ((buttonI)          ? JP_BUTTON_B2 : 0) |
+                ((buttonIV)         ? JP_BUTTON_B3 : 0) |
+                ((buttonIII)        ? JP_BUTTON_B4 : 0) |
+                ((buttonV)          ? JP_BUTTON_L1 : 0) |
+                ((buttonVI)         ? JP_BUTTON_R1 : 0) |
+                ((buttonVII)        ? JP_BUTTON_L2 : 0) |
+                ((buttonVIII)       ? JP_BUTTON_R2 : 0) |
+                ((buttonSelect)     ? JP_BUTTON_S1 : 0) |
+                ((buttonStart)      ? JP_BUTTON_S2 : 0) |
+                ((current.button11) ? JP_BUTTON_L3 : 0) |
+                ((current.button12) ? JP_BUTTON_R3 : 0);
     }
-
-    // Active-high: set bit when button is pressed
-    buttons = ((current.up)       ? JP_BUTTON_DU : 0) |
-              ((current.down)     ? JP_BUTTON_DD : 0) |
-              ((current.left)     ? JP_BUTTON_DL : 0) |
-              ((current.right)    ? JP_BUTTON_DR : 0) |
-              ((current.button2)  ? JP_BUTTON_B1 : 0) |
-              ((buttonI)          ? JP_BUTTON_B2 : 0) |
-              ((buttonIV)         ? JP_BUTTON_B3 : 0) |
-              ((buttonIII)        ? JP_BUTTON_B4 : 0) |
-              ((buttonV)          ? JP_BUTTON_L1 : 0) |
-              ((buttonVI)         ? JP_BUTTON_R1 : 0) |
-              ((buttonVII)        ? JP_BUTTON_L2 : 0) |
-              ((buttonVIII)       ? JP_BUTTON_R2 : 0) |
-              ((buttonSelect)     ? JP_BUTTON_S1 : 0) |
-              ((buttonStart)      ? JP_BUTTON_S2 : 0) |
-              ((current.button11) ? JP_BUTTON_L3 : 0) |
-              ((current.button12) ? JP_BUTTON_R3 : 0);
 
     // HID convention: 0=up, 255=down (no inversion needed)
     uint8_t axis_x = current.x;
@@ -510,6 +511,7 @@ void process_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
       .type = INPUT_TYPE_GAMEPAD,
       .transport = INPUT_TRANSPORT_USB,
       .buttons = buttons,
+      .aux_buttons = aux_buttons,
       .button_count = buttonCount,
       .analog = {axis_x, axis_y, axis_z, axis_rz, current.rx, current.ry},
       .keys = 0,
@@ -521,36 +523,12 @@ void process_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
 // resets default values in case devices are hotswapped
 void unmount_hid_gamepad(uint8_t dev_addr, uint8_t instance)
 {
-  TU_LOG1("DINPUT[%d|%d]: Unmount Reset\r\n", dev_addr, instance);
-  hid_devices[dev_addr].instances[instance].xLoc.byteIndex = 0;
-  hid_devices[dev_addr].instances[instance].xLoc.bitMask = 0;
-  hid_devices[dev_addr].instances[instance].xLoc.max = 0;
-  hid_devices[dev_addr].instances[instance].yLoc.byteIndex = 0;
-  hid_devices[dev_addr].instances[instance].yLoc.bitMask = 0;
-  hid_devices[dev_addr].instances[instance].yLoc.max = 0;
-  hid_devices[dev_addr].instances[instance].zLoc.byteIndex = 0;
-  hid_devices[dev_addr].instances[instance].zLoc.bitMask = 0;
-  hid_devices[dev_addr].instances[instance].zLoc.max = 0;
-  hid_devices[dev_addr].instances[instance].rzLoc.byteIndex = 0;
-  hid_devices[dev_addr].instances[instance].rzLoc.bitMask = 0;
-  hid_devices[dev_addr].instances[instance].rzLoc.max = 0;
-  hid_devices[dev_addr].instances[instance].rxLoc.byteIndex = 0;
-  hid_devices[dev_addr].instances[instance].rxLoc.bitMask = 0;
-  hid_devices[dev_addr].instances[instance].rxLoc.max = 0;
-  hid_devices[dev_addr].instances[instance].ryLoc.byteIndex = 0;
-  hid_devices[dev_addr].instances[instance].ryLoc.bitMask = 0;
-  hid_devices[dev_addr].instances[instance].ryLoc.max = 0;
-  hid_devices[dev_addr].instances[instance].hatLoc.byteIndex = 0;
-  hid_devices[dev_addr].instances[instance].hatLoc.bitMask = 0;
-  hid_devices[dev_addr].instances[instance].buttonCnt = 0;
-  for (int i = 0; i < MAX_BUTTONS; i++) {
-    hid_devices[dev_addr].instances[instance].buttonLoc[i].byteIndex = 0;
-    hid_devices[dev_addr].instances[instance].buttonLoc[i].bitMask = 0;
-  }
+  TU_LOG1("HID Gamepad[%d|%d]: Unmount Reset\r\n", dev_addr, instance);
+  memset(&hid_devices[dev_addr].instances[instance], 0, sizeof(dinput_instance_t));
 }
 
 DeviceInterface hid_gamepad_interface = {
-  .name = "DirectInput",
+  .name = "HID Gamepad",
   .is_device = is_hid_gamepad,
   .check_descriptor = parse_hid_gamepad,
   .process = process_hid_gamepad,

@@ -19,25 +19,28 @@
 #include <string.h>
 #include <stdio.h>
 
-//#include "system/flash_settings.h"
+#include "system/flash_settings.h"
 #include "pico/stdlib.h"
 #include "volctrl.h"
-//extern Settings settings;
+extern Settings settings;
 
-int32_t opl_volume = 0x10000; // default 1.0x volume
-int32_t sb_volume = 0x10000; // default 1.0x volume
-int32_t cd_audio_volume = 0x10000; // default 1.0x volume
-//int32_t gus_volume = 0x10000; // default 1.0x volume
-int32_t gus_volume = 0x01000; // default 1.0x volume
-int32_t psg_volume = 0x10000; // default 1.0x volume
-
+// initialize to default 1.0 scale at start
+struct volctrl_t volume = {
+    .opl        = {(1 << VOLCTRL_FRACT_BITS), (1 << VOLCTRL_FRACT_BITS)},
+    .sb_pcm     = {(1 << VOLCTRL_FRACT_BITS), (1 << VOLCTRL_FRACT_BITS)},
+    .cd_audio   = {(1 << VOLCTRL_FRACT_BITS), (1 << VOLCTRL_FRACT_BITS)},
+    .sb_master  = {(1 << VOLCTRL_FRACT_BITS), (1 << VOLCTRL_FRACT_BITS)},
+    .gus        =  (1 << VOLCTRL_FRACT_BITS),
+    .psg        =  (1 << VOLCTRL_FRACT_BITS),
+};
+extern struct volctrl_t volume;
+volctrl_callback_t volctrl_gus_callback = NULL;
 
 int32_t set_volume_scale (uint8_t percent) {
      if (percent > 100)
         percent = 100;
 
-   // uint8_t delta = 100 - settings.Volume.mainVol;
-    uint8_t delta = 100 - 90;   
+    uint8_t delta = 100 - settings.Volume.mainVol;
     int32_t adjusted = percent - delta;
 
     if (adjusted <= 0) 
@@ -50,14 +53,15 @@ int32_t set_volume_scale (uint8_t percent) {
     int32_t normalized = (adjusted * 256) / 100;  // Scale to 0-256 (using 8-bit precision)
     int32_t squared = (normalized * normalized) >> 8;  // Square and scale back
     int32_t cubed = (squared * normalized) >> 8;  // Cube and scale back
-    return cubed << 8;  // Final scale to 16.16 fixed point (65536 = 256 << 8)
+    return cubed << (VOLCTRL_FRACT_BITS - 8);  // Final scale to 20.12 fixed point
 }
 
-/*
+
 void set_volume(uint16_t mode) {
 
     switch (mode){
         case CMD_MAINVOL:
+            volume.sb_master[0] = volume.sb_master[1] = (1 << VOLCTRL_FRACT_BITS);    // reset SB master volume
             set_volume(CMD_OPLVOL);
             set_volume(CMD_SBVOL);
             set_volume(CMD_CDVOL);
@@ -65,20 +69,20 @@ void set_volume(uint16_t mode) {
             set_volume(CMD_PSGVOL);
             break;
         case CMD_OPLVOL:
-            opl_volume = set_volume_scale(settings.Volume.oplVol);
+            volume.opl[0] = volume.opl[1] = set_volume_scale(settings.Volume.oplVol);
             break;
         case CMD_SBVOL:
-            sb_volume = set_volume_scale(settings.Volume.sbVol);
+            volume.sb_pcm[0] = volume.sb_pcm[1] = set_volume_scale(settings.Volume.sbVol);
             break;
         case CMD_CDVOL:
-            cd_audio_volume = set_volume_scale(settings.Volume.cdVol);
+            volume.cd_audio[0] = volume.cd_audio[1] = set_volume_scale(settings.Volume.cdVol);
             break;
         case CMD_GUSVOL:
-            gus_volume = set_volume_scale(settings.Volume.gusVol);
+            volume.gus = set_volume_scale(settings.Volume.gusVol);
+            if (volctrl_gus_callback) volctrl_gus_callback();
             break;
         case CMD_PSGVOL:
-            psg_volume = set_volume_scale(settings.Volume.psgVol);
+            volume.psg = set_volume_scale(settings.Volume.psgVol);
             break;
     }   
 }
-*/

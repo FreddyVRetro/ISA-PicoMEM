@@ -1,5 +1,8 @@
 // sony_ds4.c
 #include "sony_ds4.h"
+#include "ds5_auth.h"
+#include "p5general_host.h"
+#include <stdio.h>
 #include "inputs/buttons.h"
 #include "inputs/router/router.h"
 #include "inputs/input_event.h"
@@ -86,19 +89,11 @@ bool is_sony_ds4(uint16_t vid, uint16_t pid) {
     // Sony
     (vid == 0x054c && (pid == 0x09cc || pid == 0x05c4)) // Sony DualShock4 
     || (vid == 0x054c && pid == 0x0ba0) // Sony PS4 Wireless Adapter PC
-    || (vid == 0x054c && pid == 0x0dae) // DualShock 4 (special edition variant)
-    || (vid == 0x054c && pid == 0x0cda) // DualShock 4 (Asia region, special edition)
-    || (vid == 0x054c && pid == 0x0d9a) // DualShock 4 (Japan region, special edition)
-    || (vid == 0x054c && pid == 0x0e04) // DualShock 4 (rare, but reported)
     // HORI
-    || (vid == 0x0f0d && pid == 0x0055) // Hori Mini Wired Gamepad
     || (vid == 0x0f0d && pid == 0x005e) // Hori Fighting Commander 4 (FC4)
-    || (vid == 0x0f0d && pid == 0x00c5) // Hori Fighting Commander
     || (vid == 0x0f0d && pid == 0x0066) // HORIPAD FPS+ (PS4)
     || (vid == 0x0f0d && pid == 0x008a) // HORI Real Arcade Pro (RAP) V HAYABUSA (Modo PS4)
-    || (vid == 0x0f0d && pid == 0x00d9) // Hori PS4 Fighting Stick Mini 
     || (vid == 0x0f0d && pid == 0x00ee) // Hori Wired Controller Light (PS4 Mini / PS4-099U)
-    || (vid == 0x0f0d && pid == 0x00f6) // Hori Mini Gamepad  
     // RAZER
     || (vid == 0x1532 && pid == 0x0401) // Razer Panthera PS4 Controller (GP2040-CE PS4 Mode)
     || (vid == 0x1532 && pid == 0x1004) // Razer Raiju Ultimate (High-end Pro controller)
@@ -106,10 +101,6 @@ bool is_sony_ds4(uint16_t vid, uint16_t pid) {
     // Brook
     || (vid == 0x0c12 && pid == 0x0c30) // Brook Universal Fighting Board (Multi-console PCB)
     || (vid == 0x0c12 && pid == 0x0ef7) // Brook Fighting Board PS3/PS4 (PS4 Mode)
-    || (vid == 0x0c12 && pid == 0x1e1b) // Feir Wired FR-225C (Budget PS4 controller)
-    || (vid == 0x0c12 && pid == 0x1e1a) // Cirka Wired
-    || (vid == 0x0c12 && pid == 0x0e10) // Zeroplus PS4 compatible
-    || (vid == 0x0c12 && pid == 0x0e20) // Zeroplus PS4 compatible    
     // Mad Catz
     || (vid == 0x0738 && pid == 0x8180) // Mad Catz Fight Stick Alpha (Compact Stick)
     || (vid == 0x0738 && pid == 0x8384) // Mad Catz SFV Arcade FightStick TES+ (PS4 Mode)
@@ -119,11 +110,12 @@ bool is_sony_ds4(uint16_t vid, uint16_t pid) {
     || (vid == 0x2c22 && pid == 0x2200) // Qanba Crystal (Arcade Stick with LEDs)
     || (vid == 0x2c22 && pid == 0x2300) // Qanba Obsidian (Professional Arcade Stick)
     // Other
+    || (vid == 0x0c12 && pid == 0x1e1b) // Feir Wired FR-225C (Budget PS4 controller)
     || (vid == 0x146b && pid == 0x0d09) // Nacon Daija Arcade Stick (PS4 Mode)
     || (vid == 0x20d6 && pid == 0x792a) // PowerA FUSION Wired FightPad (6-button layout)
-    || (vid == 0x20d6 && pid == 0x5501) // PowerA PS4 Weired
     || (vid == 0x1f4f && pid == 0x1002) // ASW Guilty Gear xrd Controller (Collector's Edition)
     || (vid == 0x04d8 && pid == 0x1529) // Universal PCB Project (UPCB Open Source)
+    || (vid == 0x0e6f && pid == 0x020a) // Victrix Pro FS for PS4
   );
 }
 
@@ -142,7 +134,22 @@ bool diff_report_ds4(sony_ds4_report_t const* rpt1, sony_ds4_report_t const* rpt
   result |= memcmp(&rpt1->rz + 1, &rpt2->rz + 1, 2);
   result |= (rpt1->ps != rpt2->ps);
   result |= (rpt1->tpad != rpt2->tpad);
+  // Both touch fingers, position AND the down/up bit — checking only f1's
+  // position missed finger releases (the down bit flips without the coords
+  // changing) and finger 2 entirely, leaving a released touch stuck active.
+  result |= (rpt1->tpad_f1_down != rpt2->tpad_f1_down);
   result |= memcmp(&rpt1->tpad_f1_pos, &rpt2->tpad_f1_pos, 3);
+  result |= (rpt1->tpad_f2_down != rpt2->tpad_f2_down);
+  result |= memcmp(&rpt1->tpad_f2_pos, &rpt2->tpad_f2_pos, 3);
+
+  // Motion: a DS4 streams gyro/accel every report. Submit on ANY change so the
+  // output IMU tracks at the full poll rate (matching a direct connection) —
+  // mirrors the DS5 fix (33578ed1). Sensor noise means a real controller is
+  // essentially never identical frame-to-frame, so this streams continuously.
+  for (int i = 0; i < 3; i++) {
+    result |= (rpt1->gyro[i]  != rpt2->gyro[i]);
+    result |= (rpt1->accel[i] != rpt2->accel[i]);
+  }
 
   return result;
 }
@@ -152,7 +159,7 @@ void input_sony_ds4(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
 {
   uint32_t buttons;
   // previous report used to compare for changes
-  static sony_ds4_report_t prev_report[5] = { 0 };
+  static sony_ds4_report_t prev_report[MAX_DEVICES] = { 0 };
 
   uint8_t const report_id = report[0];
   report++;
@@ -197,8 +204,8 @@ void input_sony_ds4(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
 
       uint16_t tx = (((ds4_report.tpad_f1_pos[1] & 0x0f) << 8)) | ((ds4_report.tpad_f1_pos[0] & 0xff) << 0);
       uint16_t ty = (((ds4_report.tpad_f1_pos[1] & 0xf0) >> 4)) | ((ds4_report.tpad_f1_pos[2] & 0xff) << 4);
-      // TU_LOG1(" (tx, ty) = (%u, %u)\r\n", tx, ty);
-      // TU_LOG1("\r\n");
+      uint16_t tx2 = (((ds4_report.tpad_f2_pos[1] & 0x0f) << 8)) | ((ds4_report.tpad_f2_pos[0] & 0xff) << 0);
+      uint16_t ty2 = (((ds4_report.tpad_f2_pos[1] & 0xf0) >> 4)) | ((ds4_report.tpad_f2_pos[2] & 0xff) << 4);
 
       bool dpad_up    = (ds4_report.dpad == 0 || ds4_report.dpad == 1 || ds4_report.dpad == 7);
       bool dpad_right = ((ds4_report.dpad >= 1 && ds4_report.dpad <= 3));
@@ -263,32 +270,72 @@ void input_sony_ds4(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
       // keep analog within range [1-255]
       ensureAllNonZero(&analog_1x, &analog_1y, &analog_2x, &analog_2y);
 
-      // adds deadzone
-      uint8_t deadzone = 40;
-      if (analog_1x > (128-(deadzone/2)) && analog_1x < (128+(deadzone/2))) analog_1x = 128;
-      if (analog_1y > (128-(deadzone/2)) && analog_1y < (128+(deadzone/2))) analog_1y = 128;
-      if (analog_2x > (128-(deadzone/2)) && analog_2x < (128+(deadzone/2))) analog_2x = 128;
-      if (analog_2y > (128-(deadzone/2)) && analog_2y < (128+(deadzone/2))) analog_2y = 128;
+      // Radial dead zone: only snap to center if the stick is inside a
+      // circle of `dz_radius` around (128,128). The previous per-axis
+      // rectangular dead zone caused magnetic-snap-to-cardinals — a
+      // diagonal tilt got one axis zeroed while the other passed through,
+      // turning smooth motion into pure N/S/E/W. The DS4 itself filters
+      // residual analog noise, so this only needs to be a small circle.
+      const int dz_radius = 6;  // ~5% of half-range
+      const int dz_radius_sq = dz_radius * dz_radius;
+      int dx1 = (int)analog_1x - 128, dy1 = (int)analog_1y - 128;
+      if (dx1*dx1 + dy1*dy1 < dz_radius_sq) { analog_1x = 128; analog_1y = 128; }
+      int dx2 = (int)analog_2x - 128, dy2 = (int)analog_2y - 128;
+      if (dx2*dx2 + dy2*dy2 < dz_radius_sq) { analog_2x = 128; analog_2y = 128; }
 
       // add to accumulator and post to the state machine
       // if a scan from the host machine is ongoing, wait
+      // Battery: status[0] at report[29] — bits 0-3 = level, bit 4 = cable connected
+      // Level interpretation differs based on cable state (per Linux kernel hid-playstation.c)
+      uint8_t bat_level = 0;
+      bool bat_charging = false;
+      if (len >= 30) {
+        uint8_t raw = report[29];
+        uint8_t battery_data = (raw & 0x0F);
+        bool cable_connected = (raw & 0x10) != 0;
+
+        if (cable_connected) {
+            if (battery_data < 10) {
+                bat_level = battery_data * 10 + 5;
+                bat_charging = true;
+            } else if (battery_data == 10) {
+                bat_level = 100;
+                bat_charging = true;
+            } else if (battery_data == 11) {
+                bat_level = 100;
+                bat_charging = false;  // Full
+            } else {
+                bat_level = 0;  // Error (14=voltage/temp, 15=charge)
+                bat_charging = false;
+            }
+        } else {
+            if (battery_data < 10)
+                bat_level = battery_data * 10 + 5;
+            else
+                bat_level = 100;
+            bat_charging = false;
+        }
+      }
+
       input_event_t event = {
         .dev_addr = dev_addr,
         .instance = instance,
         .type = INPUT_TYPE_GAMEPAD,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
         .transport = INPUT_TRANSPORT_USB,
         .buttons = buttons,
         .button_count = 10,  // PS4: Cross, Circle, Square, Triangle, L1, R1, L2, R2, L3, R3
         .analog = {analog_1x, analog_1y, analog_2x, analog_2y, analog_l, analog_r},
         .delta_x = touchpad_delta_x,  // Touchpad horizontal swipe as mouse-like delta
         .keys = 0,
-        // Motion data (DS4 has full 3-axis gyro and accel)
+        // Motion data (DS4 has full 3-axis gyro and accel).
+        // DS4 native frame already matches the canonical SDL frame -> identity.
         .has_motion = true,
         .accel = {ds4_report.accel[0], ds4_report.accel[1], ds4_report.accel[2]},
         .gyro = {ds4_report.gyro[0], ds4_report.gyro[1], ds4_report.gyro[2]},
+        .gyro_range = 2000,   // ±2000 dps, ±32767 full-scale
+        .accel_range = 4000,  // ±4g
+        .battery_level = bat_level,
+        .battery_charging = bat_charging,
       };
       router_submit_input(&event);
 
@@ -361,7 +408,7 @@ void task_sony_ds4(uint8_t dev_addr, uint8_t instance, device_output_config_t* c
   const uint32_t interval_ms = 20;
   static uint32_t start_ms = 0;
 
-  uint32_t current_time_ms = to_ms_since_boot(get_absolute_time());
+  uint32_t current_time_ms = time_us_32();
   if (current_time_ms - start_ms >= interval_ms) {
     start_ms = current_time_ms;
     output_sony_ds4(dev_addr, instance, config);
@@ -394,7 +441,7 @@ void ds4_auth_register(uint8_t dev_addr, uint8_t instance) {
         ds4_auth.instance = instance;
         ds4_auth.ds4_available = true;
         ds4_auth.state = DS4_AUTH_STATE_IDLE;
-        PM_INFO("[DS4 Auth] Registered DS4 at %d:%d for auth passthrough\n", dev_addr, instance);
+        printf("[DS4 Auth] Registered DS4 at %d:%d for auth passthrough\n", dev_addr, instance);
     }
 }
 
@@ -408,7 +455,7 @@ void ds4_auth_unregister(uint8_t dev_addr, uint8_t instance) {
         ds4_auth.internal = AUTH_IDLE;
         ds4_auth.busy = false;  // Reset busy so new DS4 can start fresh
         ds4_auth.signature_ready = false;
-        PM_INFO("[DS4 Auth] Unregistered DS4 from auth passthrough\r\n");
+        TU_LOG1("[DS4 Auth] Unregistered DS4 from auth passthrough\r\n");
     }
 }
 
@@ -426,15 +473,15 @@ ds4_auth_state_t ds4_auth_get_state(void) {
 // Console sends: [nonce_id][page][0][data(56)]...
 // (CRC32 is handled at USB layer, not in our data)
 bool ds4_auth_send_nonce(const uint8_t* data, uint16_t len) {
-    PM_INFO("[DS4 Auth] send_nonce called, len=%d, ds4_available=%d\n", len, ds4_auth.ds4_available);
+    printf("[DS4 Auth] send_nonce called, len=%d, ds4_available=%d\n", len, ds4_auth.ds4_available);
 
     if (!ds4_auth.ds4_available) {
-        PM_INFO ("[DS4 Auth] No DS4 available for auth\n");
+        printf("[DS4 Auth] No DS4 available for auth\n");
         return false;
     }
 
     if (len < 59) {  // nonce_id + page + padding + 56 bytes data
-        PM_INFO("[DS4 Auth] Nonce data too short (%d bytes)\n", len);
+        printf("[DS4 Auth] Nonce data too short (%d bytes)\n", len);
         return false;
     }
 
@@ -443,14 +490,14 @@ bool ds4_auth_send_nonce(const uint8_t* data, uint16_t len) {
     // data[2] is padding, data[3:59] is nonce data
 
     if (page >= DS4_AUTH_NONCE_PAGES) {
-        PM_INFO("[DS4 Auth] Invalid nonce page %d\n", page);
+        printf("[DS4 Auth] Invalid nonce page %d\n", page);
         return false;
     }
 
     // Copy nonce data to buffer (56 bytes per page)
     memcpy(&ds4_auth.nonce_buffer[page * DS4_AUTH_PAGE_SIZE], &data[3], DS4_AUTH_PAGE_SIZE);
 
-    PM_INFO("[DS4 Auth] Nonce page %d received (id=%d)\n", page, nonce_id);
+    printf("[DS4 Auth] Nonce page %d received (id=%d)\n", page, nonce_id);
 
     // Track nonce_id
     if (page == 0) {
@@ -557,6 +604,12 @@ uint8_t* ds3_get_verify_buffer(void) {
 void tuh_hid_get_report_complete_cb(uint8_t dev_addr, uint8_t idx,
                                     uint8_t report_id, uint8_t report_type,
                                     uint16_t len) {
+    // DualSense (PS5) auth passthrough shares this global callback. Route first;
+    // it only consumes completions for its own registered DualSense.
+    if (ds5_auth_on_get_report_complete(dev_addr, idx, report_id, len)) return;
+    // P5General dongle relay shares this global callback too.
+    if (p5general_host_on_get_report_complete(dev_addr, idx, report_id, len)) return;
+
     // Handle DS3 BT address verification (report 0xF5)
     if (report_id == 0xF5) {
         // Notify DS3 driver that GET_REPORT completed
@@ -585,19 +638,19 @@ void tuh_hid_get_report_complete_cb(uint8_t dev_addr, uint8_t idx,
 
     // Check for transfer failure (len == 0 means transfer failed)
     if (len == 0) {
-        PM_INFO("[DS4 Auth] CB: GET_REPORT transfer FAILED (report_id=0x%02X)\n", report_id);
+        printf("[DS4 Auth] CB: GET_REPORT transfer FAILED (report_id=0x%02X)\n", report_id);
         return;
     }
 
     if (report_type != HID_REPORT_TYPE_FEATURE) {
-        PM_INFO("[DS4 Auth] CB: Unexpected report type %d\n", report_type);
+        printf("[DS4 Auth] CB: Unexpected report type %d\n", report_type);
         return;
     }
 
     switch (report_id) {
         case DS4_AUTH_REPORT_RESET:  // 0xF3
             // Reset response received - start sending nonce
-            PM_INFO("[DS4 Auth] CB: Reset response from DS4, sending nonce\n");
+            printf("[DS4 Auth] CB: Reset response from DS4, sending nonce\n");
             ds4_auth.internal = AUTH_SENDING_NONCE;
             break;
 
@@ -618,7 +671,7 @@ void tuh_hid_get_report_complete_cb(uint8_t dev_addr, uint8_t idx,
             memcpy(&ds4_auth.signature_buffer[ds4_auth.signature_pages_fetched * DS4_AUTH_PAGE_SIZE],
                    &ds4_auth.report_buffer[3], DS4_AUTH_PAGE_SIZE);
             ds4_auth.signature_pages_fetched++;
-            PM_INFO("[DS4 Auth] CB: Signature page %d received from DS4\n",
+            printf("[DS4 Auth] CB: Signature page %d received from DS4\n",
                     ds4_auth.signature_pages_fetched - 1);
 
             if (ds4_auth.signature_pages_fetched >= DS4_AUTH_SIGNATURE_PAGES) {
@@ -626,7 +679,7 @@ void tuh_hid_get_report_complete_cb(uint8_t dev_addr, uint8_t idx,
                 ds4_auth.internal = AUTH_IDLE;
                 ds4_auth.signature_ready = true;
                 ds4_auth.state = DS4_AUTH_STATE_READY;
-                PM_INFO("[DS4 Auth] CB: All 19 signature pages received, auth ready!\n");
+                printf("[DS4 Auth] CB: All 19 signature pages received, auth ready!\n");
             }
             break;
     }
@@ -636,10 +689,15 @@ void tuh_hid_get_report_complete_cb(uint8_t dev_addr, uint8_t idx,
 void tuh_hid_set_report_complete_cb(uint8_t dev_addr, uint8_t idx,
                                     uint8_t report_id, uint8_t report_type,
                                     uint16_t len) {
+    // DualSense (PS5) auth passthrough shares this global callback (see above).
+    if (ds5_auth_on_set_report_complete(dev_addr, idx, report_id, len)) return;
+    // P5General dongle relay shares this global callback too.
+    if (p5general_host_on_set_report_complete(dev_addr, idx, report_id, len)) return;
+
     // DS3 BT address programming complete
     if (report_id == 0xF5) {
         if (len == 8) {
-            PM_INFO("[DS3] BT host address programmed successfully\n");
+            printf("[DS3] BT host address programmed successfully\n");
         }
         return;
     }
@@ -656,22 +714,22 @@ void tuh_hid_set_report_complete_cb(uint8_t dev_addr, uint8_t idx,
 
     // Check for transfer failure (len == 0 means transfer failed)
     if (len == 0) {
-        PM_INFO("[DS4 Auth] CB: SET_REPORT transfer FAILED (report_id=0x%02X)\n", report_id);
+        printf("[DS4 Auth] CB: SET_REPORT transfer FAILED (report_id=0x%02X)\n", report_id);
         return;
     }
 
     if (report_type != HID_REPORT_TYPE_FEATURE) {
-        PM_INFO("[DS4 Auth] CB: Unexpected report type %d\n", report_type);
+        printf("[DS4 Auth] CB: Unexpected report type %d\n", report_type);
         return;
     }
 
     if (report_id == DS4_AUTH_REPORT_NONCE) {
-        PM_INFO("[DS4 Auth] CB: Nonce page %d sent to DS4\n", ds4_auth.nonce_page_sending);
+        printf("[DS4 Auth] CB: Nonce page %d sent to DS4\n", ds4_auth.nonce_page_sending);
         ds4_auth.nonce_page_sending++;
 
         if (ds4_auth.nonce_page_sending >= DS4_AUTH_NONCE_PAGES) {
             // All 5 nonce pages sent - wait for signing
-            PM_INFO("[DS4 Auth] CB: All 5 nonce pages sent, waiting for signing\n");
+            printf("[DS4 Auth] CB: All 5 nonce pages sent, waiting for signing\n");
             ds4_auth.internal = AUTH_WAITING_FOR_SIG;
             ds4_auth.state = DS4_AUTH_STATE_SIGNING;
         }
@@ -689,7 +747,7 @@ void ds4_auth_task(void) {
 
         case AUTH_SENDING_RESET:
             // Request 0xF3 from DS4 to reset its auth state
-            PM_INFO("[DS4 Auth] Task: Requesting reset (0xF3) from DS4\n");
+            printf("[DS4 Auth] Task: Requesting reset (0xF3) from DS4\n");
             tuh_hid_get_report(ds4_auth.dev_addr, ds4_auth.instance,
                                DS4_AUTH_REPORT_RESET, HID_REPORT_TYPE_FEATURE,
                                ds4_auth.report_buffer, 8);
@@ -708,7 +766,7 @@ void ds4_auth_task(void) {
                    &ds4_auth.nonce_buffer[page * DS4_AUTH_PAGE_SIZE],
                    DS4_AUTH_PAGE_SIZE);
 
-            PM_INFO("[DS4 Auth] Task: Sending nonce page %d to DS4\n", page);
+            printf("[DS4 Auth] Task: Sending nonce page %d to DS4\n", page);
             tuh_hid_set_report(ds4_auth.dev_addr, ds4_auth.instance,
                                DS4_AUTH_REPORT_NONCE, HID_REPORT_TYPE_FEATURE,
                                ds4_auth.report_buffer, 63);
@@ -718,7 +776,7 @@ void ds4_auth_task(void) {
 
         case AUTH_WAITING_FOR_SIG:
             // Poll 0xF2 status from DS4
-            PM_INFO("[DS4 Auth] Task: Polling status (0xF2) from DS4\n");
+            printf("[DS4 Auth] Task: Polling status (0xF2) from DS4\n");
             tuh_hid_get_report(ds4_auth.dev_addr, ds4_auth.instance,
                                DS4_AUTH_REPORT_STATUS, HID_REPORT_TYPE_FEATURE,
                                ds4_auth.report_buffer, 16);
@@ -727,7 +785,7 @@ void ds4_auth_task(void) {
 
         case AUTH_RECEIVING_SIG:
             // Fetch 0xF1 signature pages from DS4
-            PM_INFO("[DS4 Auth] Task: Fetching signature page %d from DS4\n",
+            printf("[DS4 Auth] Task: Fetching signature page %d from DS4\n",
                     ds4_auth.signature_pages_fetched);
             tuh_hid_get_report(ds4_auth.dev_addr, ds4_auth.instance,
                                DS4_AUTH_REPORT_SIGNATURE, HID_REPORT_TYPE_FEATURE,

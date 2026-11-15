@@ -58,6 +58,10 @@ void dev_joystick_iow(uint32_t CTRL_AL8,uint8_t Data);
 
 uint8_t dev_joystick_install()
 {
+#if BOARD_PMJR
+  PM_INFO(">Don't enable Joystick (PCjr has built-in joystick hardware)\n");
+  return 0; // PCjr has built-in joystick hardware at ports 200h-207h
+#endif  
   pwm_config pwm_c = pwm_get_default_config();
   // TODO better calibrate this
   pwm_config_set_clkdiv(&pwm_c, pwm_clkdiv);

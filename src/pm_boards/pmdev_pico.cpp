@@ -253,10 +253,10 @@ extern "C" bool PM_EnableSD()
 // PM_StartUSB: Initialise the USB Host Mode
 bool PM_StartUSB()
 {
- PM_INFO("USB Host Init: ");	
+ PM_INFO("[USB] USB Host Init: ");	
 #if USE_USBHOST
 #if USB_UART
-   PM_INFO("Fail : Serial USB is Active\r\n");    
+   PM_INFO("[USB] Fail : Serial USB is Active\r\n");    
    BV_USBInit=0xFD;  // Failed  
    return false;
 #else
@@ -268,7 +268,7 @@ bool PM_StartUSB()
    tusb_init(BOARD_TUH_RHPORT, &host_init);
    hid_init();   // Initialise the hid code
 //   pm_mouse.div=4;
-   PM_INFO("Ok\r\n");
+   PM_INFO("[USB] USB Host Ok\r\n");
    USB_Host_Enabled=true;
    BV_USBInit=0;    // Success 
    return true;

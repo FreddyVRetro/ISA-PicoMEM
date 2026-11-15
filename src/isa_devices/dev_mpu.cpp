@@ -37,6 +37,9 @@ To test : Doom, Doom2, Hexen, Duke nukem 3D, Raptor, Descent, Gods, Dune 2, Sim 
 https://www.midimusicadventures.com/queststudios/mt32-resource/utilities/
 https://drive.google.com/drive/folders/1TbLOvr6GwqrxteWH8RD7Z7Q7t8q-vsIe
 
+TinySoundFont : https://github.com/schellingb/TinySoundFont
+Adruino MIDI : https://github.com/DLehenbauer/arduino-midi-sound-module/
+
  */  
 
 #include <stdlib.h>
@@ -60,6 +63,8 @@ https://drive.google.com/drive/folders/1TbLOvr6GwqrxteWH8RD7Z7Q7t8q-vsIe
 #endif
 
 #include <string.h>
+
+#include "../audio_devices/midi/ardsynth_renderer.h"
 
 #define TSF_MALLOC pmtsf_malloc
 #define TSF_FREE pmtsf_free
@@ -247,39 +252,38 @@ bool mpu_fifo_rx(uint8_t *Data)
 
 uint8_t pm_tsf_renderer_init()
 {
-PM_INFO("pm_tsf_renderer_init\n");
+  if (PM_Config->MIDI_RENDERER == 1) {
+    ardsynth_renderer_init();
+    return 0;
+  }
+
+  PM_INFO("pm_tsf_renderer_init\n");
   if (!tsfrenderer) {  // Not load again if already loaded
-//  PM_INFO("Load 4MBGMGSMT sound font\n");
-//if ( tsfrenderer = tsf_load_memory(&CTMGM_SF2,sizeof(CTMGM_SF2)) ) {
-//if ( tsfrenderer = tsf_load_memory(&_1MGM_SF2,sizeof(_1MGM_SF2)) ) {
-//if ( tsfrenderer = tsf_load_memory(&TimGM6mb_SF2,sizeof(TimGM6mb_SF2)) ) {
-//if ( tsfrenderer = tsf_load_memory(&_5MBGMGS_SF2,sizeof(_5MBGMGS_SF2)) ) {
 #if SF2_GMGSx
-  PM_INFO("Load GMGSx sound font\n");
-  if ( tsfrenderer = tsf_load_memory(&GMGSx_SF2,sizeof(GMGSx_SF2)) ) {    
+    PM_INFO("Load GMGSx sound font\n");
+    tsfrenderer = tsf_load_memory(&GMGSx_SF2, sizeof(GMGSx_SF2));
 #else
-  PM_INFO("Load 4MBGMGSMT sound font\n");
-  if ( tsfrenderer = tsf_load_memory(&_4MBGMGSMT_SF2,sizeof(_4MBGMGSMT_SF2)) ) {
+    PM_INFO("Load 4MBGMGSMT sound font\n");
+    tsfrenderer = tsf_load_memory(&_4MBGMGSMT_SF2, sizeof(_4MBGMGSMT_SF2));
 #endif  
-  PM_INFO("TSF: soundfont [presets=%d]\n",tsf_get_presetcount(tsfrenderer) );
-  for (int i = 0; i < tsf_get_presetcount(tsfrenderer); i++)
-	     {
-		    PM_INFO("Preset #%d '%s'\n",i, tsf_get_presetname(tsfrenderer, i));
-	     }
-  tsf_set_output(tsfrenderer, TSF_STEREO_INTERLEAVED, OUTPUT_SAMPLERATE, -3.0f);
-  tsf_set_max_voices(tsfrenderer, 32);
-  int channel = 0;
-  for (channel = 0; channel < 16; channel++)
+    if (tsfrenderer) {
+      PM_INFO("TSF: soundfont [presets=%d]\n", tsf_get_presetcount(tsfrenderer));
+      for (int i = 0; i < tsf_get_presetcount(tsfrenderer); i++) {
+        PM_INFO("Preset #%d '%s'\n", i, tsf_get_presetname(tsfrenderer, i));
+      }
+      tsf_set_output(tsfrenderer, TSF_STEREO_INTERLEAVED, OUTPUT_SAMPLERATE, -3.0f);
+      tsf_set_max_voices(tsfrenderer, 32);
+      for (int channel = 0; channel < 16; channel++) {
         tsf_channel_midi_control(tsfrenderer, channel, 121, 0); // 121 = reset controller
-    }
-     else
-    {
+      }
+    } else {
       PM_INFO("TSF: soundfont load FAILED\n");
-      return CMDERR_MEM_ERR;  // Not enaugh memory
-    };
-  } // if tsfrenderer
-  else PM_INFO("already initialized\n");
- return 0;
+      return CMDERR_MEM_ERR;  // Not enough memory
+    }
+  } else {
+    PM_INFO("already initialized\n");
+  }
+  return 0;
 }
 
 uint8_t dev_mpu_install(uint16_t port)
@@ -315,16 +319,25 @@ uint8_t dev_mpu_install(uint16_t port)
  return 0;
 }
 
+bool dev_mpu_installed()
+{
+  return dev_mpu_active;
+}
+
 void dev_mpu_remove()
 {
  PM_INFO("Remove MPU Device\n");        
  if (dev_mpu_active)  {
    DelPortType(DEV_MPU);
    mpu_fifo_end();  // Unallocate the mpu fifo 
-   if (tsfrenderer) {
-      tsf_close( tsfrenderer );
-      tsfrenderer=NULL;
+   if (PM_Config->MIDI_RENDERER == 1) {
+     ardsynth_renderer_close();
+   } else {
+     if (tsfrenderer) {
+       tsf_close( tsfrenderer );
+       tsfrenderer=NULL;
      }
+   }
   }
 }
 
@@ -357,30 +370,48 @@ void dev_mpu_process_messages()
               switch (cmd_ch & 0xF0) {
                case 0xD0:
                //  PM_INFO("Channel Pressure %d\n", midi_msg_tx_cache[1]);
-                 tsf_channel_set_pressure(tsfrenderer, cmd_ch & 0x0F, midi_msg_tx_cache[1] / 127.f);
+                 if (PM_Config->MIDI_RENDERER == 1)
+                   ardsynth_renderer_message(cmd_ch, midi_msg_tx_cache[1], 0);
+                 else if (tsfrenderer)
+                   tsf_channel_set_pressure(tsfrenderer, cmd_ch & 0x0F, midi_msg_tx_cache[1] / 127.f);
                  break;                
                case 0xA0:
               //   PM_INFO("Polyphonic Key Pressure (NS) %x %x\n", midi_msg_tx_cache[1],midi_msg_tx_cache[2]);
                 break;
                case 0x80:
                //  PM_INFO("Note Off %x\n", midi_msg_tx_cache[1]);
-                 tsf_channel_note_off(tsfrenderer, cmd_ch & 0x0F, midi_msg_tx_cache[1]);
+                 if (PM_Config-> MIDI_RENDERER == 1)
+                   ardsynth_renderer_message(cmd_ch, midi_msg_tx_cache[1], 0);
+                 else if (tsfrenderer)
+                   tsf_channel_note_off(tsfrenderer, cmd_ch & 0x0F, midi_msg_tx_cache[1]);
                 break;
                case 0x90:
               //   PM_INFO("Note On %x %x\n", midi_msg_tx_cache[1],midi_msg_tx_cache[2]);                 
-                 tsf_channel_note_on(tsfrenderer, cmd_ch & 0x0F, midi_msg_tx_cache[1], midi_msg_tx_cache[2] / 127.0f);
+                 if (PM_Config->MIDI_RENDERER == 1)
+                   ardsynth_renderer_message(cmd_ch, midi_msg_tx_cache[1], midi_msg_tx_cache[2]);
+                 else if (tsfrenderer)
+                   tsf_channel_note_on(tsfrenderer, cmd_ch & 0x0F, midi_msg_tx_cache[1], midi_msg_tx_cache[2] / 127.0f);
                 break;
                case 0xE0:
                //  PM_INFO("Pitch Wheel %x %x\n", midi_msg_tx_cache[1],midi_msg_tx_cache[2]);
-                 tsf_channel_set_pitchwheel(tsfrenderer, cmd_ch & 0x0F, (midi_msg_tx_cache[1] & 0x7F) | ((midi_msg_tx_cache[2] & 0x7F) << 7));
+                 if (PM_Config->MIDI_RENDERER == 1)
+                   ardsynth_renderer_message(cmd_ch, midi_msg_tx_cache[1], midi_msg_tx_cache[2]);
+                 else if (tsfrenderer)
+                   tsf_channel_set_pitchwheel(tsfrenderer, cmd_ch & 0x0F, (midi_msg_tx_cache[1] & 0x7F) | ((midi_msg_tx_cache[2] & 0x7F) << 7));
                 break;
                case 0xC0:
               //   PM_INFO("Program Change ch %d %x\n", cmd_ch & 0x0F, midi_msg_tx_cache[1]);
-                 tsf_channel_set_presetnumber(tsfrenderer, cmd_ch & 0x0F, midi_msg_tx_cache[1], (cmd_ch & 0x0F) == 0x9);
+                 if (PM_Config->MIDI_RENDERER == 1)
+                   ardsynth_renderer_message(cmd_ch, midi_msg_tx_cache[1], 0);
+                 else if (tsfrenderer)
+                   tsf_channel_set_presetnumber(tsfrenderer, cmd_ch & 0x0F, midi_msg_tx_cache[1], (cmd_ch & 0x0F) == 0x9);
                 break;
                case 0xB0:       
               //   PM_INFO("Control Change ch %d %x %x\n", cmd_ch & 0x0F, midi_msg_tx_cache[1],midi_msg_tx_cache[2]);
-                 tsf_channel_midi_control(tsfrenderer, cmd_ch & 0x0F, midi_msg_tx_cache[1], midi_msg_tx_cache[2]);
+                 if (PM_Config->MIDI_RENDERER == 1)
+                   ardsynth_renderer_message(cmd_ch, midi_msg_tx_cache[1], midi_msg_tx_cache[2]);
+                 else if (tsfrenderer)
+                   tsf_channel_midi_control(tsfrenderer, cmd_ch & 0x0F, midi_msg_tx_cache[1], midi_msg_tx_cache[2]);
                 break;
              }
             }
@@ -495,71 +526,33 @@ void dev_mpu_iow(uint32_t Addr,uint8_t Data)
   return;
 }
 
-int64_t mpu_TotalTime=0;
-uint32_t mpu_bufferCount=0;
-
 void dev_mpu_getbuffer(int32_t *buffer, int samples)
 {
-  int64_t starttime;
-  starttime = time_us_64();
+  if (PM_Config->MIDI_RENDERER == 1) {
+    ardsynth_renderer_render((int16_t*)buffer, (uint16_t)samples);
+  } else {
 #ifdef USE_2X
-  if (tsfrenderer) 
-   {
-    // This rendering code need a buffer 2x bigger than the requested one
-    if (pm_tsf_render_short_2x(tsfrenderer, TmpBuffer32))
-        memcpy(buffer, TmpBuffer32, PM_SAMPLES_PER_BUFFER * 4);
-   }
+    if (tsfrenderer) 
+     {
+      // This rendering code need a buffer 2x bigger than the requested one
+      if (pm_tsf_render_short_2x(tsfrenderer, TmpBuffer32))
+          memcpy(buffer, TmpBuffer32, PM_SAMPLES_PER_BUFFER * 4);
+     }
 #else
-  if (tsfrenderer) tsf_render_short(tsfrenderer, (short int *) buffer, samples, 1);
+    if (tsfrenderer) tsf_render_short(tsfrenderer, (short int *) buffer, samples, 1);
 #endif
-  mpu_bufferCount++;
-  int64_t delta= time_us_64()-starttime;
-  mpu_TotalTime += delta;
-  if (mpu_bufferCount==1000)
-   {
-     //PM_INFO("MPU Mix delta %d time: %d ratio: %d %",(int)delta, (int)mpu_TotalTime,(int)(mpu_TotalTime/12873) /*(int)(mpu_TotalTime*100*(OUTPUT_SAMPLERATE/PM_SAMPLES_PER_BUFFER*1000)/1000000)*/);
-     //PM_INFO("Voices %d\n",pm_tsf_get_active_voices(tsfrenderer));
-     PM_INFO("MPU Mix: %d voices, %d CPU", pm_tsf_get_active_voices(tsfrenderer), (int)(mpu_TotalTime/12873));
-     mpu_TotalTime=0;
-     mpu_bufferCount=0;
-   }
-
+  }
 }
 
-/*
-void mpu_updatebuffer(int16_t* buff,uint32_t samples)
+int dev_mpu_get_active_voices(void)
 {
-  int16_t  res16_l;
-  int16_t  res16_r;
-  uint16_t prev_increment;
-  int16_t  fres;
-  res16_l=dev_mpu.prev_sample16_l;
-  res16_r=dev_mpu.prev_sample16_r;
-
-//  PM_INFO("mpu_updatebuffer\n");
-  for (uint32_t sn=0;sn<samples*2;sn+=2)  // Stereo, so 2x more data than "samples"
-      {
-       // 8Bit Not signed
-        if (dev_mpu_readsample)
-             if (!afifo_take_sample8(&sbdsp_fifo, &res8u)) 
-              {
-                 dev_mpu.prev_sample16_l=0;  // If the FIFO is empty, return silence
-                dev_mpu.prev_sample16_r=0;
-                return;
-              }
-        fres=(int16_t) ((res8u<<8)+0x8000)/4;  // Convert to 16Bit signed
-        prev_increment=dev_mpu_increment;
-        dev_mpu_increment+=dev_mpu_sample_step;    // Adjust the DMA buffer to the Output frequency 
-        dev_mpu_readsample = (dev_mpu_increment<=prev_increment) ? true : false;
-
-        buff[sn]   += fres;
-        buff[sn+1] += fres;
-      }
-
-      dev_mpu.prev_sample16_l=res16_l;  // Save the last Sample for the next time
-      dev_mpu.prev_sample16_r=res16_r;
+  if (PM_Config->MIDI_RENDERER == 1) {
+    return ardsynth_renderer_active_voices();
+  } else {
+    if (tsfrenderer) return tsf_active_voice_count(tsfrenderer);
+    return 0;
+  }
 }
-*/
 
 void dev_mpu_senddata(uint8_t Data)
 {
@@ -585,6 +578,21 @@ void dev_mpu_sendcommand(uint8_t Data)
   dev_mpu_iow(0x331,Data);
 }
 
+uint8_t dev_mpu_define_renderer(uint8_t renderer)
+{
+  if (renderer == 0) {
+    PM_INFO("[MPU] Define ARDSynth renderer\n");
+    PM_Config->MIDI_RENDERER = 1;
+    ardsynth_renderer_init();
+  } else if (renderer == 1) {
+    PM_INFO("[MPU] Define TinySoundFont renderer\n");
+    PM_Config->MIDI_RENDERER = 0;
+  } else {
+    PM_INFO("[MPU] Invalid renderer %d\n", renderer);
+    return CMDERR_WRONG_ARG;
+  }
+  return 0;
+}
 
 //This is a minimal SoundFont with a single loopin saw-wave sample/instrument/preset (484 bytes)
 const static unsigned char MinimalSoundFont[] =

@@ -12,7 +12,7 @@
 
 #include "pm_audio.h"
 #include "pico_pic.h"
-#include "audio_fifo.h"
+#include "audio_fifo8.h"
 #include "covox_dac.h"
 #include "../dev_audiomix.h"
 

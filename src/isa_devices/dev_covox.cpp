@@ -31,7 +31,6 @@ Covox Sound Master + : OPL2 FM, Covox DAC and Covox via DMA
 #include "../pm_gvars.h"
 #include "pm_defines.h"
 #include "dev_picomem_io.h"   // SetPortType / GetPortType
-#include "covox/covox_dac.h"
 #include "dev_audiomix.h"
 #include "dev_covox.h"
 

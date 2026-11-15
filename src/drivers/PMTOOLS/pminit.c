@@ -59,7 +59,7 @@ typedef struct gus_conf {
 gus_conf_t gusconf;
 
 void banner(void) {
-    printf("PicoMEM Init Rev 1.0.2 by FreddyV, 06/2026\n");
+    printf("PicoMEM Init Rev 1.0.4 by FreddyV, 27/09/2026\n");
 }
 
 void usage()
@@ -79,7 +79,8 @@ void usage()
     fprintf(stderr, "    /sb x    - Sound Blaster     (0:Off 1:On) use the BLASTER values\n");
 #if PICOMEM2
     fprintf(stderr, "    /gus x   - Gravis UltraSound (0:Off 1:On) use the ULTRSND values\n");
-    fprintf(stderr, "    /mpu x   - General MIDI font (0:Off 1:330 or 300,320,340,360)\n");
+    fprintf(stderr, "    /mpu x   - MPU/General MIDI  (0:Off 1:330 or 300,320,340,360)\n");
+    fprintf(stderr, "    /font x  - GM Renderer       (0: ArdSynth 1: TinySoundFont)\n");
 #endif
     fprintf(stderr, "    /diag    - Start in Diagnostic Mode\n");
     //              "................................................................................\n"
@@ -149,8 +150,14 @@ void display_error(uint8_t err)
                 break;
       case CMDERR_NOIRQ: printf(" No IRQ detected/Available\n");
                 break;
+      case CMDERR_WRONG_ARG: printf(" Wrong argument for the command\n");
+                break;
+      case CMDERR_PM_IRQ: printf(" Cant' use the same IRQ as PicoMEM IRQ\n");
+                break;
+      case CMDERR_DEV_NA: printf(" Device not available\n");
+                break;
       default:   printf(" Code %d\n",err); break;
-    }    
+    }
 }
 
 void display_valid_ports(uint16_t *table, uint8_t size)
@@ -204,7 +211,7 @@ static int configure_sb(void) {
        }
     e=pm_io_cmd(CMD_SBOnOff,sbconf.port);
     if (e) {
-        printf("SB Enable Error:",e);
+        printf("SB Enable Error:");
         display_error(e);
         return 6;
        }
@@ -359,13 +366,11 @@ int main(int argc, char* argv[]) {
                     tmp_uint8=pm_io_cmd(CMD_CMSOnOff,tmp_uint16);
                     if (tmp_uint8) 
                        {
-                        printf(" Enable Error: ",tmp_uint8);
+                        printf("Enable Error:");
                         display_error(tmp_uint8);
                         return 1;
                        } else printf("Enable (%X)\n",(tmp_uint16 == 1) ? 0x220 : tmp_uint16);
                    }
-                 
-                 pm_io_cmd(CMD_CMSOnOff,tmp_uint16);
                } else 
                  {
                   printf("Invalid port (%X)\n",tmp_uint16);
@@ -389,7 +394,7 @@ int main(int argc, char* argv[]) {
                     tmp_uint8=pm_io_cmd(CMD_TDYOnOff,tmp_uint16);
                     if (tmp_uint8) 
                        {
-                        printf(" Enable Error: ");
+                        printf("Enable Error:");
                         display_error(tmp_uint8);
                         return 1;
                        } else printf("Enable (%X)\n",(tmp_uint16 == 1) ? 0x2C0 : tmp_uint16);
@@ -434,10 +439,10 @@ int main(int argc, char* argv[]) {
                    tmp_uint8=pm_io_cmd(CMD_CVXOnOff,tmp_uint16);
                    if (tmp_uint8) 
                        {
-                        printf(" Enable Error: ",tmp_uint8);
+                        printf("Enable Error:");
                         display_error(tmp_uint8);
                         return 1;
-                       } else printf("Enable (%X)\n",(tmp_uint16 == 1) ? 0x2C0 : tmp_uint16);
+                       } else printf("Enable (%X)\n",tmp_uint16 & 0x3FF);  // Mask out the type bits for display
                   }                    
                } else                 
                  {
@@ -479,16 +484,16 @@ int main(int argc, char* argv[]) {
                    tmp_uint8=pm_io_cmd(CMD_CVXOnOff,tmp_uint16);
                    if (tmp_uint8) 
                        {
-                        printf(" Enable Error: ",tmp_uint8);
+                        printf("Enable Error:");
                         display_error(tmp_uint8);
                         return 1;
-                       } else printf("Enable (%X)\n",(tmp_uint16 == 1) ? 0x2C0 : tmp_uint16);
+                       } else printf("Enable (%X)\n",tmp_uint16 & 0x3FF);  // Mask out the type bits for display
                   }                    
                } else                 
                  {
                   printf("Invalid port (%X)\n",tmp_uint16);
                  } 
-        } else if (stricmp(argv[i], "/mpu") == 0) {    // Mindscape
+        } else if (stricmp(argv[i], "/mpu") == 0) {    // MPU
             if (i + 1 >= argc) {
                 usage();
                 return 255;
@@ -499,19 +504,41 @@ int main(int argc, char* argv[]) {
                {
                 if (tmp_uint16==0) printf("Disable\n");
                   else {
-                      tmp_uint8=pm_io_cmd(CMD_MPUOnOff,tmp_uint16);
+                      tmp_uint8=pm_io_cmd(CMD_MPU_CMD,tmp_uint16);
                       if (tmp_uint8) 
                           {
-                           printf(" Enable Error: ",tmp_uint8);
+                           printf("Enable Error:");
                            display_error(tmp_uint8);
                            return 1;
-                          } else printf("Enable (%x)\n",(tmp_uint16 == 1) ? 0x300 : tmp_uint16);                  
+                          } else printf("Enable (%x)\n",(tmp_uint16 == 1) ? 0x330 : tmp_uint16);                  
                      }
                } else 
                  {
                   printf("Invalid port (%X)\n",tmp_uint16);
                  }
-        }else if (stricmp(argv[i], "/mmb") == 0) {    // Mindscape
+        } else if (stricmp(argv[i], "/font") == 0) {    // MPU renderer
+            if (i + 1 >= argc) {
+                usage();
+                return 255;
+            }
+            process_port_opt(tmp_uint16);
+            printf(" - MPU Renderer : ");
+            if (tmp_uint16==0) {
+                printf("ArdSynth ");
+            } else if (tmp_uint16==1) {
+                printf("TinySoundFont ");
+            } else {
+                printf("[MPU] Invalid renderer %d\n", tmp_uint16);
+                return 4;
+            }
+            tmp_uint8=pm_io_cmd(CMD_MPU_CMD,tmp_uint16+0xFE00);
+            if (tmp_uint8) 
+                {
+                printf(" Error: ",tmp_uint8);
+                display_error(tmp_uint8);
+                return 1;
+                } else printf("Configured"); 
+        } else if (stricmp(argv[i], "/mmb") == 0) {    // Mindscape
             if (i + 1 >= argc) {
                 usage();
                 return 255;
@@ -525,7 +552,7 @@ int main(int argc, char* argv[]) {
                       tmp_uint8=pm_io_cmd(CMD_MMBOnOff,tmp_uint16);
                       if (tmp_uint8) 
                           {
-                           printf(" Enable Error: ",tmp_uint8);
+                           printf("Enable Error:");
                            display_error(tmp_uint8);
                            return 1;
                           } else printf("Enable (%x)\n",(tmp_uint16 == 1) ? 0x300 : tmp_uint16);                  

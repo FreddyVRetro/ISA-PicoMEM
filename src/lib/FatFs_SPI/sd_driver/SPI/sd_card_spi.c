@@ -189,7 +189,7 @@
 #include "sd_card_spi.h"
 
 #include "../../../../pm_debug.h"
-void pm_audio_domix();
+void pm_audio_domix(bool UseSD);  // Insert Audio Mix during the wait time
 
 #if defined(NDEBUG) || !USE_DBG_PRINTF
 #  pragma GCC diagnostic ignored "-Wunused-function"
@@ -876,7 +876,7 @@ static block_dev_err_t in_sd_read_blocks(sd_card_t *sd_card_p, uint8_t *buffer,
 #if SD_DBGPIN
         DBG_ON_2();
 #endif        
-        pm_audio_domix();
+        pm_audio_domix(false);
 
         // Check the CRC16 checksum for the previous data block
         if (prev_buffer_addr) {
@@ -1068,7 +1068,7 @@ static block_dev_err_t send_block(sd_card_t *sd_card_p, const uint8_t *buffer, u
         rc = SD_BLOCK_DEVICE_ERROR_WRITE;
     }
 
-    pm_audio_domix();
+    pm_audio_domix(false);
 
 
     // Wait while card is busy programming

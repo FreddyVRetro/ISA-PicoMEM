@@ -218,22 +218,44 @@ void router_submit_input(const input_event_t* event) {
            { printf("Joy: No player !"); break; }
         if (event->buttons==0x108) 
            {
-            PM_INFO("[PAD] Set Standard Mode\n");
-            joystate_struct.mode=1;  // One Gamepad
+            PM_INFO("[PAD] Set Default Mode\n");
+            joystate_struct.mode=1;  // Default
+            break;
            }
-//        if (event->buttons==0x102) joystate_struct.mode=2;  // Two Gamepads
+        if (event->buttons==0x102)
+           {
+            PM_INFO("[PAD] Set Panel Control Mode\n");
+            joystate_struct.mode=2;  // Front Panel control
+            break;
+           }
         if (event->buttons==0x101)
            {
             PM_INFO("[PAD] Set Gravis Mode\n");
-            joystate_struct.mode=3;  // Gravis Gamepad 
+            joystate_struct.mode=3;  // Gravis Gamepad
+            break;
            }
-
-        if (joystate_struct.mode==3) update_gravis_gamepad_p1(event);
-        else if (joystate_struct.pl_total==1) update_joystick_dual(event);
+     //   PM_INFO("[PAD] Player %d event, mode %d, pressed buttons 0x%08X\n", find_player_index(event->dev_addr, event->instance)+1, joystate_struct.mode, event->buttons);
+        switch (joystate_struct.mode) {
+          case 0: // Power-on default, behaves as standard analog
+          case 1: // Default Mode
+                if (joystate_struct.pl_total==1) update_joystick_dual(event);
                 else {
                       update_joystick(event,find_player_index(event->dev_addr, event->instance));
                       }
+                break;
+          case 2: // Panel Control Mode
+                uint32_t button_mask = event->buttons & 0x0F;  // Extract the first 4 buttons
+#if USE_OLED
+               static uint8_t prev_buttons = 0;
+               if (button_mask==prev_buttons) return;  // No change in button state, ignore
+                prev_buttons=button_mask; //8 > 
 
+                pm_menu_button_event(button_mask);  // Send the buttons to the menu handler (for navigation and selection)
+#endif                
+                break;
+          case 3: // Gravis Gamepad Mode
+                update_gravis_gamepad_p1(event);
+            }
        break;              
   }
 

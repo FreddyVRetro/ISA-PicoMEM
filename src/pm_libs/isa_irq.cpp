@@ -27,7 +27,6 @@
 // - PM IRQ  : When the IRQ is completed, clear the ISR bit as well
 // - PM_IRQ  : Decrement the counter and Acknowledge the PM IRQ if the counter is 0 > The PicoMEM set 
 
-
 // Important : When the PM IRQ is in progress the interruped are disabled
 // Anyway, an IRQ being serviced can choose to re enable the interrupts and aknowledge itself, allowing other IRQ to be serviced
 
@@ -35,34 +34,64 @@ critical_section_t pm_irq_crit;
 
 pm_irq_svar_t *SVAR_IRQ=(pm_irq_svar_t *) &PM_DP_RAM[IRQ_VAR_OFFS]; // IRQ Table, 6 Bytes
 
-bool PM_IRQ_raised=false;         // Set to true when requested, and set to 0 when Acknowledged
+bool PM_IRQ_raised=false;           // Set to true when requested, and set to 0 when Acknowledged
 bool IRQ_raise_inprogress=false;
 bool IRQ_Crit_initialized=false;
 volatile uint64_t PM_IRQ_AckTime;
 volatile uint64_t PM_IRQ_SendTime;
 
+#if USE_HWIRQ  //PIN_PM_IRQ is a variable, no more fixed define
+uint8_t PIN_PM_IRQ=0;
+#endif
+
+// Code for the PicoMEM 2+ only
+#if USE_HWIRQ
+bool isa_irq_init_pmirq_pin()
+{
+  switch (BV_IRQ)
+    {
+     case 3: PIN_PM_IRQ=PIN_IRQ3;
+             break;
+     case 5: PIN_PM_IRQ=PIN_IRQ5;
+             break;
+#ifdef PIN_IRQ6
+     case 6: PIN_PM_IRQ=PIN_IRQ6;
+             break;
+#endif
+     case 7: PIN_PM_IRQ=PIN_IRQ7;
+             break;
+     default: return false;
+    }
+PM_INFO("[IRQ] ISA PM IRQ Pin initialized to %d\n", PIN_PM_IRQ);
+  return true;
+}
+#endif
+
 // Lower all the IRQ and reset the variables
 void isa_irq_init()
 {
+ PM_INFO("[IRQ] Init (PM IRQ: %d Mask %X)\n",BV_IRQ,BV_HWIRQ);
  if (!IRQ_Crit_initialized) {
      critical_section_init(&pm_irq_crit);
      IRQ_Crit_initialized=true;
     }
  PM_IRQ_raised=false;
  isa_pm_irq_ack();
-#if USE_HWIRQ // Lower all the IRQ pins
+#if USE_HWIRQ // Lower all the IRQ
  gpio_put(PIN_IRQ3,1);
  gpio_put(PIN_IRQ5,1);
- gpio_put(PIN_IRQ7,1);
  #ifdef PIN_IRQ6
  gpio_put(PIN_IRQ6,1);
  #endif
+ gpio_put(PIN_IRQ7,1);
+ isa_irq_init_pmirq_pin();
 #else
-// PicoMEM IRQ Down
+// Lower the PicoMEM IRQ
+ ISA_PM_IRQ_PIN=PIN_PM_IRQ;
  critical_section_enter_blocking(&pm_irq_crit);
  PM_IRQ_raised=false;
  gpio_put(PIN_PM_IRQ,1); // There is an inverter, 0 is Up
- critical_section_exit(&pm_irq_crit);
+ critical_section_exit(&pm_irq_crit); 
 #endif
  SVAR_IRQ->ISR=0;             // Clear the ISR register
  SVAR_IRQ->PM_IRR=0;          // Clear the PM IRQ Request
@@ -79,10 +108,15 @@ void __not_in_flash_func(isa_pm_irq_raise)(uint8_t Source,uint8_t irqnb,bool For
 {
 
   if (IRQ_raise_inprogress) {
-      PM_ERROR("!!! IRQ Raise in Conflict !!");
+      PM_ERROR("IRQ Raise in Conflict !!");
       return;
      }
-
+#if USE_HWIRQ
+  if (PIN_PM_IRQ==0) {
+     PM_INFO("[IRQ] PIN_PM_IRQ is not initialized!\n");
+     if (!isa_irq_init_pmirq_pin()) return;
+     }
+#endif // USE_HWIRQ
   IRQ_raise_inprogress=true;
   SVAR_IRQ->IRR_list[Source]=irqnb<<1;  // Set the IRQ requested by the PicoMEM (>>1 for direct call table index)
 
@@ -104,7 +138,6 @@ void __not_in_flash_func(isa_pm_irq_raise)(uint8_t Source,uint8_t irqnb,bool For
 
    } else if ((time_us_64()-PM_IRQ_SendTime)>10000) { // Try to add force here, in case another SB detect code redirect IRQ7
    } 
-
 #endif
   IRQ_raise_inprogress=false;
 }

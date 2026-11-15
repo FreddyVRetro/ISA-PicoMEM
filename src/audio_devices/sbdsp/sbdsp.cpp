@@ -1,21 +1,22 @@
 /*
-Title  : SoundBlaster DSP Emulation
+Title  : SoundBlaster DSP Emulation 
 Date   : 2023-12-30
 Author : Kevin Moonlight <me@yyzkevin.com> modified for the PicoMEM by Freddy VETELE (07/2025)
 */
 
 /*
 To test : Wolf3D, Duke Nukem 2 (ADPCM), DUNE, DUNE 2, RAPTOR, DOOM, Terminal Velocity
-          GODS, Heart of China, Wacky Wheels, Day of the tentacle, XCOM,
+          GODS, Heart of China, Wacky Wheels, Day of the tentacle, XCOM, 
 
 XT : Mod Master XT, Prince of Persia, Ghostbusters 2, Tongue of the Fatman, 4D Sports Boxing
 */
+#if !BOARD_WM10
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include "pico_pic.h"
-
+ 
 bool dma_inprogress=false;
 uint32_t PM_DMA_SendTime;
 
@@ -26,7 +27,7 @@ uint32_t PM_DMA_SendTime;
 #include "../../pm_libs/isa_dma.h"       // ISA/PC DMA code
 #include "../../pm_libs/bus_irq.h"       // ISA/PC IRQ code
 #include "dev_sbdsp.h"
-#include "audio_fifo.h"
+#include "audio_fifo8.h"
 
 #include "sbdsp.h"
 
@@ -89,6 +90,7 @@ enum DSP_OUT_MODES {
 #define DSP_DMA_SINGLE          0x14    // 1.xx+ :8-bit DMA PCM Output, Single
 #define DSP_DMA_SINGLE2         0x15    // 1.xx+ :8-bit DMA PCM Output, Single (Alternate)
 #define DSP_DMA_SINGLE_IN       0x24    // !(N/A) 1.xx+ :8-bit DMA PCM Input, Single
+#define DSP_DMA_ADC             0x24    // 1.xx+ :8-bit DMA PCM Input, Single (Win3.11 driver install)
 
 #define DSP_DMA_ADPCM_2         0x16    // ! 1.xx+ :8-bit DMA ADPCM 2 bit Output, Single
 #define DSP_DMA_ADPCM_2_REF     0x17    // ! 1.xx+ :8-bit DMA ADPCM 2 bit Output, Single  With Reference
@@ -153,6 +155,7 @@ static PIC_TimerEvent DSP_DMA_Event = {
     .handler = DSP_DMA_EventHandler,
 };
 static void sbdsp_adpcm_decode_byte(uint8_t raw);
+static void sbdsp_default_rate(void);   // defined above sbdsp_init; used by the DMA pacing alarm guard
 
 /*
 static uint32_t DSP_DAC_Timer_EventHandler(Bitu val);
@@ -170,7 +173,7 @@ static __force_inline void sbdsp_dma_disable() {
     sbdsp.adpcm_code_index = 0;
 }
 
-static __force_inline void sbdsp_dma_enable() {
+static __force_inline void sbdsp_dma_enable() {    
     if(!sbdsp.dma_enabled) {
         sbdsp.mode= MODE_DMA; // Set the mode to DMA
         sbdsp.dma_enabled=true;
@@ -227,10 +230,10 @@ static uint32_t __not_in_flash_func(DSP_DMA_EventHandler)(Bitu val) {
     if(sbdsp.adpcm_code_index==0) {
         dma_inprogress=true;
 #if USE_HWDMA
-        sbdsp.dma_rx_index=0;
-        isa_dma_start_write();
+    sbdsp.dma_rx_index=0;
+    isa_dma_start_write();
 #else
-        sbdsp.vdma_to_send++;      // Ask one more byte to transfer
+    sbdsp.vdma_to_send++;      // Ask one more byte to transfer
 #endif
     }
  //    PM_INFO("X");
@@ -241,8 +244,6 @@ static uint32_t __not_in_flash_func(DSP_DMA_EventHandler)(Bitu val) {
     }
 
     current_interval = sbdsp.dma_interval+sbdsp.timer_delta;
-    // printf("%u\n", current_interval);
-
     total_ticks = (uint32_t)sbdsp.dma_sample_count * (sbdsp.adpcm_codes_per_byte ? sbdsp.adpcm_codes_per_byte : 1);
 
     DBG_OFF_1();
@@ -318,7 +319,21 @@ static PIC_TimerEvent DSP_DAC_Resume_event = {
 };
 
 
-void sbdsp_init()
+// DSP default sample rate (no 0x40 yet, or after a DSP reset). A real DSP has
+// a default time constant; ours was ZERO -> the DMA pacing alarm armed with a
+// 0 us delay, ran once and stopped -> exactly ONE byte per 0x14 transfer
+// (Flashback SETUP: "bytes=1/129, req=0", 2026-09-12). TC 0xA5 = 91 us = 10989 Hz.
+#define SB_DEFAULT_TIME_CONSTANT 0xA5
+static void sbdsp_default_rate(void) {
+    sbdsp.time_constant = SB_DEFAULT_TIME_CONSTANT;
+    sbdsp.dma_interval  = 256 - SB_DEFAULT_TIME_CONSTANT;
+    sbdsp.sample_rate   = 1000000ul / sbdsp.dma_interval;
+    sbdsp.sample_step   = (uint32_t)(((uint64_t)sbdsp.sample_rate << 32) / PM_AUDIO_FREQUENCY);
+    sbdsp.increment     = 0;
+    sbdsp.readsample    = true;
+}
+
+void sbdsp_init() 
 {
 
 // Need to be reinitialized when the SB emulation is restarted
@@ -339,7 +354,8 @@ void sbdsp_init()
 
     // Initialize buffer for the E2 command
     sbdsp.ident_e2[0] = 0xAA;
-    sbdsp.ident_e2[1] = 0x96;
+    sbdsp.ident_e2[1] = 0x96;    
+    sbdsp_default_rate();
 
 
     afifo_init8(&sbdsp_fifo); // initialize the audio FIFO
@@ -407,15 +423,15 @@ void sbdsp_process(void) {
             isa_dma_stop_write();
 #endif
             sbdsp.mode= MODE_DMA_PAUSE; // Set the mode to DMA_PAUSE
-            PM_INFO("DMA PAUSE\n");
+            //PM_INFO("DMA PAUSE\n");
             break;
 
         case DSP_DMA_RESUME:              // 1.xx+ : DMA Resume
             if (sbdsp.mode==MODE_DMA_PAUSE) {
               sbdsp_dma_enable();
-             } else PM_INFO("!R");
+             } //else PM_INFO("!R");
             sbdsp.current_command=0;
-            PM_INFO("DMA RESUME\n");
+            //PM_INFO("DMA RESUME\n");
             break;
 
         case DSP_DMA_EXIT_AUTO8:       // 2.00+ : Exit Autoinit mode 8-bit
@@ -435,7 +451,7 @@ void sbdsp_process(void) {
         case DSP_SET_TIME_CONSTANT: // 1.xx+ :Set digitized sound transfer constant
             if(sbdsp.dav_dsp) {
                 if(sbdsp.current_command_index==1) {
-//                PM_INFO("DSP_SET_TIME_CONSTANT %d\n",sbdsp.time_constant);
+                PM_INFO("DSP_SET_TIME_CONSTANT %d\n",sbdsp.time_constant);
 //                    sbdsp.mainloop_action=DSP_MLC_SET_TIME_CST;
                     sbdsp.time_constant = sbdsp.inbox;
                     sbdsp.dma_interval = 256 - sbdsp.time_constant;  // Interval is the Nb of us between each sample read
@@ -638,12 +654,12 @@ void sbdsp_process(void) {
                 sbdsp.current_command_index++;
             }
         case DSP_ENABLE_SPEAKER:
-            PM_INFO("ENABLE SPEAKER\n");
+            //PM_INFO("ENABLE SPEAKER\n");
             sbdsp.speaker_on = true;
             sbdsp.current_command=0;
             break;
         case DSP_DISABLE_SPEAKER:
-            PM_INFO("DISABLE SPEAKER\n");
+            //PM_INFO("DISABLE SPEAKER\n");
             sbdsp.speaker_on = false;
             sbdsp.current_command=0;
             break;
@@ -654,7 +670,7 @@ void sbdsp_process(void) {
             }
             break;
 
-        case DSP_DIRECT_DAC:
+        case DSP_DIRECT_DAC:       // 1.xx+ : one 8-bit sample, guest-paced (see sbdsp_dac_sample)
             if(sbdsp.dav_dsp) {
                 if(sbdsp.current_command_index==1) {
                     sbdsp.cur_sample8=sbdsp.inbox;
@@ -700,9 +716,10 @@ void sbdsp_process(void) {
                     sbdsp.current_command=0;
                     sbdsp.dac_pause_duration += (sbdsp.inbox << 8);
                     sbdsp.dac_resume_pending = true;
-                    PM_INFO("SB Pause:%u\n\r",sbdsp.dac_pause_duration);
+                    // Tyrian Crash if printf here
+                    //PM_INFO("SB Pause:%u\n\r",sbdsp.dac_pause_duration);                    
                     // When the specified duration elapses, the DSP generates an interrupt.
-                    PIC_AddEvent(&DSP_DAC_Resume_event, sbdsp.dma_interval * sbdsp.dac_pause_duration, 0);
+                    PIC_AddEvent(&DSP_DAC_Resume_event, sbdsp.dma_interval * sbdsp.dac_pause_duration, 0);         
                 }
                 sbdsp.current_command_index++;
             }
@@ -777,7 +794,7 @@ static __force_inline void sbdsp_reset(uint8_t value) {
             sbdsp.autoinit=false;
             sbdsp_dma_disable();
 #if USE_HWDMA
-            isa_dma_stop_write();
+            isa_dma_stop_write();      // drop PIN_R_DMA_REQ + clear req_pending
             afifo_reset8(&sbdsp_fifo); // Reset the Audio FIFO
 #else
             sbdsp.mainloop_action=DSP_MLC_DMA_RESET;
@@ -858,13 +875,29 @@ uint8_t sbdsp_read(uint8_t address)
       case DSP_READ:          // 0x0A : Return DSP Data, if the outbox is not empty
             sbdsp.dav_pc=0;
             return sbdsp.outbox;
-      case DSP_READ_STATUS:   // 0x0E : Return bit7=1 if there is data to read from the DSP (Also acknowledge IRQ)
+      case DSP_READ_STATUS:   // 0x0E : Return bit7=1 if there is data to read from the DSP (Also acknowledge IRQ)    
             bus_irq_lower(IRQ_R_AUDIO,sbdsp.irq); // Acknowledge the IRQ
             DBG_OFF_IRQ_SB();
 //            PM_INFO("iAck");
         return sbdsp.dav_pc << 7 | DSP_UNUSED_STATUS_BITS_PULLED_HIGH;
       case DSP_WRITE_STATUS:  // 0x0C : Return bit7=0 if the DSP is ready to receive Command/Data
-        return (sbdsp.dav_dsp | sbdsp.dsp_busy | sbdsp.dac_resume_pending) << 7 | DSP_UNUSED_STATUS_BITS_PULLED_HIGH;
+      {
+#if SB_DSP_WRITE_BUSY_TOGGLE
+        // DOSBox shape (sblaster.cpp write_busy): report BUSY on 8 of every 16
+        // status reads. Some drivers wait for bit 7 to go HIGH ("command
+        // accepted") before waiting for it to go LOW; a DSP that is never busy
+        // hangs them. Both loop styles exit within 8 reads.
+        // CONFIRMED 2026-09-12 (8570, Prince of Persia end of level 1): with a
+        // never-busy DSP the game polled 0x22C ~190k/s forever and its ISR
+        // replayed the same 4436-byte block on every EOT (ack+2, adt 14/42 =
+        // one ISR pass, NOT a double entry); with this toggle the level ends.
+        static uint8_t wb = 0; wb++;
+        bool tgl = (wb & 8) != 0;
+#else
+        bool tgl = false;
+#endif
+        return ((sbdsp.dav_dsp | sbdsp.dsp_busy | sbdsp.dac_resume_pending | tgl) ? 0x80 : 0x00) | DSP_UNUSED_STATUS_BITS_PULLED_HIGH;
+      }
       default:
 //            PM_INFO("SB READ: %x\n\r",address);
             return 0xFF;
@@ -873,7 +906,7 @@ uint8_t sbdsp_read(uint8_t address)
 
 
 // Return true if a value is really written
-bool sbdsp_write(uint8_t address, uint8_t value)
+bool sbdsp_write(uint8_t address, uint8_t value) 
 {
     switch(address) {
         case DSP_WRITE:         // 0x0C : Write command/Data to the DSP
@@ -1009,7 +1042,7 @@ if ((sbdsp_fifo.samples_received-sbdsp_fifo.samples_sent) < AUDIO_FIFO_START_THR
    } else sbdsp.timer_delta= 0; // Normal transfer speed
 */
 
-  uint32_t afifolvl=AUDIO_FIFO_SIZE - (sbdsp_fifo.samples_received-sbdsp_fifo.samples_sent);
+  uint32_t afifolvl=AFIFO8_SIZE - (sbdsp_fifo.samples_received-sbdsp_fifo.samples_sent);
 
   if (sbdsp.adpcm_codes_per_byte>1) {
       // ADPCM: each raw byte can expand into up to adpcm_codes_per_byte PCM
@@ -1102,12 +1135,6 @@ void sbdsp_updatebuffer(int16_t* buff,uint32_t samples)
   uint16_t prev_increment;
   int16_t  fres;
   res8u=sbdsp.prev_sample8u;
-  /*
- if (sbdsp.mainloop_action==DSP_MLC_SET_TIME_CST)
-    {
-
-    }
-*/
 
 //  PM_INFO("SB_GetBuffer\n");
  if (sbdsp.dma_stereo)
@@ -1136,3 +1163,4 @@ void sbdsp_updatebuffer(int16_t* buff,uint32_t samples)
    }
 
 }
+#endif //BOARD_WM10

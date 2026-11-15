@@ -13,3 +13,10 @@ typedef struct pm_mouse_t {
      } pm_mouse_t;
 
 extern volatile pm_mouse_t pm_mouse;
+
+// USB mouse -> PS/2 aux packet path (for Windows / any PS/2-mouse driver).
+// Accumulate deltas + buttons as they arrive, then publish one coalesced PS/2
+// packet into the DPRAM mailbox each tick (when the previous one is consumed).
+// jp_buttons is the JP_BUTTON_* encoding held in pm_mouse.buttons.
+void pm_mouse_ps2_accumulate(int dx, int dy, uint8_t jp_buttons);
+void pm_mouse_ps2_tick(void);

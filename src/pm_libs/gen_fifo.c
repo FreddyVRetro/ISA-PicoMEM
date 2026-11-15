@@ -1,6 +1,6 @@
 /**
  * gen_fifo.c - Generic fifo with fast word/dword... tx
- *
+ * (Not finished/used)
  */
 
 #include "gen_fifo.h"

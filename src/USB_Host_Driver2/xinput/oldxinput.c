@@ -1,5 +1,6 @@
 
 /* #include "bsp/board_api.h" */
+#include <string.h>
 #include "tusb.h"
 #include "xinput_host.h"
 #include "usb.h"
@@ -11,13 +12,49 @@
 #include "inputs/input_event.h"
 
 #include "../../pm_debug.h"
+#include "../../pm_defines.h"
+#include "../../qwiic/pm_display.h"
 #include "hid_dev.h"
 
 //Since https://github.com/hathach/tinyusb/pull/2222, we can add in custom vendor drivers easily
+#if USE_NE2000_CDCECM
+extern usbh_class_driver_t const usbh_ecm_driver;   // wm_devices/usbeth/usbeth_ecm.c
+#endif
+#if USE_NE2000_ASIX
+extern usbh_class_driver_t const usbh_asix_driver;  // wm_devices/usbeth/usbeth_asix.c
+#endif
+#if USE_NE2000_RTL8150
+extern usbh_class_driver_t const usbh_rtl8150_driver; // wm_devices/usbeth/usbeth_rtl8150.c
+#endif
+
 usbh_class_driver_t const* usbh_app_driver_get_cb(uint8_t* driver_count){
+#if USE_NE2000_CDCECM || USE_NE2000_ASIX || USE_NE2000_RTL8150
+    // usbh_class_driver_t members are const, so build the array by copy
+    // once instead of aggregate-initializing from other driver objects.
+    static usbh_class_driver_t app_drivers[4];
+    static uint8_t app_drivers_n = 0;
+    if (app_drivers_n == 0) {
+        memcpy(&app_drivers[app_drivers_n++], &usbh_xinput_driver, sizeof(usbh_class_driver_t));
+#if USE_NE2000_ASIX
+        // ASIX before ECM: some dongles expose a vendor config AND an ECM
+        // config; the VID/PID match must get first look at the interface.
+        memcpy(&app_drivers[app_drivers_n++], &usbh_asix_driver, sizeof(usbh_class_driver_t));
+#endif
+#if USE_NE2000_RTL8150
+        memcpy(&app_drivers[app_drivers_n++], &usbh_rtl8150_driver, sizeof(usbh_class_driver_t));
+#endif
+#if USE_NE2000_CDCECM
+        memcpy(&app_drivers[app_drivers_n++], &usbh_ecm_driver,  sizeof(usbh_class_driver_t));
+#endif
+    }
+    *driver_count = app_drivers_n;
+    PM_INFO("TUSB : app drivers XInput + USB Ethernet (%u)\n", app_drivers_n);
+    return app_drivers;
+#else
     *driver_count = 1;
     PM_INFO("TUSB : Detect XInput \n");
     return &usbh_xinput_driver;
+#endif
 }
 
 uint8_t byteScaleAnalog(int16_t xbox_val);
@@ -140,6 +177,10 @@ void tuh_xinput_mount_cb(uint8_t dev_addr, uint8_t instance, const xinputh_inter
     #if PM_PRINTF
     usb_print_status();
     #endif
+
+    char pad_msg[32];
+    snprintf(pad_msg,sizeof(pad_msg),"%s%s",VendorName,type_str);
+    pm_display_event(D_PAD_EVENT, player_nb+1, 0, pad_msg);
 
     // If this is a Xbox 360 Wireless controller we need to wait for a connection packet
     // on the in pipe before setting LEDs etc. So just start getting data until a controller is connected.

@@ -38,11 +38,16 @@ If not, see <https://www.gnu.org/licenses/>.
 #define DEV_GUS    17
 
 #ifdef BOARD_WM10
-#define DEV_MCA_POS 18
-#define DEV_TOTAL  19  // Total number of devices
+#define DEV_MCA_POS   18			// Only when CD_SETUP is asserted
+#define DEV_MCA_POS_R 19			// This will enable POS Read outside of CD_SETUP with a port range of 0x108 to 0x10F
+#define DEV_MCA_DMA   20			// MCA DMA data port
+#define DEV_MCA_TST   21			// Test port block for iostress (0x300-0x307)
+#define DEV_SERMOUSE  22			// Serial-mouse UART (COM2 0x2F8/IRQ3) -- Windows/DOS mouse
+#define DEV_TOTAL  	  23  			// Total number of devices
 #else
 #define DEV_TOTAL  18  // Total number of devices
 #endif
+
 
 
 // * Status and Commands definition
@@ -71,13 +76,16 @@ If not, see <https://www.gnu.org/licenses/>.
 #define CMDERR_MEM_ERR    0x11  // Not enaugh memory
 #define CMDERR_AMIX_FAIL  0x12  // Audio mixer init fail
 #define CMDERR_NOIRQ	  0x13  // No IRQ detected/Available
+#define CMDERR_PM_IRQ     0x14  // Cant' use the same IRQ as PicoMEM IRQ
+#define CMDERR_WRONG_ARG  0x15  // Wrong argument for the command
+#define CMDERR_DEV_NA     0x16  // Device not available
 #define CMDERR_NOTSUPP    0xFF  // Command not supported
 
 // 0x 1x General / Configuration Commands
 #define CMD_Reset         0x00   // Put back the status to 0, after an error
 #define CMD_PMIRQ_ACK     0x01   // PicoMEM multiplexed interrupt acknowledge
 #define CMD_DMACPY_ACK    0x02   // DMA Copy Acknowledge
-#define CMD_Reserved2     0x03
+#define CMD_DEV_PreInit   0x03   // To intialize the devices at the first init phase (RTC)
 #define CMD_Reserved3     0x04   //
 #define CMD_GetMEMType    0x05   // Read the type of Memory mapped to a memory range
 #define CMD_SetMEMType    0x06   // Set the type of Memory mapped to a memory range
@@ -91,6 +99,7 @@ If not, see <https://www.gnu.org/licenses/>.
 #define CMD_SetBasePort   0x0E
 
 #define CMD_GetPMString   0x10   // Read the PicoMEM Firmware string
+#define CMD_LoadCfg       0x14   // BIOS-triggered SD config reload (PICOMEM.CFG + config.txt) -- blocks until Pico finishes the load so PMBIOS sees correct BV_* (BV_IRQ, BV_PC_Model, BV_TdyRAM) before its early-POST checks.
 #define CMD_ReadConfig    0x12   // Read the Config variables from I/O
 #define CMD_WriteConfig   0x13   // Read the Config variables from I/O
 
@@ -103,7 +112,8 @@ If not, see <https://www.gnu.org/licenses/>.
 #define CMD_SetMEM        0x42  // Set the First 64Kb of RAM to the SetRAMVal
 #define CMD_TestMEM       0x43  // Compare the First 64Kb of RAM
 #define CMD_PCINFO        0x44  // Get PC informations from PCCMD (And test PCCMD)
-#define CMD_BIOS_MENU	  0x45  // A BIOS Menu/submenu is selected
+#define CMD_BIOS_MENU     0x45  // Legacy BIOS Menu/submenu command
+#define CMD_BIOS_DRAW_MENU 0x46  // Draw the selected BIOS menu/submenu page
 
 // 5x USB devices commands
 #define CMD_USB_Enable    0x50	// To replace by OnOff with parameter
@@ -132,8 +142,8 @@ If not, see <https://www.gnu.org/licenses/>.
 #define CMD_GUSOnOff      0x7A  // GUS Audio : 0 : Off 1: On default or port
 #define CMD_MMBOnOff      0x7B  // Mindscape Audio : 0 : Off 1: On default or port
 #define CMD_DSSOnOff      0x7C  // Disney Audio
-#define CMD_MPUOnOff      0x7D  // MPU/General MIDI : 0 : Off 1: On default or port
-
+#define CMD_MPU_CMD       0x7D  // MPU/General MIDI : 0 : Off 1: On default or port
+#define CMD_Audio_Status  0x7F  // Fill audio status buffer at DPRAM[AUDIO_STATUS_OFFS]
 
 // 8x Disk Commands
 #define CMD_HDD_Getlist   0x80  // Write the list of hdd images into the Disk memory buffer
@@ -153,6 +163,9 @@ If not, see <https://www.gnu.org/licenses/>.
 #define CMD_Int2Fh        0x8C  //
 #define CMD_Int2FEnd      0x8D  //
 
+#define CMD_CD_Getlist    0x8E  // Write the list of CD images (0:/CDROM, *.iso) into the Disk memory buffer
+#define CMD_CD_Mount      0x8F  // Mount/eject the CD image named in the config (hot swap)
+
 // Commands sent to the PicoMEM to send display to the Serial port (Not used / finished)
 // https://github.com/nottwo/BasicTerm/blob/master/BasicTerm.cpp
 #define CMD_S_Init         0x90  // Serial Output Init (Resolution) and clear Screen
@@ -167,7 +180,42 @@ If not, see <https://www.gnu.org/licenses/>.
 #define CMD_S_SetColor     0x99
 #define CMD_StartUSBUART   0x9F  // Start the UART Display
 
+// On-card PCF85263 RTC access (see WonderMCA/doc/rtc_management.md).
+// Both commands use the 7-byte buffer at PM_DP_RAM[RTC_BUF_OFFS] (see below).
+//   CMD_RTC_Get : Pico reads PCF85263, writes 7 bytes to DPRAM buffer.
+//   CMD_RTC_Set : Pico reads 7 bytes from DPRAM buffer, writes to PCF85263.
+// Buffer layout (matches chip register order):
+//   +0 sec(BCD) +1 min(BCD) +2 hour(BCD,24h) +3 day(BCD) +4 weekday(0=Sun)
+//   +5 month(BCD) +6 year-1980(binary)
+// Status: STAT_READY on success, STAT_CMDERROR on I2C failure.
+#define CMD_RTC_Get        0xA0
+#define CMD_RTC_Set        0xA1
+#define RTC_BUF_OFFS       0x1F00     // 7-byte RTC buffer in DPRAM
+#define RTC_BUF_SIZE       7
+
+// CMD_Audio_Status buffer at DPRAM[AUDIO_STATUS_OFFS] (37 bytes). Layout:
+//   [0] AudioOut (global master on/off)
+//   [1] mix_active (dev_audiomix.dev_active low byte -- who is producing sound now)
+//   then 7 device entries x 5 bytes: { installed, port_lo, port_hi, irq, dma }
+//   order: 0 Adlib, 1 SoundBlaster, 2 GUS, 3 CMS, 4 Tandy, 5 Covox, 6 Mindscape
+//   irq/dma = 0xFF when not applicable to that device.
+#define AUDIO_STATUS_OFFS  0x1F10
+#define AUDIO_STATUS_NDEV  7
+
 #define CMD_DMA_TEST       0xAA
+
+// WonderMCA slave-DMA capture buffer in DPRAM. Production (SBDSP) path
+// writes captured bytes into PM_DP_RAM[WMDMA_CAPBUF_OFFS] when capbuf is
+// set, so the host can read the most recent block back via DPRAM MEMR
+// for inspection / sanity-check.
+#define WMDMA_CAPBUF_OFFS  0x1E00     // capture buffer in DPRAM (256 B)
+#define WMDMA_CAPBUF_SIZE  0x100
+
+// Diagnostic: read PCCR_PCSTATE / PMSTATE bytes from DPRAM and return
+// them in CmdDataL / CmdDataH respectively.  Lets a DOS test program
+// verify Pico Core 0 sees the same bytes the host just wrote (catches
+// cross-core SRAM ordering / coherence issues that wmtest can't see).
+#define CMD_PCCDebug       0xFD
 
 #define INIT_DONE          0x00
 #define INIT_SKIPPED       0xFC  // Skipped or Error to initialize  ! Hardcoded in the ASM BIOS
@@ -221,7 +269,7 @@ If not, see <https://www.gnu.org/licenses/>.
 #define BV_WifiInit    PM_DP_RAM[8]
 #define BV_PortInit    PM_DP_RAM[9]  // PicoMEM Base Port initialisation  0FEh not initialized 0 Ok
 #define BV_USBDevice   PM_DP_RAM[10] // Mounted USB Device Bit 0: Mouse Bit 1: Keyboard  Bit 3: Joystick ! Not used for the moment
-#define BV_IRQ         PM_DP_RAM[11] // Detected Hardware IRQ Number
+#define BV_IRQ         PM_DP_RAM[11] // Detected Hardware IRQ Number to be used as PicoMEM IRQ
 #define BV_HWIRQ       PM_DP_RAM[12] // Detected Hardware IRQ Number (Bit field for multiple IRQ)
 #define BV_DMANoUpdate PM_DP_RAM[13] // Set to 1 when the DMA Code update the DMA registers (For the DMA emulation to ignore)
 #define BV_Int13hCLI   PM_DP_RAM[14] //
@@ -233,13 +281,61 @@ If not, see <https://www.gnu.org/licenses/>.
 #define PC_MEM_H       PM_DP_RAM[20] // PC RAM Size in Kb
 #define New_DiskNB     PM_DP_RAM[21] // Number of Disk in total after HDD Mount
 #define New_FloppyNB   PM_DP_RAM[22] // Number of Floppy in total after FDD Mount
-#define BV_Tandy       PM_DP_RAM[23] // Tandy Mode
+#define BV_PC_Model       PM_DP_RAM[23] // Tandy Mode
 #define BV_TdyRAM      PM_DP_RAM[24] // Number of 16Kb Block of RAM to add for Tandy
 #define BV_CmdRunning  PM_DP_RAM[25] // Command currently running in the Pico
 #define BV_PCCMD_SOURCE PM_DP_RAM[26] // Contains the ID/number of the PicoMEM code starting/Using the PC Command
 #define BV_BoardID    PM_DP_RAM[27] // PicoMEM Board ID (Type)
 #define BV_PicoID     PM_DP_RAM[28] // Pico ID (Pico, Pico W, Pimoroni...)
-#define BV_Fill3      PM_DP_RAM[29] //
+#define BV_USBKbdScan PM_DP_RAM[29] // USB keyboard scan code (PS/2 set 1).
+                                    // Pico writes here when a HID keyboard
+                                    // event needs to be injected; PMBIOS
+                                    // INT 1Ch hook reads + clears to 0.
+                                    // Value 0 = no pending event. Make codes
+                                    // use the bare scan; break codes OR with
+                                    // 0x80. Single byte; on burst the latest
+                                    // wins (acceptable for sub-18 Hz typing).
+                                    // (2026-06-09: repurposed from BV_Fill3)
+                                    // SUPERSEDED 2026-07-14 by the ring below.
+
+// USB keyboard scancode RING (2026-07-14). Firmware pushes a RAW PS/2
+// set-1 scancode STREAM (make codes on press, break = scan|0x80 on
+// release, 0xE0 prefixes as their own byte, modifier make/break) at Head;
+// PMBIOS_Int1C drains the whole ring each tick and INJECTS each byte into
+// the real system 8042 via command 0xD2 ("write keyboard output buffer").
+// That raises a genuine IRQ1 -> chassis INT 9h -> BIOS + DOS KEYB process
+// it exactly like the physical keyboard, so KEYB xx (FR/US/DE/...) owns
+// the layout -- no per-language ASCII tables in firmware.
+//
+// Placed in the free 0x55 padding between the BIOS-private vars and the
+// EtherDFS buffer (~3400..4036); pm_vars.asm guards the offset with a
+// TIMES so a var-block overrun FAILS THE BUILD rather than silently
+// corrupting DPRAM. Offset + size MUST match pm_vars.asm BV_USBKbd_Buf.
+// SPSC: this (Core 0 USB cb) produces one byte at a time, PMBIOS consumes.
+#define USBKBD_RING_OFFS  0xF00                                   // DPRAM byte offset (3840)
+#define USBKBD_RING_SIZE  64                                      // raw scancode bytes (power of 2)
+#define BV_USBKbd_Buf(i)  PM_DP_RAM[USBKBD_RING_OFFS + ((i) & (USBKBD_RING_SIZE - 1))]
+#define BV_USBKbd_Head    PM_DP_RAM[USBKBD_RING_OFFS + USBKBD_RING_SIZE]      // 0xF40 write idx (Pico)
+#define BV_USBKbd_Tail    PM_DP_RAM[USBKBD_RING_OFFS + USBKBD_RING_SIZE + 1]  // 0xF41 read idx (PMBIOS)
+
+// USB mouse -> PS/2 aux packet MAILBOX (2026-07-14). For Windows (and any
+// PS/2-mouse driver): the Pico coalesces USB mouse deltas into one standard
+// 3-byte PS/2 packet here; PMBIOS_Int1C injects it into the real 8042 aux
+// device via command 0xD3 (-> genuine IRQ12), when Windows is loaded. Single
+// 1-deep mailbox (not a ring): the Pico only builds a new packet once PMBIOS
+// has consumed the previous one (Rdy==0), so movement coalesces at the drain
+// rate and is never dropped. Offset MUST match pm_vars.asm BV_USBMouse_MB.
+#define USBMOUSE_MB_OFFS  0xF42                                   // DPRAM byte offset (3906)
+#define BV_USBMouse_B0    PM_DP_RAM[USBMOUSE_MB_OFFS + 0]         // 0xF42 byte0: 08h|btn|signs
+#define BV_USBMouse_B1    PM_DP_RAM[USBMOUSE_MB_OFFS + 1]         // 0xF43 byte1: X delta
+#define BV_USBMouse_B2    PM_DP_RAM[USBMOUSE_MB_OFFS + 2]         // 0xF44 byte2: Y delta (PS/2 up=+)
+#define BV_USBMouse_Rdy   PM_DP_RAM[USBMOUSE_MB_OFFS + 3]         // 0xF45 1=packet ready (Pico->PMBIOS)
+#define BV_Dbg_Int1C      PM_DP_RAM[0xF46]                        // DEBUG: PMBIOS_Int1C call counter
+#define BV_Dbg_Win        PM_DP_RAM[0xF47]                        // DEBUG: WIN_LOADED snapshot
+#define BV_Dbg_MInj       PM_DP_RAM[0xF48]                        // DEBUG: mouse aux inject counter
+#define BV_Dbg_2FCnt      PM_DP_RAM[0xF49]                        // DEBUG: INT 2Fh hook hit counter
+#define BV_Dbg_Hooked     PM_DP_RAM[0xF4A]                        // DEBUG: WD_HOOKED snapshot
+
 #define BV_FW_Rev     PM_DP_RAM[30] // PicoMEM Firmware revision
 #define BV_FW_Rev_H   PM_DP_RAM[31] // PicoMEM Firmware revision
 
@@ -274,6 +370,10 @@ If not, see <https://www.gnu.org/licenses/>.
 #define reg_esl PM_DP_RAM[OFFS_ESL]
 #define reg_esh PM_DP_RAM[OFFS_ESH]
 #define reg_es (uint16_t) ((uint16_t)(PM_DP_RAM[OFFS_ESH]<<8)+(uint16_t)PM_DP_RAM[OFFS_ESL])
+#define reg_ds (uint16_t) ((uint16_t)(PM_DP_RAM[OFFS_DS+1]<<8)+(uint16_t)PM_DP_RAM[OFFS_DS])
+#define reg_dsl PM_DP_RAM[OFFS_DS]     // DS low byte  (writable, unlike reg_ds which is read-only)
+#define reg_dsh PM_DP_RAM[OFFS_DS+1]   // DS high byte
+#define reg_si (uint16_t) ((uint16_t)(PM_DP_RAM[OFFS_SI+1]<<8)+(uint16_t)PM_DP_RAM[OFFS_SI])
 #define reg_flagl PM_DP_RAM[OFFS_CF]
 
 // PC Commands "Registers"
@@ -363,17 +463,29 @@ typedef struct BIOSVAR_t {
 	uint16_t FW_Rev;		// PicoMEM Firmware revision
 } BIOSVAR_t;
 
+// Network type stored in PMCFG_t.EnableWifi (repurposed -- same config slot
+// and same PMCFG_EnableWifi offset in the BIOS, no layout change). On WM10:
+//   NET_NONE = no network; NET_ETH = wired Ethernet via the W5500 (NE2000);
+//   NET_WIFI = WiFi via the RM2/CYW43 (connects with wifi.txt credentials);
+//   NET_USB  = USB Ethernet adapter (CDC-ECM) on the USB host port.
+// Legacy 0/1 configs map cleanly: 0 -> None, 1 -> Ethernet.
+#define NET_NONE  0
+#define NET_ETH   1
+#define NET_WIFI  2
+#define NET_USB   3
+
 // PicoMEM Configuration table, defined also in the BIOS
 // ! Be carefull, Word must be aligned
 typedef struct PMCFG_t {
     FSizeName_t FDD[2];
     FSizeName_t HDD[4];
-    uint8_t     FDD_Attribute[2];  // Bit 7:1 PicoMEM Image ; Bit 6: USB or SD ; Bit 0-1: PC device / image number
-    uint8_t     HDD_Attribute[4];  // Bit 7:1 PicoMEM Image ; Bit 6: USB or SD ; Bit 0-1: PC device / image number
-    FSizeName_t ROM[2];    // Emulated ROM Extention names
+    uint8_t  FDD_Attribute[2];  // Bit 7:1 PicoMEM Image ; Bit 6: USB or SD ; Bit 0-1: PC device / image number
+    uint8_t  HDD_Attribute[4];  // Bit 7:1 PicoMEM Image ; Bit 6: USB or SD ; Bit 0-1: PC device / image number
+    uint8_t  ID;		  // Configuration ID, should be 0xAA
+	uint8_t  VERSION;	  // Configuration Version
+	uint16_t MKE_Port;    // MKE CR-ROM Port
+	uint8_t  spare1[32];  // Was ROM Variable, no more needed
 //130 Bytes
-    uint8_t  ROM_Addr[2]; // Address
-	uint8_t  ROM_BlNb[2]; // Nb of 16K Block (Max 2)
     uint8_t  MEM_Map[64]; // Memory configuration MAP
     uint8_t  EMS_Port;    // EMS Port table index (0, No EMS)
     uint8_t  EMS_Addr;    // EMS Memory Address, (Table EMS_Addr_List index)
@@ -387,36 +499,51 @@ typedef struct PMCFG_t {
 	uint8_t  SD_Speed;    // 12, 24 or 36MHz      (Default 24MHz)
 	uint8_t  RAM_Speed;   // 80,100,120 or 130MHz (Default 100MHz)
 	uint8_t  Boot_HDD;    // define the Boot HDD Number
-	uint8_t  EnableWifi;  // Tell the PicoMEM to enable or not the Wifi
+	uint8_t  EnableWifi;  // Network type: NET_NONE/NET_ETH/NET_WIFI/NET_USB (see above).
+	                      // Name kept for BIOS-layout compatibility (the BIOS
+	                      // field is PMCFG_EnableWifi at the same offset).
 	uint8_t  ne2000IRQ;	  // ne2000 / Wifi IRQ
 	uint16_t ne2000Port;
 	uint8_t  EnableJOY;
-	uint8_t  Reserved1;
+	uint8_t  EnableUSBKbd;   // USB keyboard emulation on/off (default 0 = off).
+	                          // When 1, USB HID keyboard events are translated
+	                          // to PS/2 set-1 scancodes + injected via PMBIOS's
+	                          // hooked INT 9h (see WonderMCA/TODO.md "USB
+	                          // keyboard input does not reach the chassis").
+	                          // 2026-06-09: config slot reserved; runtime
+	                          // behavior not implemented yet -- toggling has no
+	                          // effect until the INT 9h hook lands.
 	uint8_t  B_MAX_PMRAM; // Maximum allowed PMRAM for the BIOS
 	uint8_t  B_MAX_ROM;   // Maximum allowed ROM for the BIOS	
 	uint8_t  PREBOOT;     // Set to 1 to have the Setup started before the Boot Strap
 	uint8_t  BIOSBOOT;
 
 	uint8_t  AudioOut;
-	uint8_t  AudioBuff;   // Not used for the moment to define the Nb of audio Buffer
-	uint8_t  Audio1;
-	uint8_t  Audio2;
-	uint8_t  Audio3;
+	uint8_t  AudioBuff;       // Not used for the moment to define the Nb of audio Buffer
+	uint8_t  GUSEnable;       // Gravis UltraSound On/Off (mutually exclusive with SBEnable)
+	uint8_t  MIDI_RENDERER;   // 0 for tinysoundfont, 1 for ArdSynth MIDI renderer
+	uint8_t  EnableUSBMouse;  // USB Mouse on/off (BIOS "Other" page). Gates the
+	                          // COM2 serial-mouse port decode (CMD_DEV_Init) and
+	                          // the BIOS equipment-bit-2 clear that makes Windows'
+	                          // mouse.drv scan serial. Repurposed from the unused
+	                          // Audio3 slot on 2026-07-16 (same offset). Default 0:
+	                          // enable in the BIOS menu + save.
 	uint8_t  Adlib;		  // Adlin On / Off (Port 0x388)
 	uint16_t TDYPort;
 	uint16_t CMSPort;
 	uint16_t SBPort;
 	uint8_t  SBIRQ;
-	uint8_t  Audio4;
-	uint16_t MMBPort;	
+	uint8_t  SBEnable;    // Sound Blaster On/Off (geometry from MCA POS regs)
+	uint16_t MMBPort;
 	uint8_t  ColorPr;     // Menu Color Profile
 	uint8_t  UseRTC;
-	uint8_t  Spare2;
-	uint8_t  Spare3;	
+	uint8_t  CDR_Attribute; // CD-ROM: bit 6 = USB vol (parity with HDD_Attribute; SD-only today). Was Spare2.
+	uint8_t  Spare3;
 	FSizeName_t CDR;      // CD ROM image name
 	char FDDPath[2][64];
     char HDDPath[4][64];
+    char CDRPath[64];     // CD-ROM sub-path under 0:/CDROM (trailing '/'), like FDDPath/HDDPath. Matches BIOS PMCFG_CDR_PATH.
 
-}PMCFG_t; 
+}PMCFG_t;
 
 extern PMCFG_t *PM_Config;             // Pointer to the PicoMEM Configuration in the BIOS Shared Memory

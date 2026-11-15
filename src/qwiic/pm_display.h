@@ -8,7 +8,7 @@ extern "C" {
 #define D_PCPOST    1   // POST Code display event
 #define D_PMPOST    2   // PicoMEM POST messages event
 #define D_PMHOME    3   // PicoMEM Home Screen
-#define D_PAD       4   // Gamepad/Joystick event display
+#define D_PAD_EVENT 4   // Gamepad/Joystick event display
 
 
 #define D_CMS       7   // CMS Screen (when active)
@@ -20,11 +20,16 @@ extern "C" {
 #define D_AUDIO_BAR 20  // 32 vertical volume bar
 #define D_AUDIO_OSC 21  // Audio oscilloscope
 
-#define D_FLOPPY_S  30  // Floppy Select Menu
-#define D_INFO_S    31  // Info Select Menu
+#define D_FLOPPY_S    30  // Floppy Select Menu
+#define D_CDROM_S     31  // CD-ROM Select Menu
+#define D_INFO_S      32  // Info Select Menu
+#define D_CDAUDIO_S   33  // CD Audio Menu
+#define D_BLUETOOTH_S 34  // Bluetooth device menu
 
-#define D_IMG_LIST  40
-#define D_FDD_CONF  41  // Floppy confirm
+#define D_IMG_LIST    40
+#define D_FDD_CONF    41    // Floppy confirm
+#define D_CDROM_STATUS   42 // CD mount status message
+#define D_CDAUDIO_STATUS 43 // CD audio playback status (play/pause/seek)
 
 #define CONTRAST_HIGH 0x80
 #define CONTRAST_LOW  0x20
@@ -48,12 +53,18 @@ bool pm_display_init(uint8_t oled_type);
 
 void pm_display_img_list(uint8_t img_index, uint8_t img_list_nb, FSizeName_t *pm_img_list);
 void pm_display_floppy_confirm(uint8_t choice);
+void pm_display_cdrom_confirm(bool eject, uint8_t choice);
+void pm_display_cdrom_status(bool success, const char *msg);
+void pm_display_cdrom_audio_status(uint8_t track, const char *state, const char *msg);
 
 void pm_display_pmhome();
 void pm_display_menu_floppy_select();
+void pm_display_menu_cdrom_select();
+void pm_display_menu_cdaudio_select();
 void pm_display_menu_info_select();
+void pm_display_menu_bluetooth_select();
 
-void pm_display_event(uint8_t ScreenID, uint8_t code1, uint8_t code2, char *event_msg);
+void pm_display_event(uint8_t ScreenID, uint8_t code1, uint8_t code2, const char *event_msg);
 void pm_display_worker(uint32_t ms_since_last);
 void pm_display_blink();
 void pm_display_contrast(uint8_t contrast);

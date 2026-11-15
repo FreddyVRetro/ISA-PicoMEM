@@ -1,3 +1,5 @@
+// Updated PicoMEM TSF ESP fonctions
+
 TSFDEF int pm_tsf_get_active_voices(tsf* f)
 {
     struct tsf_voice *v = f->voices, *vEnd = v + f->voiceNum;
@@ -155,4 +157,3 @@ bool pm_tsf_render_short_2x(tsf* f, short* buffer)
           }
   return true;              
 }
-

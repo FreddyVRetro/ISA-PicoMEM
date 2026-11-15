@@ -82,27 +82,6 @@ struct __attribute__((packed)) VHDFooter {
 		// remove the rest of the fields, as we don't need them
     };
 
-// Root sector / Partition structure
-struct  __attribute__((packed)) partTable {
-	uint8_t booter[446];
-	struct __attribute__((packed)) partentry_t {
-		uint8_t bootflag;
-		uint8_t beginchs[3];
-		uint8_t parttype;
-		uint8_t endchs[3];
-		uint32_t absSectStart;
-		uint32_t partSize;
-	} pentry[4];
-	uint8_t  magic1; /* 0x55 */
-	uint8_t  magic2; /* 0xaa */
-#ifndef SECTOR_SIZE_MAX
-# pragma warning SECTOR_SIZE_MAX not defined
-#endif
-#if SECTOR_SIZE_MAX > 512
-    uint8_t  extra[SECTOR_SIZE_MAX - 512];
-#endif
-};
-
 class imageDisk  {
 public:
     Bit32u CHS_to_LBA(Bit32u head,Bit32u cylinder,Bit32u sector);
@@ -131,6 +110,36 @@ public:
 	Bit32u clmt[SZ_TBL];          // FATFS FastSeek
 };
 
+// Master Boot Record (MBR)
+// NOTE: __attribute__((packed)) is REQUIRED.  Without it, the compiler
+// inserts 2 bytes of padding between booter[446] and pentry[] because
+// partentry_t contains uint32_t fields needing 4-byte alignment, and
+// the next 4-aligned offset after 446 is 448.  That misaligns every
+// partition entry and pushes magic1/magic2 to offsets 512/513 -- past
+// the end of the 512-byte sector buffer -- so they end up reading
+// uninitialized memory.  Symptom: "MBR Signature: 55 aa / XX YY"
+// where the first pair is correct (raw bytes) but the second pair
+// (struct fields) is garbage.
+struct __attribute__((packed)) partTable {
+	uint8_t booter[446];
+	struct __attribute__((packed)) partentry_t {
+		uint8_t bootflag;
+		uint8_t beginchs[3];
+		uint8_t parttype;
+		uint8_t endchs[3];
+		uint32_t absSectStart;
+		uint32_t partSize;
+	} pentry[4];
+	uint8_t  magic1; /* 0x55 */
+	uint8_t  magic2; /* 0xaa */
+#ifndef SECTOR_SIZE_MAX
+# pragma warning SECTOR_SIZE_MAX not defined
+#endif
+#if SECTOR_SIZE_MAX > 512
+    uint8_t  extra[SECTOR_SIZE_MAX - 512];
+#endif
+};
+
 void updateDPT(void);
 
 #define MAX_HDD_IMAGES 4
@@ -151,5 +160,8 @@ bool getSwapRequest(void);
 //Added for PM
 Bitu INT13_DiskHandler(void);
 extern void BIOS_SetupDisks(void);
+// El Torito floppy-emulation overlay (bios_disk.cpp, USE_CDROM builds):
+// restore drive 00h to its normal owner. Safe to call when not armed.
+extern void INT13_CDFDD_Disarm(void);
 
 #endif

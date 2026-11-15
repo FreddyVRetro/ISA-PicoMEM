@@ -57,9 +57,28 @@ static spi_t spis[] = {  // One for each RP2040 SPI component used
         .mosi_gpio = SD_SPI_MOSI,
         .miso_gpio = SD_SPI_MISO,
         .set_drive_strength = true,
-        .mosi_gpio_drive_strength = GPIO_DRIVE_STRENGTH_8MA,        // Same value as the PSRAM
-        .sck_gpio_drive_strength = GPIO_DRIVE_STRENGTH_8MA,         // Same value as the PSRAM
-        .baud_rate = 30 * 1000 * 1000   // Actual frequency: 10416666.
+        // Reduced from 8 mA to 4 mA on MOSI/SCK while bisecting 8556 SD
+        // hangs. SPI0 traces are shared with the W5500 footprint (idle but
+        // capacitive) and 8 mA can ring on long traces. 4 mA matches the
+        // SS pin and is plenty for ~10 MHz SPI.
+        // 4 mA was too weak on the shared-W5500 traces: the host-driven MOSI
+        // write data arrived corrupt -> SD data-CRC rejects the write (write-
+        // only failure; MISO/reads are card-driven and were always fine).
+        // Back to 8 mA now that SPI is at 12 MHz (~4 MHz wire), where the
+        // ringing that pushed it down to 4 mA is far less of an issue.
+        .mosi_gpio_drive_strength = GPIO_DRIVE_STRENGTH_8MA,
+        .sck_gpio_drive_strength = GPIO_DRIVE_STRENGTH_8MA,
+        // SD SPI baud rate request.  At PM_SYS_CLK=280 MHz the SDK
+        // divider yields wire rates around request_rate / 3.  50 MHz
+        // request gives ~17 MHz on the wire — at the edge of SD HS-mode
+        // territory; signal integrity may matter on shared SPI0 traces.
+        // Root cause was the W5500 module's capacitive load on the shared SD
+        // SPI0 stub (24 cm ribbon). Clean at 8 mA + slow slew with the module
+        // removed / series-terminated. 50 MHz request (~17 MHz wire at
+        // request/3, 280 MHz) -- clean WITHOUT the W5500 module; with the 24 cm
+        // module plugged, crosstalk corrupts and SD_CRC keeps it safe (fail+
+        // retry). ~17 MHz wire is within the W5500's own 33.3 MHz SCLK guarantee.
+        .baud_rate = 50 * 1000 * 1000
     },
 };
 
@@ -105,6 +124,21 @@ spi_t *spi_get_by_num(size_t num) {
     } else {
         return NULL;
     }
+}
+
+/* WonderMCA: expose the SD library's per-spi_t mutex so the W5500
+ * backend (which shares spi0 with the SD card) can serialise its own
+ * SPI transactions against any SD activity. The SD driver already
+ * locks this mutex inside its read/write helpers via spi_lock() in
+ * my_spi.h; sharing the same mutex from the W5500 side means the two
+ * cannot interleave on the bus.
+ *
+ * Returns NULL if the requested SPI hasn't been instantiated, in
+ * which case the caller should treat its access as unguarded (best-
+ * effort). */
+mutex_t *wm_spi_get_mutex(size_t num) {
+    spi_t *p = spi_get_by_num(num);
+    return p ? &p->mutex : NULL;
 }
 
 /* [] END OF FILE */

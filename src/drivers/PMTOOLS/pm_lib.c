@@ -341,13 +341,15 @@ bool pm_wait_cmd_end()
 // Send a command via I/O with argument and return a word
 uint16_t pm_io_cmd(uint8_t cmd,uint16_t arg)
 {
- // printf("PM CMD %X Arg %X\n",cmd,arg);
+  //printf("PM CMD %X Arg %X\n",cmd,arg);
    _asm {sti};
   if (pm_wait_cmd_end())
    {
+    _asm {cli};  // Prevent any TSR to break the command send
     outpw(PM_Base+1,arg);   // Send the parameters
     outp(PM_Base,cmd);      // Send the command
     pm_wait_cmd_end();
+    _asm {sti};
     return inpw(PM_Base+1);
    } else return 0xFF;
   return 0;
@@ -389,7 +391,7 @@ else
   printf(" > BIOS Interrupt not available :(\n");
   PM_BIOS_IRQ_Present=false;
   PM_Base=DEFAULT_BASE;
-  printf(" - I/O Port %X: ",PM_Base);
+  printf(" - I/O Port %X : ",PM_Base);
   if (pm_detectport(100)) 
     { 
       printf("Ok\n"); 

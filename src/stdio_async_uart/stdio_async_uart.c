@@ -8,6 +8,7 @@
 #include "pico/stdio/driver.h"
 #include "hardware/gpio.h"
 #include "hardware/irq.h"
+#include "hardware/sync.h"   // save_and_disable_interrupts / restore_interrupts
 
 #include "stdio_async_uart.h"
 #include "ringbuf.h"
@@ -36,11 +37,18 @@ void stdio_uart_out_chars(const char *buf, int length)
 {
 	ringbuf_add_buf(tx_rb, buf, length);
 
-	if (uart_is_writable(uart_instance)) {
-		// Write one byte to the UART data register
+	// IRQ-safe kickstart. on_uart_tx() (UART IRQ) ALSO writes DR and advances
+	// tx_rb.tail. Without masking, a higher-priority ISR (e.g. USBCTRL during a
+	// USB MSC read) preempting between uart_is_writable() and the tail++ lets
+	// on_uart_tx() re-read the same tail and resend the byte -> duplicated bytes
+	// and a desynced tail (the repeated-byte console garbage seen while USB host
+	// is active). Mask interrupts around the DR/tail update only (a few cycles).
+	uint32_t save = save_and_disable_interrupts();
+	if (tx_rb.head != tx_rb.tail && uart_is_writable(uart_instance)) {
 		uart_get_hw(uart_instance)->dr = *ringbuf_get_tail_ptr(tx_rb);
 		tx_rb.tail = (tx_rb.tail + 1) % sizeof(tx_rb.buf);
 	}
+	restore_interrupts(save);
 }
 
 static int stdio_uart_in_chars(char *buf, int length)

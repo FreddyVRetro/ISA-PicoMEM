@@ -15,7 +15,7 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-// #define HDD_DISPLAY
+#define HDD_DISPLAY 0
 
 #include <stdio.h>
 #include "pico/stdlib.h"
@@ -89,6 +89,23 @@ bool killRead;
 
 // PM void CMOS_SetRegister(Bitu regNr, Bit8u val); //For setting equipment word
 uint32_t PC_DB_Start;  // Start of the Shared disk buffer in the Host (PC) RAM
+
+// ---------------------------------------------------------------------------
+// READ-AFTER-WRITE SD verify (diagnostic; OFF by default). After each sector is
+// written, read it back from SD and compare to the source -- prints [disk_vrfy]
+// lines on any SD round-trip mismatch. This is what localized the disk-write
+// corruption to the SD SPI layer; root cause was the W5500 module's capacitive
+// load on the shared 24 cm-ribbon SPI0 bus (fix: series R / shorter ribbon;
+// firmware keeps SD_CRC + slow slew). Doubles write I/O when on. Set to 1 to
+// re-verify SD round-trips if disk corruption ever reappears.
+#define DISK_RAW_VERIFY 0
+#if DISK_RAW_VERIFY
+static uint8_t  disk_vrfy_buf[512];
+static uint32_t disk_vrfy_bad_sectors = 0;
+static uint32_t disk_vrfy_bad_bytes   = 0;
+static uint32_t disk_vrfy_logged      = 0;
+#endif
+// ---------------------------------------------------------------------------
 
 /* 2 floppys and 4 harddrives */ 
 imageDisk *imageDiskList[MAX_DISK_IMAGES];
@@ -238,8 +255,8 @@ Bit8u imageDisk::Read_AbsoluteSector(Bit32u sectnum, void * data) {
     FRESULT fr;
 	f_lseek(diskimg,bytenum);
 	fr = f_read(diskimg,data,sector_size,&byteread);
-	if (FR_OK != fr) 
-	{ 
+	if (FR_OK != fr)
+	{
 	  PM_ERROR("Fail: %d \n",fr);
 	  return 0x04;  //04h : sector not found/read error (BIOS error code)
 	}
@@ -267,13 +284,39 @@ Bit8u imageDisk::Write_AbsoluteSector(Bit32u sectnum, void *data) {
 //PM_INFO("fwrite: pos %d - ",bytenum);
 	f_lseek(diskimg,bytenum);
 	fr = f_write(diskimg,data,sector_size,&bytewrite);
-	if (FR_OK != fr) 
-	{ 
+	if (FR_OK != fr)
+	{
 	  PM_ERROR("Fail: %d \n",fr);
 	  return 0x04;  //04h : sector not found/write error
 	}
 
 	//LOG_MSG("Writing sectors to %ld at bytenum %d", sectnum, bytenum);
+
+#if DISK_RAW_VERIFY
+	// Read the just-written sector back from SD and compare to the source.
+	{
+	    uint rb;
+	    f_lseek(diskimg, bytenum);
+	    if (f_read(diskimg, disk_vrfy_buf, sector_size, &rb) == FR_OK && rb == sector_size) {
+	        const uint8_t *s = (const uint8_t *)data;
+	        Bit32u i, nb = 0; int first = -1;
+	        for (i = 0; i < sector_size; i++)
+	            if (disk_vrfy_buf[i] != s[i]) { nb++; if (first < 0) first = (int)i; }
+	        if (nb) {
+	            disk_vrfy_bad_sectors++;
+	            disk_vrfy_bad_bytes += nb;
+	            if (disk_vrfy_logged < 24) {
+	                disk_vrfy_logged++;
+	                PM_INFO("[disk_vrfy] SD ROUND-TRIP BAD LBA=%lu %lu/512 +%d src=%02X sd=%02X (bad_sec=%lu)\n",
+	                        (unsigned long)sectnum, (unsigned long)nb, first,
+	                        s[first], disk_vrfy_buf[first], (unsigned long)disk_vrfy_bad_sectors);
+	            }
+	        }
+	    } else {
+	        PM_INFO("[disk_vrfy] LBA=%lu read-back FAILED\n", (unsigned long)sectnum);
+	    }
+	}
+#endif
 
 	return 0x00;
 }
@@ -394,6 +437,29 @@ static Bitu GetDosDriveNumber(Bitu biosNum) {
 	}
 }
 
+// "Media changed" flag, one byte per virtual floppy slot. Set by the screenpad
+// mount path (pm_screenpad_host.cpp sph_mount) when a new image is mounted
+// at runtime, cleared by INT 13h AH=16h on the first read. Lets DOS notice
+// that a previously-empty drive now has media so DIR A: works after a
+// mid-session mount. (2026-06-08)
+// Floppy media-change flag for runtime (screenpad) mounts. Set by sph_mount;
+// INT13 AH=16h reports "disk changed" (06h) while set and is NOT cleared by the
+// poll (a background poll would otherwise consume it before DOS's own DIR
+// media-check ran). It is cleared by the next READ of the drive (case 0x2),
+// i.e. DOS rebuilding the BPB from the new image. Held-until-read (not a timed
+// window) so it survives the seconds a user takes to type DIR A:. (2026-07-04)
+volatile uint8_t g_fdd_media_changed[2] = {0, 0};
+
+// True if drivenum is one of our virtual floppy slots (0 or 1) with no
+// image currently mounted. Used to keep the slot visible to the chassis BIOS
+// and DOS even when empty, so a mid-session screenpad mount can populate it.
+static bool isEmptyFloppySlot(Bitu driveNum) {
+    if (driveNum >= 2) return false;            // not a floppy slot
+    if (imageDiskList[driveNum] != NULL &&
+        imageDiskList[driveNum]->active) return false;  // image actually mounted
+    return true;
+}
+
 static bool driveInactive(Bitu driveNum) {
 	if(driveNum>=(2 + MAX_HDD_IMAGES)) {
 		PM_INFO("Disk %d non-existant", driveNum);
@@ -416,24 +482,352 @@ static bool driveInactive(Bitu driveNum) {
 	return false;
 }
 
+#if USE_CDROM
+// ===========================================================================
+// INT 13h CD-ROM drive -- El Torito no-emulation, drive 0xE0
+// ===========================================================================
+// EDD subset serving boot loaders (isolinux) and BIOS-backed DOS drivers
+// (ELTORITO.SYS): AH=41h/42h/48h plus El Torito AH=4Bh. 2048-byte sectors,
+// pure LBA, no CHS. Reads go through dev_cdr_read2048() -- stateless, so
+// the MKE emulation (CDMKE) and CD audio can use the same disc in parallel.
+// The DAP and result structures move between PC memory and the DPRAM disk
+// buffer with PC_MemCopy (the PC executes copies in both directions; the
+// buffer is PC-visible at PC_DB_Start).
+#include "../isa_devices/dev_cdrom_mke.h"
+
+#define CD_DRIVE_NB       0xE0
+#define CD_DRIVE_WILDCARD 0x7F   // El Torito AH=4Bh "any drive" probe
+#define INT13_CD_TRACE    0     // per-call log line; set 1 to debug CD INT 13h
+
+// Floppy-emulation overlay (Tier 3, defined below INT13_CD)
+static uint8_t INT13_CDFDD_Arm(uint8_t *scratch);
+static Bitu    INT13_CDFDD(void);
+void           INT13_CDFDD_Disarm(void);   // also called at CMD_DEV_Init
+
+static Bitu INT13_CD(void) {
+    uint8_t *DB = (uint8_t *)&PM_PTR_DISKBUFFER[0];   // 2KB DPRAM staging
+    uint32_t dssi = ((uint32_t)reg_ds << 4) + reg_si;
+
+#if INT13_CD_TRACE
+    PM_INFO("[CD13] AH=%02X DL=%02X DS:SI=%04X:%04X\n",
+            (unsigned)reg_ah, (unsigned)reg_dl, (unsigned)reg_ds, (unsigned)reg_si);
+#endif
+
+    // The wildcard drive only answers El Torito status calls.
+    if (reg_dl == CD_DRIVE_WILDCARD && reg_ah != 0x4B) {
+        reg_ah = 0x01; reg_SetCF(); return CBRET_NONE;
+    }
+
+    switch (reg_ah) {
+    case 0x00:  // Reset
+    case 0x01:  // Status of last operation
+    case 0x44:  // EDD verify
+    case 0x45:  // Lock/unlock (pretend success)
+    case 0x47:  // EDD seek
+        reg_ah = 0; reg_ClearCF(); break;
+
+    case 0x15:  // Get disk type: removable with change line
+        reg_ah = 0x02; reg_ClearCF(); break;
+
+    case 0x41:  // EDD installation check
+        if (reg_bx != 0x55AA) { reg_ah = 0x01; reg_SetCF(); break; }
+        reg_ah = 0x21;                   // EDD 1.1
+        reg_bh = 0xAA; reg_bl = 0x55;    // BX = AA55h: extensions present
+        reg_ch = 0x00; reg_cl = 0x01;    // subset 1: extended disk access
+        reg_ClearCF(); break;
+
+    case 0x42: { // EDD extended read (2048-byte sectors)
+        if (dev_cdr_total_sectors() == 0) { reg_ah = 0x31; reg_SetCF(); break; } // no media
+        // Fetch the 16-byte DAP from DS:SI into the DPRAM staging buffer.
+        PC_MemCopy(dssi, PC_DB_Start, 16);
+        if (!PC_Wait_CMD_End_Disk()) return CBRET_NONE;
+        uint8_t  dap_size = DB[0];
+        uint16_t count = (uint16_t)DB[2] | ((uint16_t)DB[3] << 8);
+        uint16_t boff  = (uint16_t)DB[4] | ((uint16_t)DB[5] << 8);
+        uint16_t bseg  = (uint16_t)DB[6] | ((uint16_t)DB[7] << 8);
+        uint32_t lba   = (uint32_t)DB[8] | ((uint32_t)DB[9] << 8) |
+                         ((uint32_t)DB[10] << 16) | ((uint32_t)DB[11] << 24);
+        if (dap_size < 0x10 || (DB[12] | DB[13] | DB[14] | DB[15])) {
+            reg_ah = 0x01; reg_SetCF(); break;   // bad DAP / LBA > 32 bit
+        }
+        uint32_t target = ((uint32_t)bseg << 4) + boff;
+        uint16_t done = 0;
+        uint8_t  err  = 0;
+        while (done < count) {
+            if (!dev_cdr_read2048(lba + done, DB)) { err = 0x04; break; } // read fault
+            PC_MemCopy(PC_DB_Start, target, 2048);
+            if (PCCR_PCSTATE == PCC_PCS_RESET) return CBRET_NONE;
+#if BOARD_WM10||BOARD_WM20||BOARD_PM15
+				pm_audio_domix(true);   // Insert Audio Mix during the wait time
+#else
+				pm_audio_domix(false);  // Insert Audio Mix during the wait time
+#endif
+            if (!PC_Wait_CMD_End_Disk()) return CBRET_NONE;
+            target += 2048;
+            done++;
+        }
+        // Write the transferred count back into the caller's DAP (offset 2).
+        DB[0] = (uint8_t)done; DB[1] = (uint8_t)(done >> 8);
+        PC_MemCopy(PC_DB_Start, dssi + 2, 2);
+        if (!PC_Wait_CMD_End_Disk()) return CBRET_NONE;
+        if (err) { reg_ah = err; reg_SetCF(); }
+        else     { reg_ah = 0;   reg_ClearCF(); }
+        break; }
+
+    case 0x48: { // EDD get drive parameters
+        // First word at DS:SI = caller's result buffer size.
+        PC_MemCopy(dssi, PC_DB_Start, 2);
+        if (!PC_Wait_CMD_End_Disk()) return CBRET_NONE;
+        uint16_t bufsize = (uint16_t)DB[0] | ((uint16_t)DB[1] << 8);
+        if (bufsize < 0x1A) { reg_ah = 0x01; reg_SetCF(); break; }
+        uint32_t total = dev_cdr_total_sectors();
+        memset(DB, 0, 0x1A);
+        DB[0] = 0x1A; DB[1] = 0;         // v1.x structure, 26 bytes
+        DB[2] = 0x14; DB[3] = 0;         // flags: removable + change line, CHS invalid
+        DB[0x10] = (uint8_t)total;       // total sectors (64-bit field, high = 0)
+        DB[0x11] = (uint8_t)(total >> 8);
+        DB[0x12] = (uint8_t)(total >> 16);
+        DB[0x13] = (uint8_t)(total >> 24);
+        DB[0x18] = 0x00; DB[0x19] = 0x08; // 2048 bytes per sector
+        PC_MemCopy(PC_DB_Start, dssi, 0x1A);
+        if (!PC_Wait_CMD_End_Disk()) return CBRET_NONE;
+        reg_ah = 0; reg_ClearCF(); break; }
+
+    case 0xB0: { // INTERNAL (PMBIOS BOOT_CD): arm the floppy-emulation
+        // overlay on drive 00h. Returns AL = media type (1-3) on success.
+        uint8_t m = INT13_CDFDD_Arm(DB);
+        if (m == 0) { reg_ah = 0x01; reg_SetCF(); break; }
+        reg_al = m; reg_ah = 0; reg_ClearCF(); break; }
+
+    case 0x4B: { // El Torito: terminate emulation (AL=0) / get status (AL=1)
+        if (reg_al > 1) { reg_ah = 0x01; reg_SetCF(); break; }
+        if (reg_al == 0) INT13_CDFDD_Disarm();   // spec: 4B00h ends emulation
+        dev_cdr_eltorito_t et;
+        uint8_t r = dev_cdr_eltorito(&et, DB);
+        if (r == 1) { reg_ah = 0x31; reg_SetCF(); break; }   // no media
+        if (r == 2) {
+            // Media present but no boot catalog (plain data ISO). Still
+            // answer with a valid packet (media type 0, boot fields zero):
+            // ELTORITO.SYS accepts any drive whose 4B01h succeeds, which
+            // makes it a universal BIOS-backed DOS driver for us -- not
+            // only for discs that were actually booted.
+            memset(&et, 0, sizeof(et));
+        }
+        memset(DB, 0, 0x13);
+        DB[0] = 0x13;                    // packet size
+        DB[1] = et.media_type;           // 0 = no emulation
+        DB[2] = CD_DRIVE_NB;             // drive number
+        DB[3] = 0;                       // controller index
+        DB[4] = (uint8_t)et.image_lba;   // boot image LBA
+        DB[5] = (uint8_t)(et.image_lba >> 8);
+        DB[6] = (uint8_t)(et.image_lba >> 16);
+        DB[7] = (uint8_t)(et.image_lba >> 24);
+        DB[12] = (uint8_t)et.load_seg;   // load segment
+        DB[13] = (uint8_t)(et.load_seg >> 8);
+        DB[14] = (uint8_t)et.sector_count; // virtual (512-byte) sector count
+        DB[15] = (uint8_t)(et.sector_count >> 8);
+        PC_MemCopy(PC_DB_Start, dssi, 0x13);
+        if (!PC_Wait_CMD_End_Disk()) return CBRET_NONE;
+        reg_ah = 0; reg_ClearCF(); break; }
+
+    case 0x03:  // Write -- read-only device
+        reg_ah = 0x03; reg_SetCF(); break;
+
+    default:    // incl. 02h/08h legacy CHS -- no CHS on a no-emulation CD
+        reg_ah = 0x01; reg_SetCF(); break;
+    }
+    return CBRET_NONE;
+}
+
+// ===========================================================================
+// El Torito FLOPPY-EMULATION boot (Tier 3) -- drive 00h overlay
+// ===========================================================================
+// Discs like Win95 OSR2 carry a boot-floppy image (media type 1-3) instead
+// of a no-emulation loader. Arming the overlay points INT 13h drive 00h at
+// that image: CHS reads become 512-byte slices of 2048-byte CD sectors at
+// image_lba. The PM_Int13h claim is one DPRAM byte -- FDD_Attribute[0] >=
+// 0x80 routes drive 00h to the firmware (same byte the FDD mount sets); the
+// pre-arm value is restored on disarm. Read-only; disarmed at CMD_DEV_Init
+// (next boot) and by El Torito AH=4B00h "terminate emulation".
+static struct {
+    bool     active;
+    uint8_t  media;          // 1=1.2M  2=1.44M  3=2.88M
+    uint8_t  saved_attr;     // FDD_Attribute[0] before the overlay claimed it
+    uint8_t  spt, heads;
+    uint16_t cyls;
+    uint32_t image_lba;      // boot image start (2048-byte CD sectors)
+    uint32_t total512;       // virtual 512-byte sector count (geometry size)
+} cdfdd;
+
+void INT13_CDFDD_Disarm(void) {
+    if (!cdfdd.active) return;
+    PM_Config->FDD_Attribute[0] = cdfdd.saved_attr;
+    cdfdd.active = false;
+    PM_INFO("[CD13] floppy-emulation overlay disarmed\n");
+}
+
+// Parse the catalog and arm the overlay. Returns the media type (1-3) on
+// success, 0 when the disc has no floppy-emulation boot entry.
+static uint8_t INT13_CDFDD_Arm(uint8_t *scratch) {
+    static const struct { uint8_t spt, heads, cmos; uint16_t cyls; } geo[3] = {
+        { 15, 2, 0x02, 80 },   // media 1: 1.2M  5.25"
+        { 18, 2, 0x04, 80 },   // media 2: 1.44M 3.5"
+        { 36, 2, 0x05, 80 },   // media 3: 2.88M 3.5"
+    };
+    dev_cdr_eltorito_t et;
+    if (dev_cdr_eltorito(&et, scratch) != 0) return 0;
+    if (et.media_type < 1 || et.media_type > 3) return 0;
+    if (!cdfdd.active) cdfdd.saved_attr = PM_Config->FDD_Attribute[0];
+    cdfdd.media     = et.media_type;
+    cdfdd.spt       = geo[et.media_type - 1].spt;
+    cdfdd.heads     = geo[et.media_type - 1].heads;
+    cdfdd.cyls      = geo[et.media_type - 1].cyls;
+    cdfdd.total512  = (uint32_t)cdfdd.spt * cdfdd.heads * cdfdd.cyls;
+    cdfdd.image_lba = et.image_lba;
+    cdfdd.active    = true;
+    PM_Config->FDD_Attribute[0] = 0x80;    // PM_Int13h claims drive 00h now
+    PM_INFO("[CD13] floppy-emulation overlay armed: media %u (%u/%u/%u) img LBA %lu\n",
+            cdfdd.media, cdfdd.cyls, cdfdd.heads, cdfdd.spt,
+            (unsigned long)cdfdd.image_lba);
+    return et.media_type;
+}
+
+static uint8_t cdfdd_cmos_type(void) {
+    return (cdfdd.media == 1) ? 0x02 : (cdfdd.media == 3) ? 0x05 : 0x04;
+}
+
+// INT 13h services for the overlaid drive 00h. Mirrors the image-floppy
+// path's behavior (incl. AH=08h without ES:DI) for the calls a DOS /
+// Win95 boot exercises.
+static Bitu INT13_CDFDD(void) {
+    uint8_t *DB = (uint8_t *)&PM_PTR_DISKBUFFER[0];   // 2KB DPRAM staging
+
+#if INT13_CD_TRACE
+    PM_INFO("[CDFD] AH=%02X AL=%02X CHS=%u/%u/%u ES:BX=%04X:%04X\n",
+            (unsigned)reg_ah, (unsigned)reg_al,
+            (unsigned)(reg_ch | ((reg_cl & 0xC0) << 2)), (unsigned)reg_dh,
+            (unsigned)(reg_cl & 0x3F), (unsigned)reg_es, (unsigned)reg_bx);
+#endif
+
+    switch (reg_ah) {
+    case 0x00:  // reset
+    case 0x01:  // status of last op (always report clean)
+    case 0x0C: case 0x10: case 0x11: case 0x12: case 0x14: case 0x17:
+    case 0x18:  // set media type calls: accept
+        reg_ah = 0; last_status = 0; reg_ClearCF(); break;
+
+    case 0x04:  // verify: report AL sectors verified
+        reg_ah = 0; last_status = 0; reg_ClearCF(); break;
+
+    case 0x02: { // read sectors (CHS)
+        if (reg_al == 0) { reg_ah = 0x01; last_status = 0x01; reg_SetCF(); break; }
+        uint32_t cyl  = (uint32_t)(reg_ch | ((reg_cl & 0xC0) << 2));
+        uint32_t sect = (uint32_t)(reg_cl & 0x3F);
+        uint32_t head = reg_dh;
+        if (sect == 0 || sect > cdfdd.spt || head >= cdfdd.heads) {
+            reg_ah = 0x04; last_status = 0x04; reg_SetCF(); break;
+        }
+        uint32_t lba512 = (cyl * cdfdd.heads + head) * cdfdd.spt + sect - 1;
+        uint32_t target = ((uint32_t)reg_es << 4) + reg_bx;
+        uint32_t cached = 0xFFFFFFFFu;
+        uint8_t  done = 0, err = 0;
+        while (done < reg_al) {
+            uint32_t l = lba512 + done;
+            if (l >= cdfdd.total512) { err = 0x04; break; }
+            uint32_t cd = cdfdd.image_lba + (l >> 2);
+            if (cd != cached) {
+                if (!dev_cdr_read2048(cd, DB)) { err = 0x04; break; }
+                cached = cd;
+            }
+            // Copy the 512-byte slice straight out of the staging buffer.
+            PC_MemCopy(PC_DB_Start + ((l & 3) << 9), target, 512);
+            if (PCCR_PCSTATE == PCC_PCS_RESET) return CBRET_NONE;
+#if BOARD_WM10||BOARD_WM20||BOARD_PM15
+				pm_audio_domix(true);   // Insert Audio Mix during the wait time
+#else
+				pm_audio_domix(false);   // Insert Audio Mix during the wait time
+#endif
+            if (!PC_Wait_CMD_End_Disk()) return CBRET_NONE;
+            target += 512;
+            done++;
+        }
+        reg_al = done;
+        if (err) { reg_ah = err; last_status = err; reg_SetCF(); }
+        else     { reg_ah = 0;   last_status = 0;   reg_ClearCF(); }
+        break; }
+
+    case 0x03:  // write: read-only medium -> write protected
+        reg_ah = 0x03; last_status = 0x03; reg_SetCF(); break;
+
+    case 0x08:  // drive parameters (no ES:DI, same as the image-floppy path)
+        reg_ah = 0x00; reg_al = 0x00;
+        reg_bl = cdfdd_cmos_type();
+        reg_ch = (Bit8u)(cdfdd.cyls - 1);
+        reg_cl = (Bit8u)((((cdfdd.cyls - 1) >> 2) & 0xC0) | cdfdd.spt);
+        reg_dh = (Bit8u)(cdfdd.heads - 1);
+        reg_dl = 1;
+        last_status = 0; reg_ClearCF(); break;
+
+    case 0x15:  // disk type: floppy with change-line support
+        reg_ah = 0x02; reg_ClearCF(); break;
+
+    case 0x16:  // change line: no change
+        reg_ah = 0x00; last_status = 0; reg_ClearCF(); break;
+
+    default:
+        reg_ah = 0x01; last_status = 0x01; reg_SetCF(); break;
+    }
+    return CBRET_NONE;
+}
+#endif // USE_CDROM
 
 Bitu INT13_DiskHandler(void) {
     Bit32u sect_lba;
 	Bit16u segat, bufptr;
 	Bit8u sectbuf[512];
 	Bitu  drivenum;
-//    uint8_t sn;	
 	Bitu  i,t;
-    uint32_t BOffset;	
+    uint32_t BOffset;
     uint32_t WOffset;
 
 //	last_drive = reg_dl;
+//if (reg_ah==2) printf("R %d Sect :",reg_al);
+
+//printf("Int13h %x ",reg_ah);
+#if USE_CDROM
+	// El Torito CD drive (0xE0) + AH=4Bh wildcard (0x7F): fully handled by
+	// the CD-specific EDD handler; never enters the imageDisk paths.
+	if (reg_dl == CD_DRIVE_NB || reg_dl == CD_DRIVE_WILDCARD)
+		return INT13_CD();
+	// Floppy-emulation boot overlay: while armed, drive 00h is the CD's
+	// embedded boot-floppy image, whatever FDD0 is otherwise configured.
+	if (cdfdd.active && reg_dl == 0x00)
+		return INT13_CDFDD();
+#endif
+
 	drivenum = GetDosDriveNumber(reg_dl);
-#ifdef HDD_DISPLAY
+
+// ==========================================================================
+// INT13_TRACE — full per-call diagnostic (set to 0 to disable)
+// Logs every Int13h dispatch with all relevant register state to the Pico
+// serial. Enable when debugging boot hangs / disk read problems. The cost
+// is one PM_INFO line per disk call; insignificant vs SD I/O time.
+// ==========================================================================
+#define INT13_TRACE 0  // Set back to 1 to re-enable Int13h trace logs
+#if INT13_TRACE
+    PM_INFO("INT13> AH=%02X AL=%02X CH=%02X CL=%02X DH=%02X DL=%02X ES:BX=%04X:%04X drv=%u\n",
+            (unsigned)reg_ah, (unsigned)reg_al,
+            (unsigned)reg_ch, (unsigned)reg_cl,
+            (unsigned)reg_dh, (unsigned)reg_dl,
+            (unsigned)reg_es, (unsigned)reg_bx,
+            (unsigned)drivenum);
+#endif
+
+#if HDD_DISPLAY
 	PM_INFO("Int13h, drive: %x Fnt: %x AL: %x \n",reg_dl,reg_ah,reg_al);
 #endif
 	//LOG_MSG("INT13: Function %x called on drive %x (dos drive %d)", reg_ah,  reg_dl, drivenum);
-	
+
 	switch(reg_ah) {
 	case 0x0: /* Reset disk */
 /*INT 13 - DISK - RESET DISK SYSTEM
@@ -443,9 +837,11 @@ Return: AH = status (see #00234)
 	CF clear if successful (returned AH=00h)
 	CF set on error	*/
 		{
+		  //
 		  PM_INFO("Reset Disk %x\n",reg_dl);
  		  last_status = 0x00;
 		  reg_ClearCF();
+//		  busy_wait_us(100);
 		}
         break;
 /*INT 13 - DISK - GET STATUS OF LAST OPERATION
@@ -474,19 +870,59 @@ Only Last Status 0,1 and 7 are used */
 	DL = drive number (bit 7 set for hard disk)
 	ES:BX -> data buffer */
 	case 0x2: /* Read sectors */
-//	    PM_INFO("R %d Sect :",reg_al);
+	    //busy_wait_us(100);
+	    
 		if (reg_al==0) {
 			reg_ah = 0x01;
 			reg_SetCF();
 			return CBRET_NONE;
 		}
-		if (driveInactive(drivenum)) {		
+		if (isEmptyFloppySlot(drivenum)) {
+			// Empty floppy slot -- "Not ready" so DOS prompts the user to
+			// insert a disk; once they screenpad-mount, AH=16h will signal
+			// "changed" and the retry succeeds. (2026-06-08)
+			reg_ah = 0x80;
+			last_status = 0x80;
+			reg_SetCF();
+			return CBRET_NONE;
+		}
+		if (driveInactive(drivenum)) {
 			PM_INFO("Drive inactive");
 			reg_ah = 0xff;
 			reg_SetCF();
 			return CBRET_NONE;
 		}
-	
+
+		// Swap-over handshake, step 1 (state 2): return 80h "not ready" once,
+		// then drop to state 1. MS-DOS 6.22 on PS/2 only drops its cached
+		// FAT/directory when the drive first goes NOT-READY (a physical eject);
+		// a bare 06h change line makes it rebuild the BPB but keep the dir
+		// buffers, so it still shows the OLD disk ("wrong disk") -- confirmed on
+		// hardware, the change line alone is not enough. This step reproduces
+		// the working manual eject->retry->mount automatically (DOS auto-retries
+		// a not-ready read, so the sequence is transparent). (2026-07-14)
+		if (drivenum < 2 && g_fdd_media_changed[drivenum] == 2) {
+			g_fdd_media_changed[drivenum] = 1;
+			reg_ah = 0x80;
+			last_status = 0x80;
+			reg_SetCF();
+			return CBRET_NONE;
+		}
+
+		// Swap-over handshake, step 2 (state 1) -- also the whole story for a
+		// fresh mount into an empty slot. Return 06h "media changed" (CF set)
+		// instead of serving the sector, forcing DOS to FLUSH all buffers for
+		// the drive and retry; the retry (flag now cleared) serves the new
+		// image. Clear the flag here so the retry succeeds and we don't loop.
+		// (2026-07-04)
+		if (drivenum < 2 && g_fdd_media_changed[drivenum]) {
+			g_fdd_media_changed[drivenum] = 0;
+			reg_ah = 0x06;
+			last_status = 0x06;
+			reg_SetCF();
+			return CBRET_NONE;
+		}
+
 		uint16_t mt_beg;
 		uint16_t mt_end;
 		uint32_t PCBuffer_Start;
@@ -496,7 +932,7 @@ Only Last Status 0,1 and 7 are used */
 
         PCBuffer_Start=(uint32_t)(reg_es<<4)+reg_bx; // PC_Buffer_Start is the current @ of the application disk buffer
 
-#ifdef HDD_DISPLAY
+#if HDD_DISPLAY
 
 #if PM_PRINTF
 		PCBuffer_End=(PCBuffer_Start+reg_al*512)-1;  // PC_Buffer_End is the last @ of the application disk buffer
@@ -531,7 +967,7 @@ Only Last Status 0,1 and 7 are used */
 			      {					// MEM Begining or End in PSRAM/EMS
 			        mt_beg=0xFF;    // Force Slow MEM Copy with uSD Disable
 				  }
-#ifdef HDD_DISPLAY
+#if HDD_DISPLAY
   		     PM_INFO("%d > ",mt_beg);		  
 #endif			 
 			 }
@@ -549,30 +985,54 @@ if (mt_beg==MEM_EMS) mt_beg=0xFF;    // EMS > Slow Copy via CPU
 		  switch(mt_beg)
 		    {
 		    case MEM_NULL:  // ** Disk Read to the PC Ram (Disk Buffer)
-#ifdef HDD_DISPLAY
+#if HDD_DISPLAY
 #if PM_PRINTF
 			    putchar('m');
 #endif
 #endif
-		  		last_status = imageDiskList[drivenum]->Read_AbsoluteSector(sect_lba+sn, &PM_PTR_DISKBUFFER[BOffset]);		
-		  		if ((last_status != 0x00) || (killRead)) 
+		  		last_status = imageDiskList[drivenum]->Read_AbsoluteSector(sect_lba+sn, &PM_PTR_DISKBUFFER[BOffset]);
+#if INT13_TRACE
+                // Dump the loaded sector when it looks like a boot sector
+                // (CHS=0,0,1 -> sect_lba 0 = MBR; or first sector of any
+                // active partition is also interesting). Show first 32 bytes
+                // + the 0x55AA signature so we can verify it's a sane boot
+                // sector before the host CPU jumps into it.
+                if ((sect_lba + sn) == 0 ||
+                    (sect_lba + sn) <= 64) {  // MBR + first ~32 KB of partitions
+                    volatile uint8_t *p = (volatile uint8_t *)&PM_PTR_DISKBUFFER[BOffset];
+                    PM_INFO("INT13: SectRead drv=%u LBA=%u status=%02X\n",
+                            (unsigned)drivenum, (unsigned)(sect_lba + sn),
+                            (unsigned)last_status);
+                    PM_INFO("  [0x000]:");
+                    for (int z = 0; z < 16; z++) PM_INFO(" %02X", p[z]);
+                    PM_INFO("\n  [0x010]:");
+                    for (int z = 16; z < 32; z++) PM_INFO(" %02X", p[z]);
+                    PM_INFO("\n  Signature [0x1FE]: %02X %02X (expect 55 AA)\n",
+                            p[510], p[511]);
+                }
+#endif
+		  		if ((last_status != 0x00) || (killRead))
 				    {
-				 	 PM_ERROR("HDD Read Error");				 
+				 	 PM_ERROR("HDD Read Error");
 					 killRead = false;
 					 reg_ah = last_status;  // 4 if CF not accessible
 					 reg_SetCF();
 					 return CBRET_NONE;
 		    		}
                 // ** Ask the BIOS to Copy the data to the application buffer (in Background)
-		
+
                 PC_MemCopyW_512b(PC_DB_Start+BOffset,PCBuffer_Start);
           		if (PCCR_PCSTATE==PCC_PCS_RESET) return CBRET_NONE;		// Quit if Reset asked
-
-				pm_audio_domix();   // Insert Audio Mix during the wait time
+#if BOARD_WM10||BOARD_WM20||BOARD_PM15
+				pm_audio_domix(true);   // Insert Audio Mix during the wait time
+#else
+				pm_audio_domix(false);   // Insert Audio Mix during the wait time
+#endif
+				if (!PC_Wait_CMD_End_Disk()) return CBRET_NONE; // Wait until the PC finish a sector copy				
 
 			   break;
 		    case MEM_RAM:  // ** Disk Read to the PC RAM emulated in the Pico SRAM
-#ifdef HDD_DISPLAY
+#if HDD_DISPLAY
 #if PM_PRINTF
 			    putchar('s');
 #endif
@@ -649,7 +1109,11 @@ if (mt_beg==MEM_EMS) mt_beg=0xFF;    // EMS > Slow Copy via CPU
 				PM_PICO_EnablePSRAM();
 				PC_MemCopyW_512b(PC_DB_Start+BOffset,PCBuffer_Start);
 
-				pm_audio_domix();   // Insert Audio Mix during the wait time
+#if BOARD_WM10||BOARD_WM20||BOARD_PM15
+				pm_audio_domix(true);   // Insert Audio Mix during the wait time
+#else
+				pm_audio_domix(false);   // Insert Audio Mix during the wait time
+#endif
 
 		        if (!PC_Wait_CMD_End_Disk()) return CBRET_NONE; // Wait until the PC finish a sector copy
 				PM_EnableSD();
@@ -683,6 +1147,12 @@ if (mt_beg==MEM_EMS) mt_beg=0xFF;    // EMS > Slow Copy via CPU
 
 //	    PM_INFO("W%d Sect:",reg_al,reg_ah,reg_dl);
 
+		if (isEmptyFloppySlot(drivenum)) {
+			reg_ah = 0x80;       // "Not ready" for empty floppy slot
+			last_status = 0x80;
+			reg_SetCF();
+			return CBRET_NONE;
+		}
 		if(driveInactive(drivenum)) {
 			reg_ah = 0xff;
 			reg_SetCF();
@@ -691,11 +1161,13 @@ if (mt_beg==MEM_EMS) mt_beg=0xFF;    // EMS > Slow Copy via CPU
 
         PCBuffer_Start=(uint32_t)(reg_es<<4)+reg_bx;  // Segment<<4+Offset
 
-#if PM_PRINTF    
+#if PM_PRINTF  
+#if HDD_DISPLAY
 		PCBuffer_End=(PCBuffer_Start+reg_al*512)-1;	  // Add Buffer NB*5412 -1
 		mt_beg = GetMEMType(PCBuffer_Start);
 		mt_end = GetMEMType(PCBuffer_End);
 	    PM_INFO("B@ %x:%x>%x Type %x, %x \n",reg_es,reg_bx,PCBuffer_Start,mt_beg,mt_end);
+#endif
 #endif
 
         BOffset=0;
@@ -714,9 +1186,9 @@ if (mt_beg==MEM_EMS) mt_beg=0xFF;    // EMS > Slow Copy via CPU
 // **** Disk Write Loop ****
 		for(uint32_t sn=0;sn<reg_al;sn++) 
 		{
-		   
-//		PM_INFO(".");
-
+#if HDD_DISPLAY		   
+		PM_INFO(".");
+#endif
 		 WOffset=BOffset;		// Save the Buffer Offset : The sector to copy to the Disk is the previous sector
 
 // ** Prepare the next buffer Read (Even if there is not a next sector)
@@ -753,7 +1225,7 @@ if (mt_beg!=MEM_RAM) mt_beg=MEM_NULL;  // Can go back to use Copy via the CPU
          if (sn!=(reg_al-1)) // If processing the last sector, no need to copy in advance.
              {	
 			   if (mt_beg<=MEM_RAM) PC_MemCopyW_512b(PCBuffer_Start,PC_DB_Start+BOffset);	// PC RAM or Pico SRAM emulated RAM
-			      else 
+			      else
 				   {  // Using PSRAM : Need to re enable the PSRAM and Wait
                      PM_PICO_EnablePSRAM();
 #if PM_PRINTF
@@ -844,6 +1316,21 @@ Return: CF set on error
 	    DH = maximum head number
 	    DL = number of drives
 	    ES:DI -> drive parameter table (floppies only)  */
+		if (isEmptyFloppySlot(drivenum)) {
+			// Report a generic 1.44 MB 3.5" drive (CMOS type 4) for the
+			// empty slot so DOS keeps the drive in its table. Geometry =
+			// 80 cyl, 2 heads, 18 sectors/track. (2026-06-08)
+			reg_ah = 0x00;
+			reg_al = 0x00;
+			reg_bl = 0x04;            // 1.44 MB 3.5"
+			reg_ch = 79;              // max cyl = 80-1
+			reg_cl = 18;              // max sector
+			reg_dh = 1;               // max head = 2-1
+			reg_dl = New_FloppyNB;
+			last_status = 0x00;
+			reg_ClearCF();
+			break;
+		}
 		if(driveInactive(drivenum)) {
 			last_status = 0x07;
 			reg_ah = last_status;
@@ -884,13 +1371,25 @@ Return: CF set on error
 	AH = status (see #00234 at AH=01h)	*/
 	case 0x12: /* CONTROLLER RAM DIAGNOSTIC (XT,PS) */
 	case 0x14: /* Controller Auto test              */
-	case 0x16: /* Detect disk change (apparently added to XT BIOSes in 1986 according to RBIL) */
 	case 0x19: /* Park Heads*/
-	    reg_ah = 0x00;   // ah=6 if floppy changed
+	    reg_ah = 0x00;
+		reg_ClearCF();
+		break;
+	case 0x16: /* Detect disk change line (RBIL) */
+		// 06h "disk changed" while the flag is set -- HELD, not cleared by the
+		// poll (else a background poll consumes it before DOS's DIR media-check
+		// runs). Cleared by the next READ (case 0x2) = DOS rebuilding the BPB.
+		// On a PS/2 DOS treats the 1.44M drive as having a change line and
+		// trusts this over any re-read heuristic, so this is the only channel
+		// that makes a live screenpad swap visible here. (2026-07-04)
+		if (drivenum < 2 && g_fdd_media_changed[drivenum])
+			reg_ah = 0x06;
+		else
+			reg_ah = 0x00;
 		reg_ClearCF();
 		break;
 		case 0x15: /* Get Disk Type */
-/*	 Read DASD Type (XT BIOS from 1/10/86 & newer)	
+/*	 Read DASD Type (XT BIOS from 1/10/86 & newer)
 	AH = 15h
 	DL = drive number (0=A:, 1=2nd floppy, 80h=drive 0, 81h=drive 1)
 	on return:
@@ -900,8 +1399,22 @@ Return: CF set on error
 	   = 03 fixed disk present
 	CX:DX = number of fixed disk sectors; if 3 is returned in AH
 	CF = 0 if successful
-	   = 1 if error		
+	   = 1 if error
 */
+		if (isEmptyFloppySlot(drivenum)) {
+			// Slot configured but no media: claim a 1.44 MB drive with
+			// change-detection so DOS keeps the drive in its table and
+			// will poll AH=16h after a future screenpad mount. (2026-06-08)
+			reg_ah = 0x02;  // diskette, change detection present
+			reg_ch = 0;
+			reg_cl = 0;
+			reg_dh = 0;
+			reg_dl = 0;
+			last_status = 0x00;
+			reg_ClearCF();
+			PM_INFO("Get Disk Type Drive %d: empty floppy slot (type 02)\n", drivenum);
+			break;
+		}
 		if(driveInactive(drivenum)) {
 			last_status = 0x07;
 			reg_ah = last_status;
@@ -919,7 +1432,11 @@ Return: CF set on error
 		   }
 		  else
 		   {
-		    reg_ah=0x01;  // Floppy Disk present, no change detection
+		    // 0x02 = change-line present, so DOS consults AH=16h for media
+		    // change instead of its unreliable volume-serial heuristic (which
+		    // fails when two images share a serial). Paired with the held-until-
+		    // read flag in case 0x16. (2026-07-04)
+		    reg_ah=0x02;  // Floppy Disk present, change detection present
 			reg_ch=0;
 			reg_cl=0;
 			reg_dh=0;
@@ -935,13 +1452,33 @@ Return: CF set on error
 		reg_ClearCF();
 		break;		
 	default:
+		// Unsupported function: refuse silently (CF=1, AH=FF). Drivers
+		// probe liberally -- ELTORITO.SYS walks AH=4Bh across every HDD
+		// looking for the CD, OSes poke capability calls like AH=54h --
+		// and each refusal is normal, not console-worthy.
+#if INT13_TRACE
 		PM_INFO("INT13: Function %x called on drive %x (dos drive %d)", reg_ah,  reg_dl, drivenum);
+#endif
 		reg_ah=0xff;
 		reg_SetCF();
 	}
 #if PM_PRINTF
-	if (reg_ah!=0x00) PM_ERROR("Int13h Error %x\n",reg_ah);  
-#endif	
+	// BIOS Int13h convention: CF=1 means error, CF=0 means success.
+	// Non-zero AH with CF=0 is a valid status (e.g. AH=15h returns
+	// AH=01/03 to report floppy/fixed-disk type). Only log when CF is
+	// set, otherwise the chassis's boot-time drive enumeration spams
+	// "Int13h Error 1" for every floppy detected. AH=FF (unsupported
+	// function / inactive drive) is excluded too: probe refusals are
+	// routine and already visible via INT13_TRACE when debugging.
+	if ((reg_flagl & 1) && reg_ah != 0x00 && reg_ah != 0xff) PM_ERROR("Int13h Error %x\n",reg_ah);
+#endif
+
+#if INT13_TRACE
+    PM_INFO("INT13< AH_ret=%02X AL_ret=%02X CF=%u  (status=%02X)\n",
+            (unsigned)reg_ah, (unsigned)reg_al,
+            (unsigned)((reg_flagl & 1) ? 1 : 0),
+            (unsigned)last_status);
+#endif
 	return CBRET_NONE;
 }
 

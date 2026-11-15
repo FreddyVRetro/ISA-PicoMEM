@@ -309,7 +309,13 @@ bool my_spi_init(spi_t *spi_p) {
         // enum gpio_slew_rate { GPIO_SLEW_RATE_SLOW = 0, GPIO_SLEW_RATE_FAST = 1 }
         // void gpio_set_slew_rate (uint gpio,enum gpio_slew_rate slew)
         // Default appears to be GPIO_SLEW_RATE_SLOW.
-        gpio_set_slew_rate(spi_p->sck_gpio, GPIO_SLEW_RATE_FAST);
+        // SLOW slew softens the edges to kill ringing/overshoot on the
+        // reflective SD SPI0 traces (shared, unpopulated W5500 footprint stub).
+        // FAST edges + 8 mA rang and corrupted BOTH read and write; SLOW + 8 mA
+        // keeps enough drive to reach the card cleanly without the reflections.
+        // (disk_vrfy hunt, 2026-07-13 -- was GPIO_SLEW_RATE_FAST on SCK only.)
+        gpio_set_slew_rate(spi_p->sck_gpio,  GPIO_SLEW_RATE_SLOW);
+        gpio_set_slew_rate(spi_p->mosi_gpio, GPIO_SLEW_RATE_SLOW);
 
         /* Drive strength levels for GPIO outputs:
             enum gpio_drive_strength {

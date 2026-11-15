@@ -61,7 +61,7 @@ void dev_post_update()
    char poststr[5];
    poststr[4]=0;
    sprintf(&poststr[0],"Bp%X",HostIO.Port80h);
-//   PM_INFO("%s",poststr);
+   //PM_INFO("%s",poststr);
    qwiic_display_4char(poststr);                        // Send the POST Code to the External LCD
    #if USE_OLED
    pm_display_event(D_PCPOST,HostIO.Port80h,HostIO.PortPost2,NULL);  // Send the POST Code to the OLED
@@ -74,7 +74,7 @@ void dev_post_update()
    char poststr[5];
    poststr[4]=0;
    sprintf(&poststr[0],"Pp%X",HostIO.Port81h);
-//   PM_INFO("%s",poststr);
+   //PM_INFO("%s",poststr);
    qwiic_display_4char(poststr);       // Send the POST Code to the External LCD
    #if USE_OLED   
    pm_display_event(D_PMPOST,HostIO.Port81h,0,NULL);  // Send the POST Code to the OLED   
@@ -84,12 +84,12 @@ void dev_post_update()
 
 void dev_post_iow(uint32_t Addr,uint8_t Data)
 {
-//   PM_INFO("p%x %x",Addr,Data);
+   //PM_INFO("p%x %x",Addr,Data);
    if ((Addr & 0xFFF)==HostIO.Post2Port)
     {
       HostIO.PortPost2=Data;
 		HostIO.PortPost2_Updated=true;
-      PM_INFO("B2%x",Data);      
+      //PM_INFO("B2%x",Data);      
       return;
     }
    switch (Addr & 0xF)

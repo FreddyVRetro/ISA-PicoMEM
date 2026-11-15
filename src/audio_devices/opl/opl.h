@@ -36,32 +36,7 @@ typedef enum
 #define OPL_REG_FM_MODE           0x08
 #define OPL_REG_NEW               0x105
 
-// Times
-
 #define OPL_SECOND ((uint64_t) 1000 * 1000)
-
-/*
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-
-int OPL_Pico_Init(unsigned int);
-unsigned int OPL_Pico_PortRead(opl_port_t);
-void OPL_Pico_WriteRegister(unsigned int, unsigned int);
-void OPL_Pico_stereo(int32_t*, int32_t*, uint32_t);
-#if BOARD_PICOMEM
-void OPL_Pico_Shutdown(void);
-void OPL_Pico_stereo_int16(int32_t *buffer, uint32_t nsamples);
-void OPL_Pico_simple(int16_t*, uint32_t);
-#else
-void OPL_Pico_simple(int32_t*, uint32_t);
-#endif
-
-#ifdef __cplusplus
-} // extern "C"
-#endif
-*/
 
 extern int OPL_Pico_Init(unsigned int);
 extern unsigned int OPL_Pico_PortRead(opl_port_t);
@@ -69,8 +44,8 @@ extern void OPL_Pico_WriteRegister(unsigned int, unsigned int);
 extern void OPL_Pico_stereo(int32_t*, int32_t*, uint32_t);
 #if BOARD_PICOMEM
 extern void OPL_Pico_Shutdown(void);
-extern void OPL_Pico_simple(int16_t*, uint32_t);
-extern void OPL_Pico_stereo_int16(int16_t *buffer, uint32_t nsamples);
+extern void OPL_Pico_simple16(int16_t*, uint32_t);
+extern void OPL_Pico_stereo16(int16_t *buffer, uint32_t nsamples);
 #else
 extern void OPL_Pico_simple(int32_t*, uint32_t);
 #endif

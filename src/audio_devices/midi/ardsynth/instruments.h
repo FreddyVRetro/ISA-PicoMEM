@@ -6,7 +6,14 @@
 #ifndef __INSTRUMENT_H__
 #define __INSTRUMENT_H__
 
+#include <cstring>
+
+#if defined(__AVR__)
 #include <avr/pgmspace.h>
+#else
+#define PROGMEM
+#define pgm_read_byte(address) (*(address))
+#endif
 
 struct EnvelopeStage {
   int16_t slope;                  // Q8.8 fixed point slope for the EnvelopeStage

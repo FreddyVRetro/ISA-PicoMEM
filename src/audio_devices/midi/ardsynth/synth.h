@@ -24,20 +24,26 @@
 #ifndef __SYNTH_H__
 #define __SYNTH_H__
 
+#if defined(__AVR__)
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
+#else
+#define PROGMEM
+#define pgm_read_byte(address) (*(address))
+#define pgm_read_word(address) (*(address))
+#endif
 #include <math.h>
 #include <stdint.h>
 #include "instruments.h"
 #include "envelope.h"
+#if defined(__AVR__)
 #include "dac.h"
+#endif
 
 // With GCC, we can calculate the _noteToPitch table at compile time.
-#ifndef __EMSCRIPTEN__
 constexpr static uint16_t interval(double sampleRate, double note) {
   return round(pow(2, (note - 69.0) / 12.0) * 440.0 / sampleRate * static_cast<double>(0xFFFF));
 }
-#endif
 
 class Synth {
   public:
@@ -49,7 +55,11 @@ class Synth {
   #endif
       ;
   
+  #if defined(__AVR__)
   constexpr static double sampleRate = static_cast<double>(F_CPU) / 8.0 / static_cast<double>(Synth::samplingInterval);
+  #else
+  constexpr static double sampleRate = 49716.0;
+  #endif
   
   private:
     // Used in 'noteOn()' to shift wave offset or amplitude modulation program based on the current note played.
@@ -58,6 +68,7 @@ class Synth {
     static constexpr uint8_t offsetTable[] = { 0, 0, 1, 1, 2, 3, 3, 3 };
 
     // Map MIDI notes [0..127] to the corresponding Q8.8 sampling interval
+  #if defined(__AVR__)
     constexpr static uint16_t _noteToSamplingInterval[] PROGMEM = {
     #ifndef __EMSCRIPTEN__
       interval(sampleRate, 0x00), interval(sampleRate, 0x01), interval(sampleRate, 0x02), interval(sampleRate, 0x03), interval(sampleRate, 0x04), interval(sampleRate, 0x05), interval(sampleRate, 0x06), interval(sampleRate, 0x07),
@@ -88,6 +99,15 @@ class Synth {
       0x442F, 0x483C, 0x4C88, 0x5115, 0x55E7, 0x5B03, 0x606C, 0x6628, 0x6C3B, 0x72AB, 0x797C, 0x80B6, 0x885D, 0x9079, 0x9910, 0xA22A,
     #endif
     };
+  #endif
+
+    static uint16_t getNoteSamplingInterval(uint8_t note) {
+    #if defined(__AVR__)
+      return pgm_read_word(&_noteToSamplingInterval[note]);
+    #else
+      return static_cast<uint16_t>(round(pow(2.0, (static_cast<double>(note) - 69.0) / 12.0) * 440.0 / sampleRate * 0xFFFF));
+    #endif
+    }
 
     // Note: Members prefixed with 'v_' (as in volatile) are shared with the ISR, and should only
     //       be accessed outside the ISR after calling 'suspend()' to suspend the ISR.
@@ -112,6 +132,7 @@ class Synth {
   
   public:
     void begin(){
+    #if defined(__AVR__)
       Dac::setup();
 
       // Setup Timer2 for sample/mix/output ISR.
@@ -119,6 +140,7 @@ class Synth {
       TCCR2B = _BV(CS21);                 // Prescale None = C_FPU / 8 tick frequency
       OCR2A  = samplingInterval;          // Set timer top to sampling interval
       TIMSK2 = _BV(OCIE2A);               // Enable ISR
+    #endif
     }
   
     // Returns the next idle voice, if any.  If no voice is idle, uses envelope stage and amplitude to
@@ -185,7 +207,7 @@ class Synth {
     
       _note[voice] = note;                                          // Remember the note being played (for calculating pitch bench later).
 
-      uint16_t samplingInterval = pgm_read_word(&_noteToSamplingInterval[note]);
+      uint16_t samplingInterval = getNoteSamplingInterval(note);
 
       // Suspend audio processing before updating state shared with the ISR.
       suspend();
@@ -224,12 +246,12 @@ class Synth {
       // DANGER: Bending the lowest and highest two notes will read outside the bounds
       //         of the _noteToPitch[] table.  (Probably harmless. :)
       uint16_t delta = value >= 0
-        ? pgm_read_word(&_noteToSamplingInterval[_note[voice] + 2]) - pitch
-        : pitch - pgm_read_word(&_noteToSamplingInterval[_note[voice] - 2]);
+        ? getNoteSamplingInterval(_note[voice] + 2) - pitch
+        : pitch - getNoteSamplingInterval(_note[voice] - 2);
 
       int32_t product;
 
-    #ifndef __EMSCRIPTEN__
+    #if defined(__AVR__)
       // It can be challenging for the synth to process a pitch bend in real-time.
       // Pitch bench adjustments often occur at high frequency, and the calculation
       // involves an expensive S16 x U16 multiplication.
@@ -273,6 +295,7 @@ class Synth {
       return v_amp[voice];
     }
   
+    #if defined(__AVR__)
     static uint16_t isr() __attribute__((always_inline)) {
       TIMSK2 = 0;         // Disable timer2 interrupts to prevent reentrancy.
       sei();              // Re-enable other interrupts to ensure USART RX ISR buffers incoming MIDI messages.
@@ -355,19 +378,62 @@ class Synth {
     
       return (mix0to7 >> 1) + (mix8toF >> 1) + 0x8000;                    // For Emscripten, return as a single signed value (GCC/AVR will elide this code).
     }
+    #endif
 
   
     // Suspends audio processing ISR.  While suspended, it is safe to update of volatile state
     // shared with the ISR.
     void suspend() __attribute__((always_inline)) {
+    #if defined(__AVR__)
       cli();
       TIMSK2 = 0;
       sei();
+    #endif
     }
   
     // Resumes audio processing ISR.
     void resume() __attribute__((always_inline)) {
+    #if defined(__AVR__)
       TIMSK2 = _BV(OCIE2A);
+    #endif
+    }
+
+    void render(int16_t* buffer, uint16_t samples) {
+      for (uint16_t sampleIndex = 0; sampleIndex < samples; sampleIndex++) {
+        static uint16_t noise = 0xACE1;
+        static uint8_t divider = 0;
+        noise = (noise >> 1) ^ (-(noise & 1) & 0xB400);
+        divider++;
+
+        const uint8_t voice = divider & 0x0F;
+        if (v_isNoise[voice]) {
+          v_xor[voice] = static_cast<uint8_t>(noise);
+        }
+
+        switch (divider & 0xF0) {
+          case 0x00:
+            v_interval[voice] = v_bentInterval[voice] + v_freqMod[voice].sample() - 0x40;
+            break;
+          case 0x50:
+            v_wave[voice] = v_baseWave[voice] + v_waveMod[voice].sample();
+            break;
+          case 0xA0:
+//            v_amp[voice] = v_ampMod[voice].sample() * v_vol[voice] >> 8;
+            v_amp[voice] = v_ampMod[voice].sample() * v_vol[voice] >> 8;
+            break;
+        }
+
+        int32_t mixed = 0;
+        for (uint8_t voice = 0; voice < numVoices; voice++) {
+          if (v_wave[voice] == nullptr) continue;
+          const uint8_t offset = static_cast<uint8_t>((v_phase[voice] += v_interval[voice]) >> 8);
+          const int8_t waveSample = static_cast<int8_t>(pgm_read_byte(v_wave[voice] + offset) ^ v_xor[voice]);
+          mixed += waveSample * v_amp[voice];
+        }
+        const int16_t output = static_cast<int16_t>(mixed); // >> 1);
+        buffer[sampleIndex * 2] = output;
+        buffer[sampleIndex * 2 + 1] = output;
+      }
     }
   
   #ifdef __EMSCRIPTEN__
@@ -380,7 +446,9 @@ class Synth {
   #endif // __EMSCRIPTEN__
 };
 
+#if defined(__AVR__)
 constexpr uint16_t Synth::_noteToSamplingInterval[] PROGMEM;
+#endif
 constexpr uint8_t Synth::offsetTable[];
 
 volatile const int8_t*  Synth::v_wave[Synth::numVoices]         = { 0 };
@@ -401,8 +469,10 @@ volatile uint16_t       Synth::v_bentInterval[Synth::numVoices] = { 0 };
 volatile const int8_t*  Synth::v_baseWave[Synth::numVoices]     = { 0 };
          uint8_t        Synth::_note[Synth::numVoices]          = { 0 };
 
+#if defined(__AVR__)
 SIGNAL(TIMER2_COMPA_vect) {
   Synth::isr();
 }
+#endif
 
 #endif // __SYNTH_H__

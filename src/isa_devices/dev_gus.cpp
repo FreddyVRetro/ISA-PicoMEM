@@ -35,10 +35,17 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "pm_defines.h"
 #include "dev_picomem_io.h"   // SetPortType / GetPortType
 #include "dev_gus.h"
+#include "dev_memory.h"       // PSRAM_GUS_START + pico_psram (ps_size)
 
 #include "gus/gus-x.h"
 
 dev_gus_t dev_gus = {false,0,0};
+
+// GUS wave RAM lives at PSRAM_GUS_START (offset 5 MB) and spans 1 MB, so the
+// map needs 6 MB of PSRAM. Guard against installing on a board whose detected
+// PSRAM is too small -- otherwise GUS would read/write past the end of PSRAM
+// and silently corrupt. 6 MB = 5 MB (GUS start offset) + 1 MB (GUS RAM).
+#define GUS_PSRAM_NEEDED_BYTES  (6u*1024u*1024u)
 
 // Set the IRQ and DMA for the GUS
 // IRQ can be 3,5,7
@@ -48,8 +55,8 @@ uint8_t dev_gus_set_irq_dma(uint8_t irq,uint8_t dma)
  GUS_SetIRQDMA(irq,dma);
  if (irq==BV_IRQ)
      {
-      PM_ERROR("GUSIRQ = PicoMEM IRQ (%d)\n",irq);
-      return 1;
+      PM_ERROR("Error: GUSIRQ = PicoMEM IRQ (%d)\n",irq);
+      return CMDERR_PM_IRQ;
      } 
  return 0;
 }
@@ -57,8 +64,36 @@ uint8_t dev_gus_set_irq_dma(uint8_t irq,uint8_t dma)
 uint8_t dev_gus_install(uint16_t baseport)
 {
   PM_INFO("Install GUS (%x)\n",baseport);
+#if USE_RP2350_PSRAM
+  if (ps_size < GUS_PSRAM_NEEDED_BYTES)
+    {
+     PM_ERROR("GUS needs %u MB PSRAM, only %u MB detected -- not installing\n",
+              (unsigned)(GUS_PSRAM_NEEDED_BYTES/(1024u*1024u)),
+              (unsigned)(ps_size/(1024u*1024u)));
+     return CMDERR_PORTUSED;
+    }
+#endif
   if (!dev_gus.active)   // Don't re enable if active
   {
+#if BOARD_WM10
+   // WM10: the 0x220 low window is the SHARED DEV_SBDSP "sound-card" block --
+   // the MCA bus handler routes it to GUS via the dev_gus.active flag (SB and
+   // GUS are mutually exclusive). Only the 0x320 (3X0) window is GUS-exclusive.
+   // So accept baseport already being DEV_SBDSP; only 0x320 must be free.
+   if (GetPortType(baseport+0x100)!=DEV_NULL)
+     {
+      PM_ERROR("GUS 3X0 port already used (%d)\n",GetPortType(baseport+0x100));
+      return CMDERR_PORTUSED;
+     }
+   PM_INFO("Initialize GUS (WM10, shared 0x220 + GUS 0x320)\n");
+   GUS_OnReset();
+   GUS_Setup();
+   // Both windows use the shared DEV_SBDSP marker; the MCA bus handler routes
+   // them to GUS via the dev_gus.active flag (no separate DEV_GUS dispatch on
+   // WM10). 0x220 low window (2 blocks) + 0x320 3X0 window (1 block).
+   SetPortType(baseport,DEV_SBDSP,2);
+   SetPortType(baseport+0x100,DEV_SBDSP,1);
+#else
    if ((GetPortType(baseport)!=DEV_NULL)||(GetPortType(baseport+0x100)!=DEV_NULL))
      {
       PM_ERROR("Port already used (%d)\n",GetPortType(baseport));
@@ -69,9 +104,10 @@ uint8_t dev_gus_install(uint16_t baseport)
    PM_INFO("Initialize GUS\n");
    GUS_OnReset();  // Initialize the GUS emulation
    GUS_Setup();    // Setup Clamp/interpolation (If needed)
-   
+
    SetPortType(baseport,DEV_GUS,2);
    SetPortType(baseport+0x100,DEV_GUS,1);
+#endif
    dev_gus.baseport=baseport;
    dev_gus.active=true;
    dev_gus_disable_mix();
@@ -82,9 +118,16 @@ uint8_t dev_gus_install(uint16_t baseport)
     if (baseport!=dev_gus.baseport)
      {
       PM_INFO("Change GUS Port (%x)\n",baseport);
-      DelPortType(DEV_GUS);                           // Remove old port     
+#if BOARD_WM10
+      // Shared DEV_SBDSP marker + active-flag routing (see dev_gus_install).
+      SetPortType(dev_gus.baseport+0x100,DEV_NULL,1);  // Free old 0x320 window
+      SetPortType(baseport,DEV_SBDSP,2);               // Set new ports
+      SetPortType(baseport+0x100,DEV_SBDSP,1);
+#else
+      DelPortType(DEV_GUS);                           // Remove old port
       SetPortType(baseport,DEV_GUS,2);                // Set new port
       SetPortType(baseport+0x100,DEV_GUS,1);
+#endif
       dev_gus.baseport=baseport;
      }
   return 0;
@@ -93,20 +136,32 @@ uint8_t dev_gus_install(uint16_t baseport)
 void dev_gus_remove()
 {
  if (dev_gus.active)   // Don't stop if not active
-  {  
+  {
    dev_gus.active=false;
    dev_gus_disable_mix();
    PM_INFO("Remove GUS (%X)\n",dev_gus.baseport);
-   
+#if BOARD_WM10
+   // WM10: ports were registered as the shared DEV_SBDSP marker (see
+   // dev_gus_install). Free only the GUS-exclusive 0x320 (3X0) window;
+   // leave the shared 0x220 low window -- if SB is being activated next,
+   // PM_sbdsp_OnOff re-marks it, otherwise PM_Audio_OnOff turns it off.
+   SetPortType(dev_gus.baseport+0x100,DEV_NULL,1);
+#else
    DelPortType(DEV_GUS);
+#endif
    GUS_Shutdown();  // Cleanup GUS emulation
   }
 }
 
-// Return true if CMS is installed
+// Return true if the GUS is installed
 bool dev_gus_installed()
 {
+#if BOARD_WM10
+  // WM10 routes the shared DEV_SBDSP block to GUS via the active flag.
+  return dev_gus.active;
+#else
   return (GetPortType(dev_gus.baseport)==DEV_GUS);
+#endif
 }
 
 // Started in the Main Command Wait Loop

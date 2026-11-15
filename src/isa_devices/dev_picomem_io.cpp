@@ -19,6 +19,7 @@ If not, see <https://www.gnu.org/licenses/>.
  */ 
 
 #include <stdio.h>
+#include <string.h>     // memcpy (PMIO trace ring drain)
 #include "pico/stdlib.h"
 #include "../pm_debug.h"
 #include "../pm_gvars.h"
@@ -31,6 +32,140 @@ If not, see <https://www.gnu.org/licenses/>.
 
 volatile uint8_t PM_TestRead=0;
 uint8_t PM_CMDState=0;  //Command State Machine State (0 : Unlocked; 1 : Intermediate : 2: locked;)
+
+// =====================================================================
+// PMIO trace ring buffer (deep diagnostic)
+// ---------------------------------------------------------------------
+// Single-producer (Core 1 bus handler via dev_pmio_ior/iow), single-
+// consumer (Core 0 main loop calls pmio_trace_drain()). Lock-free,
+// uses head/tail counters with `dmb sy` for cross-core ordering.
+//
+// Each entry captures EVERYTHING needed to reconstruct the host<->Pico
+// protocol state at the moment of the access:
+//
+//   t_us  : 32-bit wall-clock microseconds (low 32 bits of time_us_64)
+//           -- gives us cycle-level deltas between accesses, so we can
+//           see if PMBIOS is polling fast (~50 us spacing) or stalled
+//   type  : 0 = IOR, 1 = IOW
+//   port  : low 3 bits of CTRL_AL8  (0=STAT 1=DATAL 2=DATAH 3=TEST 4=TR_L)
+//   data  : the byte read from / written to the host bus
+//   stat  : PM_Status   at the moment of the access (what the host
+//           would see on a STAT read at the same instant)
+//   cmd   : PM_Command  (what CMD is currently dispatched)
+//   cs    : PM_CMDState (lock state machine — 0=unlocked, 1/2=locked)
+//   seq   : low 16 bits of a sequence counter -- detects ring overrun
+//           (consumer compares to its own running counter; mismatch =
+//           dropped entries between drains)
+//
+// 16 bytes per entry (timestamp + 4 bytes of state + 4 bytes pad/seq);
+// 256 entries = 4 KB. ~50 entries per CMD round-trip in normal traffic,
+// ~5 round-trips per buffer fill — Core 0 drains every loop iteration,
+// so overrun only happens during a hard bus-storm (which itself would
+// be diagnostic).
+//
+// Disable with -DPMIO_TRACE=0 if you ever need to remove the cost.
+// =====================================================================
+#ifndef PMIO_TRACE
+// Default disabled in production. Enable with -DPMIO_TRACE=1 (build
+// flag) for chassis-IOW timing diagnostics. The ring captures every
+// PM IO access (port + data + PM_Status + PM_Command at the instant)
+// with microsecond timestamps. Disabled by default because the
+// drain prints up to 32 formatted lines per main-loop iteration and
+// PICO_STDIO_DEADLOCK_TIMEOUT_MS=100 means each blocked printf can
+// stall Core 0 for 100 ms when the CDC TX FIFO is full -- which
+// happens FAST under chassis IO load (mouse IRQ ACKs, DOS background).
+// For short captures, enable temporarily AND drop the timeout to 0,
+// OR rate-limit the drain to a few entries per call.
+#define PMIO_TRACE 0
+#endif
+
+#if PMIO_TRACE
+#define PMIO_TRACE_SIZE  256
+#define PMIO_TRACE_MASK  (PMIO_TRACE_SIZE - 1)
+
+typedef struct __attribute__((packed)) {
+    uint32_t t_us;       /* time_us_32() at producer */
+    uint8_t  type;       /* 0=R 1=W */
+    uint8_t  port;       /* 0..7 */
+    uint8_t  data;
+    uint8_t  stat;
+    uint8_t  cmd;
+    uint8_t  cs;
+    uint16_t seq;
+} pmio_trace_t;
+
+static_assert(sizeof(pmio_trace_t) == 12, "pmio_trace_t size must be 12B");
+
+volatile pmio_trace_t pmio_trace_buf[PMIO_TRACE_SIZE];
+volatile uint32_t     pmio_trace_head = 0;   /* written by Core 1 only */
+volatile uint32_t     pmio_trace_tail = 0;   /* written by Core 0 only */
+volatile uint32_t     pmio_trace_drops = 0;  /* incremented when consumer falls behind */
+
+static inline void pmio_trace_push(uint8_t type, uint8_t port, uint8_t data) {
+    uint32_t h = pmio_trace_head;
+    /* Detect ring full -- if producer about to lap consumer, drop & count.
+       Cheaper than blocking; the consumer will see the drop count next drain. */
+    if ((h - pmio_trace_tail) >= PMIO_TRACE_SIZE) {
+        pmio_trace_drops++;
+        return;
+    }
+    /* Build the entry on the stack, then memcpy into the volatile ring.
+       Avoids C++'s ban on writing fields through a (volatile-stripped) pointer. */
+    pmio_trace_t e;
+    e.t_us = (uint32_t)time_us_64();
+    e.type = type;
+    e.port = port & 0x07;
+    e.data = data;
+    e.stat = PM_Status;
+    e.cmd  = PM_Command;
+    e.cs   = PM_CMDState;
+    e.seq  = (uint16_t)h;
+    memcpy((void *)&pmio_trace_buf[h & PMIO_TRACE_MASK], &e, sizeof(e));
+    __asm volatile ("dmb sy" ::: "memory");
+    pmio_trace_head = h + 1;
+}
+
+void pmio_trace_drain(void) {
+    /* Called from Core 0 main loop. Drains up to 32 entries per call so
+       we don't starve the rest of the loop. Prints relative timestamps
+       (delta from previous entry) for compact + readable output. */
+    static uint32_t last_t_us = 0;
+    static uint32_t last_drops = 0;
+
+    if (pmio_trace_drops != last_drops) {
+        printf("[PMIO !! %lu drops]\n",
+               (unsigned long)(pmio_trace_drops - last_drops));
+        last_drops = pmio_trace_drops;
+    }
+
+    int budget = 32;
+    while (budget-- > 0 && pmio_trace_tail != pmio_trace_head) {
+        pmio_trace_t e;
+        /* memcpy out of the volatile array — C++ disallows direct copy of
+           a volatile struct without an explicit volatile-qualified copy ctor. */
+        memcpy(&e,
+               (const void *)&pmio_trace_buf[pmio_trace_tail & PMIO_TRACE_MASK],
+               sizeof(e));
+        const char *name = (e.port == 0) ? "STAT"
+                         : (e.port == 1) ? "DATAL"
+                         : (e.port == 2) ? "DATAH"
+                         : (e.port == 3) ? "TEST"
+                         : (e.port == 4) ? "TR_L"
+                         : (e.port == 5) ? "TR_H"
+                         : "?";
+        uint32_t dt = e.t_us - last_t_us;
+        printf("[PMIO #%04X +%7luus %c %-5s = %02X | stat=%02X cmd=%02X cs=%u]\n",
+               e.seq, (unsigned long)dt,
+               e.type ? 'W' : 'R', name, e.data,
+               e.stat, e.cmd, (unsigned)e.cs);
+        last_t_us = e.t_us;
+        pmio_trace_tail++;
+    }
+}
+#else
+static inline void pmio_trace_push(uint8_t, uint8_t, uint8_t) {}
+void pmio_trace_drain(void) {}
+#endif
 
 volatile uint16_t PM_TR_CNT_L=0;
 volatile uint16_t PM_TR_CNT_H=0;
@@ -101,44 +236,55 @@ PM_INFO("Transfer End\n");
 
 bool dev_pmio_ior(uint32_t CTRL_AL8,uint8_t *Data )
 {
- switch(CTRL_AL8 & 0x07)  //CTRL_AL8 Remains as a Register even here
+ uint8_t port = CTRL_AL8 & 0x07;
+ bool handled = false;
+ switch(port)
   {
-    case PORT_PM_CMD_STATUS:   // PicoMEM : Read Status           
+    case PORT_PM_CMD_STATUS:   // PicoMEM : Read Status
                  *Data=PM_Status;
-                 return true;
-    case PORT_PM_CMD_DATAL:    // PicoMEM : Read the Command L Data /Return             
+                 handled = true; break;
+    case PORT_PM_CMD_DATAL:    // PicoMEM : Read the Command L Data /Return
                  *Data=PM_CmdDataL;
-                 return true;
-    case PORT_PM_CMD_DATAH:    // PicoMEM : Read the Command H Data /Return          
-                 *Data=PM_CmdDataH;         
-//                 printf("r%x",ISA_Data);
-                 return true;
-    case PORT_TEST:            // Test port, Return Test value +1            
-
-    *Data=PM_TestRead++; 
-                // printf("t");
-                 return true;
+                 handled = true; break;
+    case PORT_PM_CMD_DATAH:    // PicoMEM : Read the Command H Data /Return
+                 *Data=PM_CmdDataH;
+                 handled = true; break;
+    case PORT_TEST:            // Test port, Return Test value +1
+                 *Data=PM_TestRead++;
+                 handled = true; break;
     case PORT_TR_L:
-                 if ((PM_TR_CNT_L!=0)&&(PM_RE_ISREAD)) // counter of 
+                 if ((PM_TR_CNT_L!=0)&&(PM_RE_ISREAD)) // counter of
                    {  // Read from a table in memory, index PM_CmdDataH+PM_CmdDataL is auto increment
                     PM_TR_CNT_L--;
                     *Data=*PM_TR_PTR;
                     PM_TR_PTR++;
-                    //printf("CR %d, %X",PM_TR_CNT_L,*Data);
+                    pmio_trace_push(0 /*R*/, port, *Data);
                     return true;
                    }
                  break;
 
-   } 
-  *Data=0xFF;
-  return false;  // Nothing read
+   }
+  if (!handled) {
+     *Data=0xFF;
+     pmio_trace_push(0 /*R*/, port, *Data);
+     return false;
+  }
+  pmio_trace_push(0 /*R*/, port, *Data);
+  return true;
 }
 
 void dev_pmio_iow(uint32_t CTRL_AL8,uint8_t Data)
 {
-  //printf("W%x:%x ",CTRL_AL8 & 0x07, Data);
-  switch(CTRL_AL8 & 0x07)  //CTRL_AL8 Remains as a Register even here        
- //          switch(ISA_Addr & 0x07) 
+  uint8_t port = CTRL_AL8 & 0x07;
+  /* No PM_INFO here -- this runs on Core 1 inside the IOW CHRDY-asserted
+     window. printf is backed by USB CDC; when the ring fills (e.g. an
+     INT 13h dispatch from Wolf3D issues 3 IOWs back-to-back per call
+     while streaming sound assets), printf blocks here, dev_pmio_iow
+     doesn't return, RP_REL is never driven, CHRDY stays LOW, chassis
+     CPU freezes. pmio_trace_push below is a non-blocking ring writer
+     drained on Core 0 -- use that for tracing instead. */
+  pmio_trace_push(1 /*W*/, port, Data);
+  switch(port)
     {
       case PORT_PM_CMD_STATUS:  // PicoMEM : Write Command
 			       switch (PM_CMDState)

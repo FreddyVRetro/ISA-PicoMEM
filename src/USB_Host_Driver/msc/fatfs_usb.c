@@ -11,6 +11,7 @@
 #include "diskio.h"
 #include <math.h>
 #include "class/msc/msc_host.h"
+#include <stdio.h>   // WM10 diag: printf markers in the read path
 
 // We are an 8-bit computer, confirm fatfs is too
 static_assert(sizeof(TCHAR) == sizeof(char));
@@ -121,15 +122,25 @@ static bool disk_io_complete(uint8_t dev_addr, tuh_msc_complete_data_t const *cb
     /* Propagate SCSI command status — non-zero CSW status means the drive
      * reported an error (e.g. medium error, illegal request). */
     msc_volume_error = (cb_data->csw->status != 0);
- //   if (msc_volume_error)
- //       printf("disk_io: SCSI error status %u\n", cb_data->csw->status);    
-    msc_volume_busy = false; 
+    if (msc_volume_error)
+        printf("[csw=%u]", (unsigned)cb_data->csw->status);   // WM10 diag
+    msc_volume_busy = false;
     return true;
 }
 
 DSTATUS usb_disk_status()
 {
     return tuh_msc_mounted(msc_dev_addr) ? 0 : STA_NODISK;
+}
+
+// Exposed to the rest of the firmware via usb.h so the floppy/HDD
+// image lister can decide whether to show the [USB] virtual root.
+// Returns true only when the MSC class has enumerated AND the FatFs
+// "1:" volume has been mounted (mount sets msc_dev_addr != 0xFF in
+// inquiry_complete_cb above).
+bool usb_msc_volume_ready(void)
+{
+    return msc_dev_addr != 0xFF && tuh_msc_mounted(msc_dev_addr);
 }
 
 DSTATUS usb_disk_initialize()
@@ -141,13 +152,25 @@ DRESULT usb_disk_read(BYTE *buff, LBA_t sector, UINT count)
 {
     uint8_t const lun = 0;
   //  printf(">> usb_disk_read s%d c%d\n",sector,count);
-    msc_volume_busy = true;
-    msc_volume_error = false;
-    tuh_msc_read10(msc_dev_addr, lun, buff, sector, (uint16_t)count, disk_io_complete, 0);
-    wait_for_disk_io(0); //wait_for_disk_io(pdrv);
-
-//    return msc_volume_error ? RES_ERROR : RES_OK;
+    // === WM10 USB TEST (2026-06-22, revert after) ==========================
+    // Multi-sector reads (large bulk-IN = many 64-byte EPX continuations
+    // re-armed in the USBCTRL ISR) hang the rp2040 host ("ep 81 stuck
+    // available"); single-sector reads complete (mount works). Split the read
+    // into single-sector transfers to test whether the multi-buffer
+    // continuation is the bug.
+    uint32_t bs = tuh_msc_get_block_size(msc_dev_addr, lun);
+    if (bs == 0) bs = 512;
+    for (UINT i = 0; i < count; i++) {
+        msc_volume_busy  = true;
+        msc_volume_error = false;
+        tuh_msc_read10(msc_dev_addr, lun, buff + (uint32_t)i * bs,
+                       (uint32_t)sector + i, 1, disk_io_complete, 0);
+        wait_for_disk_io(0);
+        // [csw=N] (from disk_io_complete) => SCSI error;  "Rto" alone => timeout
+        if (msc_volume_error) { printf("Rto"); return RES_ERROR; }
+    }
     return RES_OK;
+    // =======================================================================
 }
 
 DRESULT usb_disk_write(const BYTE *buff, LBA_t sector, UINT count)

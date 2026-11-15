@@ -5,6 +5,7 @@
 #include "pm_defines.h"
 
 #include "dev_post.h"        // 1
+#include "dev_irq.h"
 #include "dev_picomem_io.h"
 #include "dev_dma.h"
 #include "dev_memory.h"      // 5 EMS
@@ -20,7 +21,6 @@
 #include "dev_mindscape.h"
 #include "dev_sbdsp.h"
 #include "dev_rtc.h"
-#include "dev_mmb.h"
 #include "dev_cdrom_mke.h"
 #include "dev_covox.h"
 #include "dev_mpu.h"
@@ -29,6 +29,7 @@
 
 // Devices 0 to 3 generate no IOCHRDY (Write only)
 /*
+// Devices 0 to 3 generate no IOCHRDY (Write only)
 #define DEV_NULL   0   // No devide use this port
 #define DEV_POST   1   // POST Code port
 #define DEV_IRQ    2   // ! NoWS IRQ Controller IOW > Out 20h counter and Port 21h register
@@ -42,7 +43,7 @@
 #define DEV_TANDY  10
 #define DEV_SBDSP  11
 #define DEV_RTC    12
-#define DEV_MMB    13
+#define DEV_MMB    13  // Mindscape
 #define DEV_CDR    14  // CD ROM
 #define DEV_CVX    15
 #define DEV_MPU    16
@@ -57,6 +58,7 @@ bool dev_null_ior(uint32_t Addr,uint8_t *Data)
 void dev_null_iow(uint32_t Addr,uint8_t Data)
 {}
 
+__scratch_x("ISAIORTable")
 bool (*dev_ior[DEV_TOTAL])(uint32_t Addr, uint8_t *Data) =
      {dev_null_ior , dev_null_ior, dev_null_ior  , dev_dma_ior,
       dev_pmio_ior , dev_ems_ior ,
@@ -70,8 +72,9 @@ bool (*dev_ior[DEV_TOTAL])(uint32_t Addr, uint8_t *Data) =
       dev_rtc_ior  , dev_mmb_ior ,dev_cdr_ior    , dev_cvx_ior, 
       dev_mpu_ior  , dev_gus_ior};
 
+__scratch_x("ISAIOTable")
 void (*dev_iow[DEV_TOTAL])(uint32_t Addr, uint8_t Data) = 
-     {dev_null_iow, dev_post_iow, dev_null_iow  , dev_dma_iow,
+     {dev_null_iow, dev_post_iow, dev_irq_iow  , dev_dma_iow,
       dev_pmio_iow, dev_ems_iow , 
 #if PM_WIFI
       dev_ne2000_iow,

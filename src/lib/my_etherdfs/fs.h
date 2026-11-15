@@ -2,6 +2,7 @@
  *
  */
 
+#define ERR_INVALID_FUNC   0x01
 #define ERR_FILE_NOTFOUND  0x02
 #define ERR_PATH_NOTFOUND  0x03
 #define ERR_NOHANDLE       0x04
@@ -9,7 +10,11 @@
 #define ERR_INVALID_HAND   0x06
 #define ERR_NOMORE_FILES   0x12
 #define ERR_INVALID_DRIVE  0x0B
+#define ERR_WRITE_PROTECT  0x13
 #define ERR_DRIVE_NOTREADY 0x15
+#define ERR_SHARE_VIOL     0x20
+#define ERR_DISK_FULL      0x27
+#define ERR_FILE_EXISTS    0x50
 
 #ifndef FS_H_SENTINEL
 #define FS_H_SENTINEL
@@ -87,6 +92,9 @@ Values for DOS extended error code:
 
 void init_fobj();
 
+/* maps a FatFs FRESULT into the matching DOS error code (0 if no error) */
+int fres2doserr(int fr);
+
 /* returns the "start sector" of a filesystem item (file or directory).
  * returns 0xffff on error */
 // unsigned short getitemss(char *f);
@@ -104,11 +112,15 @@ void filename2fcb(char *d, char *s);
  * DOS attr flags: 1=RO 2=HID 4=SYS 8=VOL 16=DIR 32=ARCH 64=DEVICE */
 unsigned char getitemattr(char *i, struct fileprops *fprops);
 
-/* set attributes fattr on file i. returns 0 on success, non-zero otherwise. */
+/* set attributes fattr on file i. returns 0 on success, or the negated DOS
+ * error code otherwise. */
 int setitemattr(char *i, unsigned char fattr);
 
 // Find file (true findfirst, false findnext)
-int fs_find(bool Dofindfirst, char *path, char *pattern, struct fileprops *f, unsigned char attrm);
+// srchid holds the per-search slot id: filled in by findfirst, and must be
+// given back unchanged on every findnext of the same search.
+// Returns 0 on success, or the negated DOS error code.
+int fs_find(bool Dofindfirst, char *path, char *pattern, struct fileprops *f, unsigned char attrm, uint16_t *srchid);
 
 /* searches for file matching template tmpl in directory dss (dss is the starting sector of the directory, as obtained via getitemss) with attribute attr, fills 'out' with the nth match. returns 0 on success, non-zero otherwise. */
 //int findfile(struct fileprops *f, unsigned short dss, char *tmpl, unsigned char attr, unsigned short *fpos, int flags);
@@ -120,10 +132,11 @@ int createfile(struct fileprops *f, char *d, char *fn, unsigned char attr);
  * amount of available bytes */
 unsigned long long diskinfo(char *path, unsigned long long *dfree);
 
-/* try to create directory, return 0 on success, non-zero otherwise */
+/* try to create directory, return 0 on success, or the negated DOS error */
 int makedir(char *d);
 
-/* try to remove directory, return 0 on success, non-zero otherwise */
+/* try to remove directory, return 0 on success, or the negated DOS error.
+ * Refuses anything that is not a directory. */
 int remdir(char *d);
 
 /* change to directory d, return 0 if worked, non-zero otherwise (used
@@ -144,13 +157,13 @@ int readfile(unsigned char *buff, unsigned char fid, uint32_t offset, uint16_t l
 long writefile(unsigned char *buff, unsigned short fid, unsigned long offset, unsigned short len);
 
 /* remove all files matching the pattern, returns the number of removed files if any found,
- * or -1 on error or if no matching file found */
+ * or the negated DOS error code (2 if nothing matched) */
 int delfiles(char *pattern);
 
-/* rename fn1 into fn2 */
+/* rename fn1 into fn2 (wildcards supported), 0 on success or negated DOS error */
 int renfile(char *fn1, char *fn2);
 
-/* returns the size of an open file (or -1 on error) */
+/* returns the size of an open file (or a negative DOS error code) */
 long getfopsize(unsigned short fid);
 
 /* Converts a path full of lowercase 8.3 names to the host name, provided it exists */

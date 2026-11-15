@@ -65,13 +65,16 @@ extern void pm_dmadiag();
 #define CMDERR_MEM_ERR    0x11  // Not enaugh memory
 #define CMDERR_AMIX_FAIL  0x12  // Audio mixer init fail
 #define CMDERR_NOIRQ	    0x13  // No IRQ detected/Available
+#define CMDERR_PM_IRQ     0x14  // Cant' use the same IRQ as PicoMEM IRQ
+#define CMDERR_WRONG_ARG  0x15  // Wrong argument for the command
+#define CMDERR_DEV_NA     0x16  // Device not available
 #define CMDERR_NOTSUPP    0xFF  // Command not supported
 
 // 0x 1x General / Configuration Commands
 #define CMD_Reset         0x00   // Put back the status to 0, after an error
 #define CMD_PMIRQ_ACK     0x01   // PicoMEM multiplexed interrupt acknowledge
-#define CMD_Reserved      0x02
-#define CMD_Reserved2     0x03
+#define CMD_DMACPY_ACK    0x02   // DMA Copy Acknowledge
+#define CMD_DEV_PreInit   0x03   // To intialize the devices at the first init phase (RTC)
 #define CMD_Reserved3     0x04   // Enable the decoding of a device, on an I/O range (Not used)
 #define CMD_GetMEMType    0x05   // Read the type of Memory mapped to a memory range
 #define CMD_SetMEMType    0x06   // Set the type of Memory mapped to a memory range
@@ -92,10 +95,11 @@ extern void pm_dmadiag();
 #define CMD_LockPort      0x37
 
 // 4x Debug/Test CMD
-#define CMD_SetMEM        0x42  // Set the First 64Kb of RAM to the SetRAMVal
-#define CMD_TestMEM       0x43  // Compare the First 64Kb of RAM
-#define CMD_PCINFO        0x44  // Get PC informations from PCCMD (And test PCCMD)
-#define CMD_BIOS_MENU	  0x45  // A BIOS Menu/submenu is selected
+#define CMD_SetMEM         0x42  // Set the First 64Kb of RAM to the SetRAMVal
+#define CMD_TestMEM        0x43  // Compare the First 64Kb of RAM
+#define CMD_PCINFO         0x44  // Get PC informations from PCCMD (And test PCCMD)
+#define CMD_BIOS_MENU      0x45  // Legacy BIOS Menu/submenu command
+#define CMD_BIOS_DRAW_MENU 0x46  // Draw the selected BIOS menu/submenu page
 
 // 5x USB devices commands
 #define CMD_USB_Enable    0x50	// To replace by OnOff with parameter
@@ -124,7 +128,7 @@ extern void pm_dmadiag();
 #define CMD_GUSOnOff      0x7A  // GUS Audio : 0 : Off 1: On default or port
 #define CMD_MMBOnOff      0x7B  // Mindscape Audio : 0 : Off 1: On default or port
 #define CMD_DSSOnOff      0x7C  // Disney Audio
-#define CMD_MPUOnOff      0x7D  // MPU/General MIDI : 0 : Off 1: On default or port 
+#define CMD_MPU_CMD      0x7D  // MPU/General MIDI : 0 : Off 1: On default or port 
 
 // 8x Disk Commands
 #define CMD_HDD_Getlist   0x80  // Write the list of hdd images into the Disk memory buffer

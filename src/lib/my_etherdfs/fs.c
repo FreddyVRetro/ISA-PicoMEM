@@ -1,4 +1,4 @@
-/*
+﻿/*
  * This file is part of the ethersrv-linux project
  * Copyright (C) 2017 Mateusz Viste
  */
@@ -39,9 +39,26 @@ bool PM_EnableSD();
 
 bool pm_fileopened[MAXFILES];
 FIL pm_files[MAXFILES]; // 16 Files maximum  > To change to pointer ?
-uint32_t pm_filesize[MAXFILES]; // File size
 
-DIR dir_find;       /* Find directory object */
+/* Per-search state: DOS can have several searches running at the same time
+ * (DELTREE, nested DIR loops...). Each FindFirst grabs a slot, and the slot
+ * id travels back and forth in the DOS search block so FindNext can resume
+ * exactly where its own search left off. Slots are recycled LRU.
+ * 4 slots is enough for the deepest nesting DOS does in practice (DELTREE
+ * walks a directory while recursing into its subdirectories). */
+#define MAXSEARCH 4
+
+struct srchstate {
+  DIR dir;                 /* FatFs directory object of this search */
+  char pattern[11];        /* FCB-style search mask */
+  unsigned char fattr;     /* requested attributes */
+  unsigned char dotstate;  /* 0: emit ".", 1: emit "..", 2: read real entries */
+  bool inuse;
+  uint32_t lru;
+};
+
+static struct srchstate pm_search[MAXSEARCH];
+static uint32_t pm_srch_clock = 0;
 
 #include "fs.h" /* include self for control */
 
@@ -52,6 +69,8 @@ DIR dir_find;       /* Find directory object */
 void init_fobj()
 {
    for (uint8_t i=0;i<MAXFILES;i++) pm_fileopened[i]=false;
+   for (uint8_t i=0;i<MAXSEARCH;i++) pm_search[i].inuse=false;
+   pm_srch_clock=0;
 }
 
 void free_fobj(uint8_t fid)
@@ -90,6 +109,51 @@ FIL *new_fobj(uint8_t *fid)
  return NULL;
 }
 #endif
+
+/* maps a FatFs FRESULT into the matching DOS error code (0 if no error) */
+int fres2doserr(int fr) {
+  switch (fr) {
+    case FR_OK:                  return(0);
+    case FR_NO_FILE:             return(ERR_FILE_NOTFOUND);
+    case FR_NO_PATH:             return(ERR_PATH_NOTFOUND);
+    case FR_INVALID_NAME:        return(ERR_PATH_NOTFOUND);
+    case FR_DENIED:              return(ERR_ACC_DENIED);
+    case FR_EXIST:               return(ERR_ACC_DENIED);
+    case FR_WRITE_PROTECTED:     return(ERR_WRITE_PROTECT);
+    case FR_INVALID_DRIVE:       return(ERR_INVALID_DRIVE);
+    case FR_LOCKED:              return(ERR_SHARE_VIOL);
+    case FR_TOO_MANY_OPEN_FILES: return(ERR_NOHANDLE);
+    case FR_NOT_READY:
+    case FR_NOT_ENABLED:
+    case FR_NO_FILESYSTEM:
+    case FR_TIMEOUT:
+    case FR_DISK_ERR:            return(ERR_DRIVE_NOTREADY);
+    default:                     return(ERR_ACC_DENIED);
+  }
+}
+
+/* true if path points at the root directory of a volume ("0:/", "1:") */
+static bool path_is_volroot(const char *p) {
+  const char *colon = strrchr(p, ':');
+  if (colon != NULL) p = colon + 1;
+  while ((*p == '/') || (*p == '\\')) p++;
+  return(*p == 0);
+}
+
+/* grab a search slot, reusing the least recently used one if all are busy.
+ * returns the slot index. */
+static int srch_alloc(void) {
+  int best = 0;
+  uint32_t bestlru = 0xFFFFFFFFul;
+  int i;
+  for (i = 0; i < MAXSEARCH; i++) {
+    if (!pm_search[i].inuse) { best = i; break; }
+    if (pm_search[i].lru < bestlru) { bestlru = pm_search[i].lru; best = i; }
+  }
+  pm_search[best].inuse = true;
+  pm_search[best].lru = ++pm_srch_clock;
+  return(best);
+}
 
 /* turns a character c into its upper-case variant */
 char upchar(char c) {
@@ -144,35 +208,6 @@ void filename2fcb(char *d, char *s) {
   }
 }
 
-/* converts a time_t into a DWORD with DOS (FAT-style) timestamp bits
-               24                16                 8                 0
-+-+-+-+-+-+-+-+-+ +-+-+-+-+-+-+-+-+ +-+-+-+-+-+-+-+-+ +-+-+-+-+-+-+-+-+
-|Y|Y|Y|Y|Y|Y|Y|M| |M|M|M|D|D|D|D|D| |h|h|h|h|h|m|m|m| |m|m|m|s|s|s|s|s|
-+-+-+-+-+-+-+-+-+ +-+-+-+-+-+-+-+-+ +-+-+-+-+-+-+-+-+ +-+-+-+-+-+-+-+-+
- \___________/\________/\_________/ \________/\____________/\_________/
-    year        month       day        hour       minute      seconds */
-static unsigned long time2dos(time_t t) {
-  unsigned long res;
-#ifdef BOARD_PICOMEM
- res= (((2025-1980)&0x3F)<<25)+(1<<21)+(20<<11); // Test : Return 1st January 2025
- //res=pico_rtc_getDOSDate();
-#else  
-  struct tm *ltime;
-  ltime = localtime(&t);
-  res = ltime->tm_year - 80; /* tm_year is years from 1900, while FAT needs years from 1980 */
-  res <<= 4;
-  res |= ltime->tm_mon + 1; /* tm_mon is in range 0..11 while FAT expects 1..12 */
-  res <<= 5;
-  res |= ltime->tm_mday;
-  res <<= 5;
-  res |= ltime->tm_hour;
-  res <<= 6;
-  res |= ltime->tm_min;
-  res <<= 5;
-  res |= (ltime->tm_sec >> 1); /* DOS stores seconds divided by two */
-#endif
-  return(res);
-}
 
 /* match FCB-style filename to a FCB-style mask ("FILE0001???"), returns 0 if
  * matching, non-zero otherwise - a FCB block is *exactly* 11 bytes long */
@@ -224,73 +259,103 @@ unsigned char getitemattr(char *i, struct fileprops *fprops) {
  return (fno.fattrib);
 }
 
-/* set attributes fattr on file i. returns 0 on success, non-zero otherwise. */
+/* set attributes fattr on file i. returns 0 on success, or the negated DOS
+ * error code otherwise. */
 int setitemattr(char *i, unsigned char fattr) {
   FRESULT f_res;
   PM_EnableSD();  
   f_res = f_chmod(i,fattr,AM_RDO | AM_SYS | AM_HID | AM_ARC);
   PM_PICO_EnablePSRAM();
-  printf("SET %u to %s!!\n",fattr,i);  
-  if(f_res != F_OK) return(-1);
+  PM_INFO("SET %u to %s\n",fattr,i);
+  if(f_res != FR_OK) return(-fres2doserr(f_res));
   return 0;  
 }
 
-int fs_find(bool Dofindfirst, char *path, char *pattern, struct fileprops *f, unsigned char fattr)
+int fs_find(bool Dofindfirst, char *path, char *pattern, struct fileprops *f, unsigned char fattr, uint16_t *srchid)
 {
 
   FRESULT fr;   /* Return value */
-//  DIR dj;    /* Directory object is sd_dir_find */
   FILINFO fno;  /* File information */
+  struct srchstate *s;
   bool ffound=false;
 
   memset(&fno, 0, sizeof fno);
 
-  PM_EnableSD();
-  if (Dofindfirst)  // findfirst will create the directory object and search from first file
+  if (Dofindfirst)  // findfirst grabs a slot and opens the directory
     {
-      PM_INFO("Find First -%s%-11s Attr %x\n",path,pattern,fattr);
-      memset(&dir_find, 0, sizeof dir_find);       // Clean the directory object for Find First
-      //fr = f_findfirst(&dir_find, &fno, path, pattern);
-      fr = f_opendir(&dir_find,path);
+      int slot = srch_alloc();
+      s = &pm_search[slot];
+      PM_INFO("Find First -%s%-11s Attr %x (slot %d)\n",path,pattern,fattr,slot);
+      PM_EnableSD();
+      memset(&s->dir, 0, sizeof s->dir);       // Clean the directory object for Find First
+      fr = f_opendir(&s->dir,path);
+      PM_PICO_EnablePSRAM();
       if (FR_OK != fr) {
-        PM_INFO("f_findfirst error: %s (%d)\n", FRESULT_str(fr), fr);
-          return (-1);  // > Return directly if error
-         }      
+        PM_INFO("f_opendir error: %s (%d)\n", FRESULT_str(fr), fr);
+        s->inuse = false;
+        // a missing search directory is a "path not found", not a disk error
+        if ((fr == FR_NO_FILE) || (fr == FR_NO_PATH) || (fr == FR_INVALID_NAME)) return(-ERR_PATH_NOTFOUND);
+        return(-fres2doserr(fr));
+         }
+      memcpy(s->pattern, pattern, 11);
+      s->fattr = fattr;
+      // "." and ".." are not reported by f_readdir, but DOS expects them in
+      // every subdirectory (DELTREE walks them)
+      s->dotstate = path_is_volroot(path) ? 2 : 0;
+      *srchid = slot + 1;                      // 0 is kept as "no search"
     } else
-    {               // findnext reuse the directory object
-      PM_INFO("Find Next -%s%-11s Attr %x\n",path,pattern,fattr);
+    {               // findnext resumes the search owned by srchid
+      if ((*srchid == 0) || (*srchid > MAXSEARCH)) return(-ERR_NOMORE_FILES);
+      s = &pm_search[*srchid - 1];
+      if (!s->inuse) return(-ERR_NOMORE_FILES);
+      s->lru = ++pm_srch_clock;
+      if (pattern != NULL) memcpy(s->pattern, pattern, 11);
+      s->fattr = fattr;
+      PM_INFO("Find Next -%-11s Attr %x (slot %d)\n",s->pattern,fattr,*srchid - 1);
     }
-  PM_PICO_EnablePSRAM();
+  pattern = s->pattern;
+
+  // Volume name requested ? FatFs never reports the label through f_readdir,
+  // so answer with the PicoMEM label straight away.
+  if (fattr == FAT_VOL)
+     {
+      filename2fcb(f->fcbname,"PICOMEM");
+      f->fattr=FAT_VOL;
+      f->fsize=0;
+      f->ftime=1;
+      return 0;
+     }
+
+  // hand out "." then ".." before the real entries, when in a subdirectory
+  while (s->dotstate < 2) {
+    char dotname[3];
+    unsigned char st = s->dotstate;
+    s->dotstate++;
+    if ((fattr & FAT_DIR) == 0) continue;   // caller does not want directories
+    dotname[0] = '.';
+    dotname[1] = (st == 1) ? '.' : 0;
+    dotname[2] = 0;
+    filename2fcb(f->fcbname, dotname);
+    if (matchfile2mask(pattern, f->fcbname) != 0) continue;
+    f->fsize = 0;
+    f->fattr = FAT_DIR;
+    f->ftime = 1;
+    PM_INFO(" > Return: %-11s (dot entry)\n", f->fcbname);
+    return 0;
+  }
 
  do {
   PM_EnableSD();
-  fr = f_readdir(&dir_find, &fno);
+  fr = f_readdir(&s->dir, &fno);
   PM_PICO_EnablePSRAM();
   if (FR_OK != fr) {
     PM_INFO("f_find error: %s (%d)\n", FRESULT_str(fr), fr);
-      return (-1);  // > Return directly if error
+      return(-fres2doserr(fr));
      }
 
-	DWORD	dptr;			/* Current read/write offset */
-  PM_INFO("File: %s,%s,  size %d attr %x DirPtr:%d\n",fno.fname,fno.altname,(uint32_t) fno.fsize, fno.fattrib ,dir_find.dptr);
+  PM_INFO("File: %s,%s,  size %d attr %x DirPtr:%d\n",fno.fname,fno.altname,(uint32_t) fno.fsize, fno.fattrib ,s->dir.dptr);
 
-  // if the file searched is Volume name and first found file is not, quit
-  if (fattr == FAT_VOL) // Volume name requested ?
-      {
-      if (fno.fattrib & FAT_VOL)
-        {
-         if (strlen(fno.altname)==0) filename2fcb(f->fcbname,fno.fname);
-            else filename2fcb(f->fcbname,fno.altname);          
-        }
-       else
-        { // If no volume name, return "PICOMEM"
-         filename2fcb(f->fcbname,"PICOMEM");
-        }
-      f->fattr=0x08;
-      return 0; // > Return directly if Volume Name search
-     }
-
-  if (fno.fname[0]==0) return(-1) ;  // > Return directly if no more file
+  if (fno.fname[0]==0) return(-ERR_NOMORE_FILES) ;  // > Return directly if no more file
 
 // Does not return Folder, System, Hidden ,except if the bit is set for them
   if ((fattr | (fno.fattrib & 0x16)) == fattr) 
@@ -366,29 +431,45 @@ unsigned long long diskinfo(char *path, unsigned long long *dfree) {
    return((unsigned long long) (fs->n_fatent - 2) * fs->csize * 512);  
 }
 
-/* try to create directory, return 0 on success, non-zero otherwise */
+/* try to create directory, return 0 on success, or the negated DOS error */
 int makedir(char *d) {
   FRESULT fr;
   PM_EnableSD();
-  f_mkdir(d);
+  fr = f_mkdir(d);
   PM_PICO_EnablePSRAM();
     if (FR_OK != fr) {
         PM_INFO("f_mkdir error: %s (%d)\n", FRESULT_str(fr), fr);
-        return (-1);
+        // FR_EXIST -> 5 (access denied), FR_NO_PATH -> 3 (path not found)
+        return (-fres2doserr(fr));
     }
   return(0);
 }
 
-/* try to remove directory, return 0 on success, non-zero otherwise */
+/* try to remove directory, return 0 on success, or the negated DOS error.
+ * Refuses to touch anything that is not a directory. */
 int remdir(char *d) {
   FRESULT fr;
-  //TODO: Make sure this is a directory and not a file
+  FILINFO fno;
+
+  PM_EnableSD();
+  fr = f_stat(d, &fno);
+  PM_PICO_EnablePSRAM();
+  if (FR_OK != fr) {
+    PM_INFO("f_stat error on '%s': %s (%d)\n", d, FRESULT_str(fr), fr);
+    return (-ERR_PATH_NOTFOUND);   // a missing directory is a "path not found"
+  }
+  if ((fno.fattrib & AM_DIR) == 0) {
+    PM_INFO("RMDIR refused: '%s' is a file\n", d);
+    return (-ERR_ACC_DENIED);
+  }
+
   PM_EnableSD();  
   fr = f_unlink(d);
   PM_PICO_EnablePSRAM();
   if (FR_OK != fr) {
     PM_INFO("f_unlink error: %s (%d)\n", FRESULT_str(fr), fr);
-    return (-1);
+    // FR_DENIED means the directory is not empty -> access denied
+    return (-fres2doserr(fr));
 }
   return 0;  
 }
@@ -536,15 +617,12 @@ int openfile(struct fileprops *f, char *filepath, unsigned char f_mode) {
   if (fr!=FR_OK) free_fobj(fileid);      // Free the file object if can't be opened
 
   // if error, return the DOS error code as negative value
-	switch(fr)
-  {
-    case FR_OK: break;
-    case FR_DISK_ERR : return(-ERR_DRIVE_NOTREADY);
-    case FR_NO_FILE: return(-ERR_FILE_NOTFOUND);
-    case FR_NO_PATH: return(-ERR_PATH_NOTFOUND);
-    case FR_DENIED : return(-ERR_ACC_DENIED);
-    default: return (-ERR_ACC_DENIED);
-  } 
+  if (fr != FR_OK) {
+    PM_INFO("f_open error: %s (%d)\n", FRESULT_str(fr), fr);
+    // "create new" on an existing file must report "file already exists"
+    if ((fr == FR_EXIST) && (f_mode & FA_CREATE_NEW)) return(-ERR_FILE_EXISTS);
+    return(-fres2doserr(fr));
+  }
 
   PM_EnableSD();
   fr = f_stat(filepath, &fno);  //  Get the opened file info
@@ -558,7 +636,6 @@ int openfile(struct fileprops *f, char *filepath, unsigned char f_mode) {
      }
       else filename2fcb(f->fcbname,fno.altname);
 
-  pm_filesize[fileid]=fno.fsize;  // Save the file size for getfopsize
   f->fsize=(uint32_t) fno.fsize;
   f->fattr=fno.fattrib;
   f->ftime=fno.ftime + (fno.fdate << 16);
@@ -608,20 +685,12 @@ int readfile(unsigned char *buff, uint8_t fid, uint32_t offset, uint16_t len) {
 
   PM_EnableSD();
   fr = f_lseek(fd,offset);
-  if (fr==FR_OK) fr = f_read(fd, buff, len, &bread);
+  if (fr==FR_OK) fr = f_read(fd, buff, len, (UINT *)&bread);
   PM_PICO_EnablePSRAM();
  // PM_INFO(" f_read fr %d, bread%d\n",fr,bread);
 
 // Return the DOS error code as negative value
-switch(fr)
-  {
-    case FR_OK: break;
-    case FR_DISK_ERR : return(-ERR_DRIVE_NOTREADY);
-    case FR_NO_FILE: return(-ERR_FILE_NOTFOUND);
-    case FR_NO_PATH: return(-ERR_PATH_NOTFOUND);
-    case FR_DENIED : return(-ERR_ACC_DENIED);
-    default: return (-ERR_ACC_DENIED);
-  }
+if (fr != FR_OK) return(-fres2doserr(fr));
   PM_INFO("Data: ");
   for (int i=0;i<16;i++)
       PM_INFO("%x,",buff[i]);
@@ -644,21 +713,22 @@ long writefile(unsigned char *buff, unsigned short fid, unsigned long offset, un
 
   PM_EnableSD();
   fr = f_lseek(fd,offset);
-  if (fr==FR_OK) fr = f_write(fd, buff, len, &bwritten);
+  if (fr==FR_OK) {
+    if (len == 0) {
+      // DOS: a 0-byte write truncates (or extends) the file at the current
+      // position. f_lseek already grew the file if offset was past EOF.
+      bwritten = 0;
+      fr = f_truncate(fd);
+    } else {
+      fr = f_write(fd, buff, len, (UINT *)&bwritten);
+    }
+  }
   PM_PICO_EnablePSRAM();
  
-  PM_INFO(" f_write fr %d, bread%d\n",fr,bwritten);
+  PM_INFO(" f_write fr %d, bwritten %d\n",fr,bwritten);
 
 // Return the DOS error code as negative value
-switch(fr)
-  {
-    case FR_OK: break;
-    case FR_DISK_ERR : return(-ERR_DRIVE_NOTREADY);
-    case FR_NO_FILE: return(-ERR_FILE_NOTFOUND);
-    case FR_NO_PATH: return(-ERR_PATH_NOTFOUND);
-    case FR_DENIED : return(-ERR_ACC_DENIED);
-    default: return (-ERR_ACC_DENIED);
-  }
+if (fr != FR_OK) return(-fres2doserr(fr));
 
   return(bwritten);
   
@@ -689,19 +759,25 @@ int delfiles(char *pattern) {
   patterncopy[i] = 0;
   /* if regular file, delete it right away*/
   if (ispattern == 0) {
-    
+    /* DOS DELETE must never remove a directory, and must refuse read-only
+     * files - FatFs' f_unlink happily does both */
+    PM_EnableSD();
+    f_res = f_stat(pattern, &fno);
+    PM_PICO_EnablePSRAM();
+    if (f_res != FR_OK) return(-ERR_FILE_NOTFOUND);
+    if (fno.fattrib & AM_DIR) {
+      PM_INFO("DELETE refused: '%s' is a directory\n", pattern);
+      return(-ERR_ACC_DENIED);
+    }
+    if (fno.fattrib & AM_RDO) {
+      PM_INFO("DELETE refused: '%s' is read-only\n", pattern);
+      return(-ERR_ACC_DENIED);
+    }
+
     PM_EnableSD();
     f_res = f_unlink(pattern);
     PM_PICO_EnablePSRAM();
-    switch(f_res)
-      {
-       case FR_OK: break;
-       case FR_DISK_ERR : return(-ERR_DRIVE_NOTREADY);
-       case FR_NO_FILE: return(-ERR_FILE_NOTFOUND);
-       case FR_NO_PATH: return(-ERR_PATH_NOTFOUND);
-       case FR_DENIED : return(-ERR_ACC_DENIED);
-       default: return (-ERR_ACC_DENIED);
-      } 
+    if (f_res != FR_OK) return(-fres2doserr(f_res));
     return(1);
   }
 
@@ -715,10 +791,9 @@ int delfiles(char *pattern) {
 
   PM_EnableSD();
   f_res = f_opendir(&dp,dir);    
-  if(f_res != F_OK) {
-    f_closedir(&dp);
+  if(f_res != FR_OK) {
     PM_PICO_EnablePSRAM();
-    return (-1);  
+    return (-fres2doserr(f_res));
   }
   PM_PICO_EnablePSRAM();
 
@@ -727,55 +802,138 @@ int delfiles(char *pattern) {
     f_res = f_readdir(&dp,&fno);    
     PM_PICO_EnablePSRAM();
     if(f_res != FR_OK || fno.fname[0] == 0) break;            
-    /* skip directories */
-    if(fno.fattrib & FAT_DIR) continue;  
+    /* skip directories and read-only files - DEL touches neither */
+    if(fno.fattrib & FAT_DIR) continue;
+    if(fno.fattrib & AM_RDO) continue;
       if (fno.altname[0]==0)  //If no alternate name, use name
       { filename2fcb(dirnamefcb,fno.fname); }
        else filename2fcb(dirnamefcb,fno.altname);      
-    printf("[%s]\n",fno.fname);
     /* if match, delete the file and continue */
     if (matchfile2mask(filfcb, dirnamefcb) == 0) {
       sprintf(fname, "%s/%s", dir, fno.fname);
-      printf("unlink %s\n",fname);
+      PM_INFO("unlink %s\n",fname);
       PM_EnableSD();      
       f_res = f_unlink(fname);      
       PM_PICO_EnablePSRAM();
-      if (f_res != F_OK) fprintf(stderr, "failed to delete '%s'\n", fname);
+      if (f_res != FR_OK) PM_ERROR("failed to delete '%s'\n", fname);
          else dcount++;
     }
   }
   PM_EnableSD();  
   f_closedir(&dp);
   PM_PICO_EnablePSRAM();
- 
+
+  /* a wildcard that matched nothing is "file not found", not a success */
+  if (dcount == 0) return(-ERR_FILE_NOTFOUND);
   return(dcount);
 }
 
-/* rename fn1 into fn2 */
-int renfile(char *fn1, char *fn2) {
-  FRESULT fr;
-  PM_EnableSD();
-  fr = f_rename(fn1, fn2);
-  PM_PICO_EnablePSRAM();
-
-  switch(fr)
-      {
-       case FR_OK: break;
-       case FR_DISK_ERR : return(-ERR_DRIVE_NOTREADY);
-       case FR_NO_FILE: return(-ERR_FILE_NOTFOUND);
-       case FR_NO_PATH: return(-ERR_PATH_NOTFOUND);
-       case FR_DENIED : return(-ERR_ACC_DENIED);
-       default: return (-ERR_ACC_DENIED);
-      } 
-
-  return(rename(fn1, fn2));
+/* expand a FCB-style name back into a "NAME.EXT" string */
+static void fcb2filename(char *dst, const char *fcb) {
+  int i, n = 0;
+  for (i = 0; i < 8; i++) {
+    if (fcb[i] == ' ') break;
+    dst[n++] = fcb[i];
+  }
+  if (fcb[8] != ' ') {
+    dst[n++] = '.';
+    for (i = 8; i < 11; i++) {
+      if (fcb[i] == ' ') break;
+      dst[n++] = fcb[i];
+    }
+  }
+  dst[n] = 0;
 }
 
-/* returns the size of an open file (or -1 on error) */
+/* splits a full path into its directory part and its file part */
+static void explode_dirfile(char *dir, char *file, const char *full) {
+  const char *slash = strrchr(full, '/');
+  size_t dlen;
+  if (slash == NULL) {       /* no directory part at all */
+    dir[0] = 0;
+    strcpy(file, full);
+    return;
+  }
+  dlen = (size_t)(slash - full);
+  memcpy(dir, full, dlen);
+  dir[dlen] = 0;
+  strcpy(file, slash + 1);
+}
+
+/* rename fn1 into fn2, both being full paths. Wildcards ('?', DOS already
+ * expanded '*') are supported in the source and destination names.
+ * returns 0 on success, or the negated DOS error code. */
+int renfile(char *fn1, char *fn2) {
+  FRESULT fr;
+  char srcdir[DIR_MAX], dstdir[DIR_MAX];
+  char srcmask[DIR_MAX], dstmask[DIR_MAX];
+  char srcfcb[12], dstfcb[12], curfcb[12], newfcb[12];
+  char srcpath[DIR_MAX], dstpath[DIR_MAX], newname[16];
+  DIR dp;
+  FILINFO fno;
+  int i, rcount = 0;
+
+  /* plain rename if neither side holds a wildcard */
+  if ((strchr(fn1, '?') == NULL) && (strchr(fn2, '?') == NULL)) {
+    PM_EnableSD();
+    fr = f_rename(fn1, fn2);
+    PM_PICO_EnablePSRAM();
+    if (fr != FR_OK) {
+      PM_INFO("f_rename error: %s (%d)\n", FRESULT_str(fr), fr);
+      return(-fres2doserr(fr));
+    }
+    return(0);
+  }
+
+  /* wildcard rename: expand it here, on the card */
+  explode_dirfile(srcdir, srcmask, fn1);
+  explode_dirfile(dstdir, dstmask, fn2);
+  filename2fcb(srcfcb, srcmask);
+  filename2fcb(dstfcb, dstmask);
+
+  PM_EnableSD();
+  fr = f_opendir(&dp, srcdir);
+  PM_PICO_EnablePSRAM();
+  if (fr != FR_OK) return(-fres2doserr(fr));
+
+  for (;;) {
+    PM_EnableSD();
+    fr = f_readdir(&dp, &fno);
+    PM_PICO_EnablePSRAM();
+    if ((fr != FR_OK) || (fno.fname[0] == 0)) break;
+    if (fno.fattrib & FAT_DIR) continue;
+
+    if (fno.altname[0] == 0) filename2fcb(curfcb, fno.fname);
+      else filename2fcb(curfcb, fno.altname);
+    if (matchfile2mask(srcfcb, curfcb) != 0) continue;
+
+    /* build the new name: a '?' in the target mask keeps the source char */
+    for (i = 0; i < 11; i++) newfcb[i] = (dstfcb[i] == '?') ? curfcb[i] : dstfcb[i];
+    newfcb[11] = 0;
+    fcb2filename(newname, newfcb);
+
+    sprintf(srcpath, "%s/%s", srcdir, fno.fname);
+    sprintf(dstpath, "%s/%s", dstdir, newname);
+    PM_INFO("rename '%s' -> '%s'\n", srcpath, dstpath);
+    PM_EnableSD();
+    fr = f_rename(srcpath, dstpath);
+    PM_PICO_EnablePSRAM();
+    if (fr != FR_OK) PM_ERROR("failed to rename '%s'\n", srcpath);
+      else rcount++;
+  }
+  PM_EnableSD();
+  f_closedir(&dp);
+  PM_PICO_EnablePSRAM();
+
+  if (rcount == 0) return(-ERR_FILE_NOTFOUND);
+  return(0);
+}
+
+/* returns the size of an open file (or a negative DOS error code) */
 long getfopsize(unsigned short fid) {
   FIL *fd;
-  FRESULT fr;
-  FILINFO fno;
-  if (pm_fileopened[fid]==false) return(-ERR_INVALID_HAND);
-  return(pm_filesize[fid]);
+  if (fid >= MAXFILES) return(-ERR_INVALID_HAND);
+  fd = get_fobj(fid);
+  if (fd == NULL) return(-ERR_INVALID_HAND);
+  return((long) f_size(fd));   // live size, not the one cached at open time
 }

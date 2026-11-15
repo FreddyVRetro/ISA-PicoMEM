@@ -23,25 +23,48 @@ extern "C" {
 
 #include <stdint.h>
 #include <stdbool.h>
-//#include "../common/picogus.h"
+// #include "../common/picogus.h"  // File not found - not needed
 //#include "system/flash_settings.h"
 #include "clamp.h"
 
-extern int32_t opl_volume;
-extern int32_t sb_volume;
-extern int32_t cd_audio_volume;
-extern int32_t gus_volume;
-extern int32_t psg_volume;
+#define CMD_MAINVOL    0x70 // Main Volume
+#define CMD_OPLVOL     0x71 // Adlib volume
+#define CMD_SBVOL      0x72 // Sound Blaster volume
+#define CMD_CDVOL      0x73 // CD Audio Volume
+#define CMD_GUSVOL     0x74 // GUS Volume
+#define CMD_PSGVOL     0x75 // PSG Volume
 
+struct volctrl_t {
+    // 0 - left, 1 - right
+    int32_t opl[2];             // OPL3   (aka MIDI)
+    int32_t sb_pcm[2];          // SB PCM (aka Voice)
+    int32_t cd_audio[2];        // CD audio
+    int32_t sb_master[2];       // SB Master volume
+
+    int32_t gus;
+    int32_t psg;
+};
+extern struct volctrl_t volume;
+
+#define VOLCTRL_FRACT_BITS 12       // leave enough headroom for mixing
 
 extern int32_t set_volume_scale (uint8_t percent);
-
+// optional callback invoked when a volume changes, so dependents can update
+// precomputed values (e.g. GUS prescaled channel volumes)
+typedef void (*volctrl_callback_t)(void);
+extern volctrl_callback_t volctrl_gus_callback;
 static inline int32_t scale_sample (int32_t sample, const int32_t scale, const bool clamp) {
-    sample = (sample * scale) >> 16;
-
+#ifdef INTERP_VOLCTRL
+    if (clamp) {
+        // interp1 does >>VOLCTRL_FRACT_BITS and clamp to int16_t in one shot.
+        return clamp16_interp(sample * scale);
+    }
+#endif
+    sample = (sample * scale) >> VOLCTRL_FRACT_BITS;
+#ifndef INTERP_VOLCTRL
     if (clamp)
         sample = clamp16(sample);
-
+#endif
     return sample;
 }
 

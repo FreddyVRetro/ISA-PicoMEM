@@ -64,18 +64,31 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define PCC_SetRAMBlock16 25   // Write the same value to a memory Block
 #define PCC_MEMWR8        26   // Write then read a byte
 #define PCC_MEMWR16       27   // Write then read a word
+#define PCC_SetTextAttr   28   // Change the BIOS text attribute used for the next print string
+#define PCC_NoCMD         29   // No Command, just return the result
+#define PCC_SaveRectangle 30   // Save a BIOS rectangle to the shared temp buffer
+#define PCC_PrintRectangle 31  // Draw a BIOS rectangle border
+#define PCC_RestoreRectangle 32 // Restore a previously saved BIOS rectangle
 
-extern void Send_PC_CMD(uint8_t CommandNB);  // Send a Command, don't touch parameters and wait for its start
+extern bool Send_PC_CMD(uint8_t CommandNB);  // Send a Command, don't touch parameters and wait for its start
 extern bool PC_Wait_CMD_End_Timeout(uint32_t delay);
 extern bool PC_Wait_End_Timeout(uint32_t delay);
 extern bool PC_Wait_CMD_End();
-extern void PC_End();
+extern bool PC_End();
 
-extern void PC_printstr(char *StrToSend);							// The PC will Display the string using the BIOS
+extern void PC_printstr(char *StrToSend);                              // The PC will Display the string using the BIOS
 extern void PC_printf(const char *format, ...);
+extern void PC_SetTextAttr(uint8_t attr);                              // Change BIOS string color/attribute used by PC_printf
+extern void PC_SaveRectangle(uint8_t X, uint8_t Y, uint8_t DX, uint8_t DY);
+extern void PC_PrintRectangle(uint8_t X, uint8_t Y, uint8_t DX, uint8_t DY);
+extern void PC_RestoreRectangle(uint8_t X, uint8_t Y, uint8_t DX, uint8_t DY);
 extern void PC_Getpos(uint8_t *X, uint8_t *Y);
 extern void PC_Setpos(uint8_t X, uint8_t Y);
-extern void PC_Int13();
+extern void PC_Int13();                                                // Send registers, run INT 13h on the PC, get registers back
+extern void PC_Int21();                                                // Send registers, run INT 21h on the PC, get registers back
+
+extern bool PC_KeyPressed();                                           // INT 16h AH=01h (peek only, PC side doesn't return the code)
+extern uint8_t PC_ReadKey(char *retchar);                              // INT 16h AH=00h, returns scan code, *retchar=ASCII
 
 extern void PC_GetDMARegs(uint8_t channel, uint8_t *Page, uint16_t *Offset, uint16_t *Size);
 extern void PC_SetDMARegs(uint8_t channel, uint16_t Offset, uint16_t Size, uint8_t ignore);
@@ -96,16 +109,16 @@ __force_inline bool PC_Wait_CMD_End_Disk()
 {
   if (!PC_Wait_CMD_End_Timeout(20000))
     {
-     //PM_ERROR("PC_MemCopyW_512b: Timeout 20ms (%x)\n",PCCR_PCSTATE);      
-     PM_ERROR("PC_MemCopyW_512b: Timeout 20ms\n"); 
-     if (!PC_Wait_CMD_End_Timeout(100000)) { 
+     //PM_ERROR("PC_MemCopyW_512b: Timeout 20ms (%x)\n",PCCR_PCSTATE);
+     PM_ERROR("PC_MemCopyW_512b: Timeout 20ms\n");
+     if (!PC_Wait_CMD_End_Timeout(100000)) {
        //PM_ERROR("PC_MemCopyW_512b: Timeout 100ms (%x)\n",PCCR_PCSTATE);
-       PM_ERROR("PC_MemCopyW_512b: Timeout 100ms\n");       
+       PM_ERROR("PC_MemCopyW_512b: Timeout 100ms\n");
        return false;
       }
     }
 
-  // if (!PC_Wait_CMD_End()) return false;    
+  // if (!PC_Wait_CMD_End()) return false;
   return true;
 }
 

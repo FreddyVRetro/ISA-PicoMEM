@@ -32,7 +32,10 @@ const char* dpad_str[] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW", "none" };
 
 // check if device is Sony PlayStation 5 controllers
 bool is_sony_ds5(uint16_t vid, uint16_t pid) {
-  return ((vid == 0x054c && pid == 0x0ce6)); // Sony DualSense
+  return (
+    (vid == 0x054c && pid == 0x0ce6) // Sony DualSense
+    || (vid == 0x0e6f && pid == 0x0209) // Victrix Pro FS for PS5
+  );
 }
 
 // check if 2 reports are different enough
@@ -59,6 +62,24 @@ bool diff_report_ds5(sony_ds5_report_t const* rpt1, sony_ds5_report_t const* rpt
     return true;
   }
 
+  // Check tpad_f2_down and tpad_f2_pos too — without this, releasing the SECOND
+  // finger while the first is unchanged produced no new report, so the second
+  // touch point stayed stuck active (seen releasing a two-finger touch).
+  if (rpt1->tpad_f2_down != rpt2->tpad_f2_down ||
+    memcmp(rpt1->tpad_f2_pos, rpt2->tpad_f2_pos, sizeof(rpt1->tpad_f2_pos)) != 0) {
+    return true;
+  }
+
+  // Motion: a DualSense streams gyro/accel every report. Submit on ANY change
+  // so the output IMU tracks at the full poll rate (matching a direct connection)
+  // — a threshold here makes motion update in coarse steps (jumpy). Sensor noise
+  // means a real controller is essentially never identical frame-to-frame, so
+  // this streams continuously exactly like the real thing.
+  for (int i = 0; i < 3; i++) {
+    if (rpt1->gyro[i]  != rpt2->gyro[i]) return true;
+    if (rpt1->accel[i] != rpt2->accel[i]) return true;
+  }
+
   return false;
 }
 
@@ -66,7 +87,7 @@ bool diff_report_ds5(sony_ds5_report_t const* rpt1, sony_ds5_report_t const* rpt
 void input_sony_ds5(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len) {
   uint32_t buttons;
   // previous report used to compare for changes
-  static sony_ds5_report_t prev_report[5] = { 0 };
+  static sony_ds5_report_t prev_report[MAX_DEVICES] = { 0 };
 
   uint8_t const report_id = report[0];
   report++;
@@ -109,7 +130,8 @@ void input_sony_ds5(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
 
       uint16_t tx = (((ds5_report.tpad_f1_pos[1] & 0x0f) << 8)) | ((ds5_report.tpad_f1_pos[0] & 0xff) << 0);
       uint16_t ty = (((ds5_report.tpad_f1_pos[1] & 0xf0) >> 4)) | ((ds5_report.tpad_f1_pos[2] & 0xff) << 4);
-      // TU_LOG1(" (tx, ty) = (%u, %u)\r\n", tx, ty);
+      uint16_t tx2 = (((ds5_report.tpad_f2_pos[1] & 0x0f) << 8)) | ((ds5_report.tpad_f2_pos[0] & 0xff) << 0);
+      uint16_t ty2 = (((ds5_report.tpad_f2_pos[1] & 0xf0) >> 4)) | ((ds5_report.tpad_f2_pos[2] & 0xff) << 4);
       TU_LOG1("\r\n");
 
       bool dpad_up    = (ds5_report.dpad == 0 || ds5_report.dpad == 1 || ds5_report.dpad == 7);
@@ -176,6 +198,35 @@ void input_sony_ds5(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
       // keep analog within range [1-255]
       ensureAllNonZero(&analog_1x, &analog_1y, &analog_2x, &analog_2y);
 
+      // Battery: common data offset 52 (after report ID stripped) — bits 0-3 = level (0-10), bits 4-7 = status
+      // Per Linux kernel hid-playstation.c: 0=discharging, 1=charging, 2=full, 0xa/0xb/0xf=error
+      uint8_t bat_level = 0;
+      bool bat_charging = false;
+      if (len >= 53) {
+        uint8_t raw = report[52];
+        uint8_t level = raw & 0x0F;
+        uint8_t status = (raw >> 4) & 0x0F;
+
+        switch (status) {
+            case 0x0:  // Discharging
+                bat_level = (level > 10) ? 100 : level * 10 + 5;
+                bat_charging = false;
+                break;
+            case 0x1:  // Charging
+                bat_level = (level > 10) ? 100 : level * 10 + 5;
+                bat_charging = true;
+                break;
+            case 0x2:  // Full
+                bat_level = 100;
+                bat_charging = false;
+                break;
+            default:   // 0xa=voltage/temp, 0xb=temp, 0xf=charge error
+                bat_level = 0;
+                bat_charging = false;
+                break;
+        }
+      }
+
       // add to accumulator and post to the state machine
       // if a scan from the host machine is ongoing, wait
       input_event_t event = {
@@ -183,18 +234,20 @@ void input_sony_ds5(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
         .instance = instance,
         .type = INPUT_TYPE_GAMEPAD,
         .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
         .buttons = buttons,
         .button_count = 10,  // PS5: Cross, Circle, Square, Triangle, L1, R1, L2, R2, L3, R3
         .analog = {analog_1x, analog_1y, analog_2x, analog_2y, analog_l, analog_r},
         .delta_x = touchpad_delta_x,  // Touchpad horizontal swipe as mouse-like delta
         .keys = 0,
-        // Motion data (DS5 has full 3-axis gyro and accel)
+        // Motion data (DS5 has full 3-axis gyro and accel).
+        // DS5 native frame already matches the canonical SDL frame -> identity.
         .has_motion = true,
         .accel = {ds5_report.accel[0], ds5_report.accel[1], ds5_report.accel[2]},
         .gyro = {ds5_report.gyro[0], ds5_report.gyro[1], ds5_report.gyro[2]},
+        .gyro_range = 2000,   // ±2000 dps, ±32767 full-scale
+        .accel_range = 4000,  // ±4g
+        .battery_level = bat_level,
+        .battery_charging = bat_charging,
       };
       router_submit_input(&event);
 
@@ -308,7 +361,13 @@ void output_sony_ds5(uint8_t dev_addr, uint8_t instance, device_output_config_t*
     ds5_devices[dev_addr].instances[instance].led_r = ds5_fb.lightbar_r;
     ds5_devices[dev_addr].instances[instance].led_g = ds5_fb.lightbar_g;
     ds5_devices[dev_addr].instances[instance].led_b = ds5_fb.lightbar_b;
-    tuh_hid_send_report(dev_addr, instance, 5, &ds5_fb, sizeof(ds5_fb));
+    // DualSense USB output report is 0x02 (report 5 is the DS4 output report and
+    // a silent no-op on a DualSense — this is why rumble/LEDs did nothing). The
+    // body is the 47-byte common block followed by reserved padding, 62 bytes
+    // total (Linux hid-playstation DS_OUTPUT_REPORT_USB_SIZE = 63 incl. id).
+    uint8_t out[62] = {0};
+    memcpy(out, &ds5_fb, sizeof(ds5_fb));
+    tuh_hid_send_report(dev_addr, instance, 0x02, out, sizeof(out));
   }
 }
 
@@ -317,7 +376,7 @@ void task_sony_ds5(uint8_t dev_addr, uint8_t instance, device_output_config_t* c
   const uint32_t interval_ms = 20;
   static uint32_t start_ms = 0;
 
-  uint32_t current_time_ms = to_ms_since_boot(get_absolute_time());
+  uint32_t current_time_ms = time_us_32();
   if (current_time_ms - start_ms >= interval_ms) {
     start_ms = current_time_ms;
     output_sony_ds5(dev_addr, instance, config);

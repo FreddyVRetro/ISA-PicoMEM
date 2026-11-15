@@ -16,6 +16,9 @@
  *  with this program; if not, write to the Free Software Foundation, Inc.,
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
+// PicoMEM version of the GUS emulation
+// 29/08 Moved precision to 64bit to avoid overflow on polyphony
+
 
 #include <assert.h>
 #include <string.h>
@@ -23,7 +26,7 @@
 #include <sstream>
 #include <cmath>
 
-#include "include/dosbox-x-compat.h"
+#include "dosbox-x-compat.h"
 
 #include "hardware/gpio.h"
 #ifdef PSRAM
@@ -38,12 +41,21 @@ extern psram_spi_inst_t psram_spi;
 #include "pico/critical_section.h"
 critical_section_t gus_crit;
 
-#include "system/pico_pic.h"
-#include "isa/isa_dma.h"
-extern dma_inst_t dma_config;
+#include "../../pm_gvars.h"
+#include "dev_memory.h"  // For PSRAM_GUS_START
+#include "pm_audio.h"    // For PM_AUDIO_FREQUENCY
+#include "pico_pic.h"
+#include "isa_dma.h"
+#include "bus_irq.h"
 
-#include "audio/clamp.h"
-#include "audio/volctrl.h"
+//#include "system/pico_pic.h"
+//#include "isa/isa_dma.h"
+//extern dma_inst_t dma_config;
+
+//#include "audio/clamp.h"
+//#include "audio/volctrl.h"
+#include "clamp.h"
+#include "volctrl.h"
 
 using namespace std;
 
@@ -60,6 +72,8 @@ using namespace std;
 #define WAVE_LSWMASK (0xffffffff ^ WAVE_MSWMASK)
 #endif
 */
+
+uint16_t DebugCntr=0;
 
 //Amount of precision the volume has
 #define RAMP_FRACT (10)
@@ -80,11 +94,12 @@ using namespace std;
 #define WCTRL_DECREASING        0x40
 #define WCTRL_IRQPENDING        0x80
 
-#ifdef PSRAM
+//#ifdef PSRAM
 #define GUS_RAM_SIZE            (1024u*1024u)
-#else
-#define GUS_RAM_SIZE            (1024u*128u)
-#endif
+//#else
+//#define GUS_RAM_SIZE            (1024u*128u)
+//#endif
+#define GUS_ADDR_MASK 0xFFFFFu
 
 // fixed panning table (avx)
 static uint16_t const pantablePDF[16] = { 0, 13, 26, 41, 57, 72, 94, 116, 141, 169, 203, 244, 297, 372, 500, 4095 };
@@ -132,7 +147,12 @@ static uint16_t const sample_rates[32] = {
 uint8_t adlib_commandreg;
 // static MixerChannel * gus_chan;
 #ifndef PSRAM
-static uint8_t GUSRam[GUS_RAM_SIZE + 16/*safety margin*/]; // 1024K of GUS Ram
+//static uint8_t GUSRam[GUS_RAM_SIZE + 16/*safety margin*/]; // 1024K of GUS Ram
+#if USE_GUS  // To avoid compile error for PicoMEM 1/LP
+static uint8_t *GUSRam = (uint8_t *)PSRAM_GUS_START; // PicoMEM 2 : 1024K of GUS Ram on PSRAM
+#else
+static uint8_t *GUSRam =NULL; // No GUS RAM
+#endif
 #endif
 static int32_t AutoAmp = 512;
 static bool unmask_irq = false;
@@ -145,10 +165,10 @@ static uint32_t pantable[16];
 
 static uint32_t buffer_size = 4;
 static uint32_t dma_interval = 0;
+static uint16_t dma_block_size = 0;  // Added for PicoMEM 1.5 (No TC)
 
 class GUSChannels;
 static void CheckVoiceIrq(void);
-static void CheckVoiceIrq_unlocked(void);
 
 struct GFGus {
     uint8_t gRegSelectData;     // what is read back from 3X3. not necessarily the index selected, but
@@ -167,12 +187,23 @@ struct GFGus {
     uint32_t dmaInterval;
     uint32_t dmaIntervalOverride;
     bool dmaWaiting;
+    bool invertMsb;  // Added for PicoMEM
     uint8_t TimerControl;
     uint8_t SampControl;
     uint8_t mixControl;
     uint8_t ActiveChannels;
     uint8_t gRegControl;
     uint32_t basefreq;
+
+    uint32_t prev_sample32;   // Added for PicoMEM
+    uint16_t prev_sample16_l;   // Added for PicoMEM
+    uint16_t prev_sample16_r;   // Added for PicoMEM
+    uint16_t sample_step;
+    uint16_t increment;
+    bool     readsample;
+
+    uint8_t irq;  // Added for PicoMEM
+    uint8_t dma;
 
     struct GusTimer {
         uint32_t delay;
@@ -212,10 +243,6 @@ struct GFGus {
 
 extern uint8_t GUS_activeChannels(void) {
     return myGUS.ActiveChannels;
-}
-
-extern uint8_t GUS_timingChannels(void) {
-    return myGUS.fixed_44k_output ? 14 : myGUS.ActiveChannels;
 }
 
 extern uint32_t GUS_basefreq(void) {
@@ -292,66 +319,13 @@ class GUSChannels {
         }
 
         INLINE int32_t LoadSample8(const uint32_t addr/*memory address without fractional bits*/) const {
-#ifdef PSRAM
-            return (int8_t)psram_read8(&psram_spi, addr & 0xFFFFFu/*1MB*/) << int32_t(8);
-#else
-            return (int8_t)GUSRam[addr & 0xFFFFFu/*1MB*/] << int32_t(8); /* typecast to sign extend 8-bit value */
-#endif
+            return (int8_t)GUSRam[addr & GUS_ADDR_MASK/*1MB*/] << int32_t(8); /* typecast to sign extend 8-bit value */
         }
 
         INLINE int32_t LoadSample16(const uint32_t addr/*memory address without fractional bits*/) const {
             const uint32_t adjaddr = (addr & 0xC0000u/*256KB bank*/) | ((addr & 0x1FFFFu) << 1u/*16-bit sample value within bank*/);
-#ifdef PSRAM
-            return (int16_t)psram_read16(&psram_spi, adjaddr);
-#else
-            return (int16_t)host_readw(GUSRam + adjaddr);/* typecast to sign extend 16-bit value */
-#endif
+            return (int16_t)host_readw(&GUSRam[0] + adjaddr);/* typecast to sign extend 16-bit value */
         }
-
-#ifdef PSRAM
-        union int16_t_pair {
-            uint32_t data32;
-            int16_t data16[2];
-        };
-
-        INLINE size_t prime_cache(const uint32_t addr, const uint8_t threshold) const {
-            uint32_t addr_hi = addr & 0xffff0u;
-            uint8_t addr_part = addr & 0xfu;
-            if (sample_cache.addr != addr_hi) {
-                if (sample_cache.addr_next != -1 && sample_cache.addr_next == addr_hi) {
-                    // We could avoid this memcpy by wrapping around the cache address... but I am tired
-                    memcpy(sample_cache.data, sample_cache.data + 16, 16);
-                } else {
-                    psram_read(&psram_spi, addr_hi, sample_cache.data, 16);
-                }
-                sample_cache.addr = addr_hi;
-            }
-            // If we're about to read past the end of our cache, populate the other bank
-            uint32_t addr_next = ((addr_hi + 16) & 0xffff0u);
-            if (addr_part == threshold && sample_cache.addr_next != addr_next) {
-                psram_read(&psram_spi, addr_next, (sample_cache.data + 16), 16);
-                sample_cache.addr_next = addr_next;
-            }
-            return addr_part;
-        }
-
-        INLINE int16_t_pair LoadSamples8(const uint32_t addr/*memory address without fractional bits*/) const {
-            const size_t addr_part = prime_cache(addr, 0xfu);
-            return (union int16_t_pair){ .data16 = {
-                (int16_t)((uint16_t)sample_cache.data[addr_part] << 8),
-                (int16_t)((uint16_t)sample_cache.data[addr_part + 1] << 8)
-            }};
-        }
-
-        INLINE int16_t_pair LoadSamples16(const uint32_t addr/*memory address without fractional bits*/) const {
-            const uint32_t adjaddr = (addr & 0xC0000u/*256KB bank*/) | ((addr & 0x1FFFFu) << 1u/*16-bit sample value within bank*/);
-            const size_t addr_part = prime_cache(adjaddr, 0xeu);
-            return (union int16_t_pair){ .data16 = {
-                (int16_t)*(uint16_t*)(sample_cache.data + addr_part),
-                (int16_t)*(uint16_t*)(sample_cache.data + addr_part + 2)
-            }};
-        }
-#endif // PSRAM
 
         // Returns a single 16-bit sample from the Gravis's RAM
         INLINE int32_t GetSample8() const {
@@ -359,24 +333,11 @@ class GUSChannels {
             const uint32_t useAddr = WaveAddr >> WAVE_FRACT;
             {
                 // Interpolate
-#ifdef PSRAM
-                union int16_t_pair p = LoadSamples8(useAddr);
-#ifdef INTERP_LINEAR
-                interp0->base01 = p.data32;
-                interp0->accum[1] = WaveAddr;
-                return interp0->peek[1];
-#else // INTERP_LINEAR
-                int32_t diff = (int32_t)p.data16[1] - (int32_t)p.data16[0];
-                int32_t scale = (int32_t)(WaveAddr & WAVE_FRACT_MASK);
-                return ((int32_t)p.data16[0] + ((diff * scale) >> WAVE_FRACT));
-#endif // INTERP_LINEAR
-#else // PSRAM
                 int32_t w1 = LoadSample8(useAddr);
                 int32_t w2 = LoadSample8(useAddr + 1u);
                 int32_t diff = w2 - w1;
                 int32_t scale = (int32_t)(WaveAddr & WAVE_FRACT_MASK);
                 return (w1 + ((diff * scale) >> WAVE_FRACT));
-#endif // PSRAM
             }
         }
 
@@ -409,7 +370,7 @@ class GUSChannels {
         __force_inline void WriteWaveFreq(uint16_t val) {
             WaveFreq = val;
 #ifdef FORCE_28CH_27CH
-            if (myGUS.ActiveChannels == 28) { // fudge to the 27 channel rate
+            if (!myGUS.fixed_44k_output && myGUS.ActiveChannels == 28) { // fudge to the 27 channel rate
                 val = (uint16_t)((uint32_t)val * 22050ul / 22866ul);
             }
 #endif
@@ -419,16 +380,14 @@ class GUSChannels {
             }
         }
         __force_inline void WriteWaveCtrl(uint8_t val) {
-            critical_section_enter_blocking(&gus_crit);
             uint32_t oldirq=myGUS.WaveIRQ;
             WaveCtrl = val & 0x7f;
 
             if ((val & 0xa0)==0xa0) myGUS.WaveIRQ|=irqmask;
             else myGUS.WaveIRQ&=~irqmask;
 
-            if (oldirq != myGUS.WaveIRQ)
-                CheckVoiceIrq_unlocked();
-            critical_section_exit(&gus_crit);
+            if (oldirq != myGUS.WaveIRQ) 
+                CheckVoiceIrq();
         }
         INLINE uint8_t ReadWaveCtrl(void) {
             uint8_t ret=WaveCtrl;
@@ -449,7 +408,6 @@ class GUSChannels {
             return PanPot;
         }
         __force_inline void WriteRampCtrl(uint8_t val) {
-            critical_section_enter_blocking(&gus_crit);
             uint32_t old=myGUS.RampIRQ;
             RampCtrl = val & 0x7f;
             //Manually set the irq
@@ -458,8 +416,7 @@ class GUSChannels {
             else
                 myGUS.RampIRQ &= ~irqmask;
             if (old != myGUS.RampIRQ)
-                CheckVoiceIrq_unlocked();
-            critical_section_exit(&gus_crit);
+                CheckVoiceIrq();
         }
         INLINE uint8_t ReadRampCtrl(void) {
             uint8_t ret=RampCtrl;
@@ -481,12 +438,7 @@ class GUSChannels {
                 LOG_MSG("RampAdd nonfixed error %ld (%lu != %lu)",error,(unsigned long)checkadd,(unsigned long)RampAdd);
 #endif
             if (myGUS.fixed_44k_output) {
-#ifdef FORCE_28CH_27CH
-                if (myGUS.ActiveChannels == 28) {
-                    RampAdd = RampAdd * 22050ul / 22866ul;
-                }
-#endif
-                RampAdd = ((RampAdd * sample_rates[myGUS.ActiveChannels - 1]) + (44100 >> 1)) / 44100;
+                RampAdd = ((RampAdd * sample_rates[myGUS.ActiveChannels + 1]) + (44100 >> 1)) / 44100;
             }
         }
         INLINE void WaveUpdate(void) {
@@ -570,8 +522,9 @@ class GUSChannels {
             templeft&=~(templeft >> 31); /* <- NTS: This is a rather elaborate way to clamp negative values to zero using negate and sign extend */
             int32_t tempright=(int32_t)RampVol - (int32_t)PanRight;
             tempright&=~(tempright >> 31); /* <- NTS: This is a rather elaborate way to clamp negative values to zero using negate and sign extend */
-            VolLeft=scale_sample(vol16bit[templeft >> RAMP_FRACT], volume.gus, false);
-            VolRight=scale_sample(vol16bit[tempright >> RAMP_FRACT], volume.gus, false);
+            VolLeft=vol16bit[templeft >> RAMP_FRACT];
+            VolRight=vol16bit[tempright >> RAMP_FRACT];
+         //   PM_INFO("Vol L=%d R=%d\n",channum,VolLeft,VolRight,RampVol);
         }
         INLINE void RampUpdate(void) {
             if (RampCtrl & 0x3) return; /* if the ramping is turned off, then don't change the ramp */
@@ -610,7 +563,7 @@ class GUSChannels {
             UpdateVolumes();
         }
 
-        __force_inline void generateSample(int32_t* stream) {
+        __force_inline void generateSample(int64_t* stream) {   // int64 accum: no overflow on polyphony
             int32_t tmpsamp;
 
             /* NTS: The GUS is *always* rendering the audio sample at the current position,
@@ -630,9 +583,11 @@ class GUSChannels {
 
             // Output stereo sample if DAC enable on
             // if ((GUS_reset_reg & 0x02/*DAC enable*/) == 0x02) {
-                // volume.gus is pre-folded into VolLeft/VolRight by UpdateVolumes
-                stream[0] += tmpsamp * VolLeft;
-                stream[1] += tmpsamp * VolRight;
+//                tmpsamp = scale_sample(tmpsamp, gus_volume, 0);
+                stream[0] += (tmpsamp * VolLeft);
+                stream[1] += (tmpsamp * VolRight);
+//                stream[0] += tmpsamp;
+//                stream[1] += tmpsamp;
                 WaveUpdate();
                 RampUpdate();
             // }
@@ -768,7 +723,7 @@ void DEBUG_PrintGUS() { //debugger "GUS" command
 
 static INLINE void GUS_CheckIRQ(void);
 
-static uint32_t GUS_TimerEventHandler(Bitu val);
+static uint32_t __not_in_flash_func(GUS_TimerEventHandler)(Bitu val);
 static PIC_TimerEvent GUS_TimerEvent0 = {
     .handler = GUS_TimerEventHandler,
 };
@@ -780,7 +735,9 @@ void GUS_StopDMA();
 void GUS_StartDMA();
 
 static void GUSReset(void) {
-    gpio_xor_mask(1u << PICO_DEFAULT_LED_PIN);
+  //  gpio_xor_mask(1u << PICO_DEFAULT_LED_PIN);
+ 
+    PM_INFO("GUS Reset\n");
     unsigned char p_GUS_reset_reg = GUS_reset_reg;
 
     /* NTS: From the Ultrasound SDK:
@@ -801,7 +758,8 @@ static void GUSReset(void) {
         myGUS.irqenabled = false;
 
     if (GUS_reset_reg ^ p_GUS_reset_reg)
-        LOG_MSG("GUS reset with 0x%04X",myGUS.gRegData);
+        //LOG_MSG("GUS reset with 0x%04X",myGUS.gRegData);
+        PM_INFO("GUS reset with 0x%04X",myGUS.gRegData);
 
     if ((myGUS.gRegData & 0x100) == 0x000) {
         // Stop all channels
@@ -921,25 +879,30 @@ static INLINE void GUS_CheckIRQ(void) {
         uint8_t irqstat = GUS_EffectiveIRQStatus();
 
         if (irqstat != 0 /*&& gus_prev_effective_irqstat == 0*/) {
+//       if (irqstat != 0 && gus_prev_effective_irqstat == 0) {
             /* The GUS fires an IRQ, then waits for the interrupt service routine to
              * clear all pending interrupt events before firing another one. if you
              * don't service all events, then you don't get another interrupt. */
-                // puts("activateirq");
-                PIC_ActivateIRQ();
+                //PIC_ActivateIRQ();
+            //    PM_INFO("GIR ");
+                bus_irq_raise(IRQ_R_AUDIO,myGUS.irq,false);
+
         } else if (gus_prev_effective_irqstat != 0) {
-            // puts("deactivateirq");
-            PIC_DeActivateIRQ();
+            //PIC_DeActivateIRQ();
+        //   PM_INFO("GIL");
+            bus_irq_lower(IRQ_R_AUDIO,myGUS.irq);
         }
 
         gus_prev_effective_irqstat = irqstat;
     }
 }
 
-// Inner version: caller must already hold gus_crit
-__force_inline static void CheckVoiceIrq_unlocked(void) {
+__force_inline static void CheckVoiceIrq(void) {
+    critical_section_enter_blocking(&gus_crit);
     Bitu totalmask=(myGUS.RampIRQ|myGUS.WaveIRQ) & myGUS.ActiveMask;
     if (!totalmask) {
         GUS_CheckIRQ();
+        critical_section_exit(&gus_crit);
         return;
     }
 
@@ -956,11 +919,6 @@ __force_inline static void CheckVoiceIrq_unlocked(void) {
         myGUS.IRQChan++;
         if (myGUS.IRQChan>=myGUS.ActiveChannels) myGUS.IRQChan=0;
     }
-}
-
-__force_inline static void CheckVoiceIrq(void) {
-    critical_section_enter_blocking(&gus_crit);
-    CheckVoiceIrq_unlocked();
     critical_section_exit(&gus_crit);
 }
 
@@ -1038,7 +996,6 @@ __force_inline static uint16_t ExecuteReadRegister(void) {
         if (curchan) return curchan->ReadRampCtrl() << 8;
         else return 0x0300;
     case 0x8f: // General channel IRQ status register
-        critical_section_enter_blocking(&gus_crit);
         tmpreg=myGUS.IRQChan|0x20;
         uint32_t mask;
         mask=1u << myGUS.IRQChan;
@@ -1047,8 +1004,10 @@ __force_inline static uint16_t ExecuteReadRegister(void) {
         myGUS.RampIRQ&=~mask;
         myGUS.WaveIRQ&=~mask;
         myGUS.IRQStatus&=0x9f;
-        CheckVoiceIrq_unlocked();
-        critical_section_exit(&gus_crit);
+        // mega hack
+        // PIC_DeActivateIRQ();
+        CheckVoiceIrq();
+        // PIC_AddEvent(CheckVoiceIrq_async, 2, 3);
         return (uint16_t)(tmpreg << 8);
     default:
 #if LOG_GUS
@@ -1058,7 +1017,7 @@ __force_inline static uint16_t ExecuteReadRegister(void) {
     }
 }
 
-static uint32_t GUS_TimerEventHandler(Bitu val) {
+static uint32_t __not_in_flash_func(GUS_TimerEventHandler)(Bitu val) {
     // putchar('-');
     critical_section_enter_blocking(&gus_crit);
     if (!myGUS.timers[val].masked) myGUS.timers[val].reached=true;
@@ -1214,6 +1173,11 @@ __force_inline static void ExecuteGlobRegister(void) {
         // myGUS.basefreq = (uint32_t)(1000000.0/(1.619695497*(float)(myGUS.ActiveChannels)));
         myGUS.basefreq = myGUS.fixed_44k_output ? 44100 : sample_rates[myGUS.ActiveChannels - 1];
 
+        myGUS.sample_step  = (myGUS.basefreq * 65536ul) / PM_AUDIO_FREQUENCY; // Step for the Audio rate convertion
+        myGUS.increment    = 0;
+        myGUS.readsample   = true;
+        myGUS.prev_sample32 = 0x0;
+
 #if LOG_GUS
         LOG_MSG("GUS set to %d channels freq=%luHz", myGUS.ActiveChannels,(unsigned long)myGUS.basefreq);
 #endif
@@ -1222,6 +1186,7 @@ __force_inline static void ExecuteGlobRegister(void) {
     case 0x10:  // Undocumented register used in Fast Tracker 2
         break;
     case 0x41:  // Dma control register
+       // PM_INFO("GUS DMA Control register write %x", myGUS.gRegData);
         critical_section_enter_blocking(&gus_crit);
         myGUS.DMAControl &= ~0xFFu; // FIXME: Does writing DMA Control clear the DMA TC IRQ?
         myGUS.DMAControl |= (uint8_t)(myGUS.gRegData>>8);
@@ -1238,16 +1203,16 @@ __force_inline static void ExecuteGlobRegister(void) {
     case 0x44:  // MSW Peek/poke DRAM position
         myGUS.gDramAddr = (0xffff & myGUS.gDramAddr) | ((uint32_t)myGUS.gRegData>>8) << 16;
         break;
-    case 0x45:  // Timer control register.  Identical in operation to Adlib's timer
+    case 0x45:  // Timer control register.  Identical in operation to Adlib's timer (Enable Timer 1/2 IRQ)
         critical_section_enter_blocking(&gus_crit);
         myGUS.TimerControl = (uint8_t)(myGUS.gRegData>>8);
         myGUS.timers[0].raiseirq=(myGUS.TimerControl & 0x04)>0;
         if (!myGUS.timers[0].raiseirq) myGUS.IRQStatus&=~0x04;
         myGUS.timers[1].raiseirq=(myGUS.TimerControl & 0x08)>0;
         if (!myGUS.timers[1].raiseirq) myGUS.IRQStatus&=~0x08;
-        if (!myGUS.timers[0].raiseirq && !myGUS.timers[1].raiseirq) {
-            GUS_CheckIRQ();
-        }
+        // Always re-evaluate IRQ line: flipping either TimerControl bit changes
+        // the effective status even when raiseirq is still set on the other timer
+        GUS_CheckIRQ();
         critical_section_exit(&gus_crit);
         break;
     case 0x46:  // Timer 1 control
@@ -1258,6 +1223,7 @@ __force_inline static void ExecuteGlobRegister(void) {
         myGUS.timers[1].value = (uint8_t)(myGUS.gRegData>>8);
         myGUS.timers[1].delay = ((0x100 - myGUS.timers[1].value) * 320) - 5;
         break;
+    //   0x48 : Sampling frequency
     case 0x49:  // DMA sampling control register
         /*
         puts("I don't support sampling.");
@@ -1266,10 +1232,13 @@ __force_inline static void ExecuteGlobRegister(void) {
         else GUS_StopDMA();
         */
         break;
-    case 0x4c:  // GUS reset register
+    //   0x4B Joystick Trim DAC (DAC Voltage)
+    case 0x4C:  // GUS reset register
+       // PM_INFO("GUS Reset called");
         GUSReset();
         break;
     default:
+    PM_INFO("GUS Unimplemented global register %x -- %x", myGUS.gRegSelect, myGUS.gRegData);
 #if LOG_GUS
         LOG_MSG("Unimplemented global register %x -- %x", myGUS.gRegSelect, myGUS.gRegData);
 #endif
@@ -1278,7 +1247,8 @@ __force_inline static void ExecuteGlobRegister(void) {
     return;
 }
 
-__force_inline uint8_t read_gus(Bitu port) {
+uint8_t __not_in_flash_func(read_gus)(Bitu port) {
+//uint8_t read_gus(Bitu port) {    
     uint16_t reg16;
 
 //  LOG_MSG("read from gus port %x",port);
@@ -1367,6 +1337,7 @@ __force_inline uint8_t read_gus(Bitu port) {
 #if LOG_GUS
         LOG_MSG("Read GUS at port 0x%x", port);
 #endif
+       // PM_INFO("Read GUS at port 0x%x", port);
         break;
     }
 
@@ -1374,8 +1345,9 @@ __force_inline uint8_t read_gus(Bitu port) {
 }
 
 
-__force_inline void write_gus(Bitu port, Bitu val) {
-//  LOG_MSG("Write gus port %x val %x",port,val);
+void __not_in_flash_func(write_gus)(Bitu port, Bitu val) {
+//void write_gus(Bitu port, Bitu val) {
+ // PM_INFO("Write gus port %x val %x",port,val);
 
     switch(port) {
     case 0x0:
@@ -1461,8 +1433,7 @@ static bool GUS_DMA_Active = false;
 #ifdef POLLING_DMA
 __force_inline
 #endif
-uint32_t 
-GUS_DMA_EventHandler(Bitu val) {
+uint32_t __not_in_flash_func(GUS_DMA_EventHandler)(Bitu val) {
     (void)val;//UNUSED
     if (!GUS_DMA_Active) {
         return 0;
@@ -1487,20 +1458,21 @@ GUS_DMA_EventHandler(Bitu val) {
             invert_msb = true;
         }
     }
-    dma_config.invertMsb = invert_msb;
-
-    DMA_Start_Write(&dma_config);
+    myGUS.invertMsb = invert_msb;
+    
+    isa_dma_start_write();
+//    DMA_Start_Write(&dma_config);
     return 0;
 }
 static PIC_TimerEvent GUS_DMA_Event = {
     .handler = GUS_DMA_EventHandler
 };
 
-void 
-GUS_DMA_isr() {
+void __not_in_flash_func(GUS_DMA_isr()) {
     myGUS.dmaWaiting = false;
     // Pull data from PIO even if we have to throw it away, because otherwise it will be stalled
-    const uint32_t dma_data = DMA_Complete_Write(&dma_config);
+//    const uint32_t dma_data = DMA_Complete_Write(&dma_config);
+    const uint32_t dma_data = isa_dma_complete_write();
 
     if (!GUS_DMA_Active) {
         return;
@@ -1515,18 +1487,18 @@ GUS_DMA_isr() {
 
     const uint8_t dma_data8 = dma_data & 0xffu;
 #ifdef PSRAM
-    // psram_write8_async(&psram_spi, myGUS.dmaAddr, dma_config.invertMsb ? dma_data8 ^ 0x80 : dma_data8);
+    // psram_write8_async(&psram_spi, myGUS.dmaAddr, myGUS.invertMsb ? dma_data8 ^ 0x80 : dma_data8);
     static union {
         uint32_t data32;
         uint8_t data8[4];
     } dma_data_union;
     size_t dmaOffset = myGUS.dmaAddr & 0x3;
-    dma_data_union.data8[dmaOffset] = dma_config.invertMsb ? dma_data ^ 0x80 : dma_data8;
+    dma_data_union.data8[dmaOffset] = myGUS.invertMsb ? dma_data ^ 0x80 : dma_data8;
     if ((dmaOffset) == 0x3) {
         psram_write32_async(&psram_spi, myGUS.dmaAddr - 0x3, dma_data_union.data32);
     }
 #else
-    GUSRam[myGUS.dmaAddr] = dma_config.invertMsb ? dma_data8 ^ 0x80 : dma_data8;
+    GUSRam[myGUS.dmaAddr] = myGUS.invertMsb ? dma_data8 ^ 0x80 : dma_data8;
 #endif
 
     // uart_print_hex_u32(dma_data);
@@ -1551,6 +1523,7 @@ GUS_DMA_isr() {
         PIC_AddEvent(&GUS_DMA_Event, myGUS.dmaInterval, 0);
     }
 }
+
 irq_handler_t GUS_DMA_isr_pt = GUS_DMA_isr;
 
 #ifdef POLLING_DMA
@@ -1567,7 +1540,8 @@ __force_inline void GUS_StopDMA() {
 #endif
     if (myGUS.dmaWaiting) {
         // Reset the PIO
-        DMA_Cancel_Write(&dma_config);
+        //DMA_Cancel_Write(&dma_config);
+        isa_dma_stop_write();
         myGUS.dmaWaiting = false;
     }
 }
@@ -1592,7 +1566,7 @@ __force_inline void GUS_StartDMA() {
         return;
     }
     GUS_DMA_Active = true;
-    DEBUG_LOG_MSG("GUS: Starting DMA transfer interval");
+//    DEBUG_LOG_MSG("GUS: Starting DMA transfer interval");
 
     // uart_print_hex_u32((myGUS.DMAControl >> 3u) & 3u);
     // From Interwave programmers guide:
@@ -1619,20 +1593,51 @@ __force_inline void GUS_StartDMA() {
             break;
         }
     }
-    
+
+ //   PM_INFO("GUS DMA Start, Int %u us\n", (unsigned)myGUS.dmaInterval);  
+
 #ifndef POLLING_DMA
+    isa_dma_set_isr(GUS_DMA_isr_pt);   // PicoMEM DMA ISR setup
     PIC_AddEvent(&GUS_DMA_Event, myGUS.dmaInterval, 0);
 #else
     next_event = time_us_32() + myGUS.dmaInterval;
 #endif
 }
 
+extern uint32_t __not_in_flash_func(PM_GUS_CallBack)(int16_t* play_buffer) {
+  // 64-bit accumulator: each voice contributes up to +-2.68e8 (32767 sample x
+  // 8192 vol), so a polyphonic MIDI chord of >=8 loud voices overflows a 32-bit
+  // sum -> wraparound -> heavy distortion. int64 removes that entirely; the
+  // /GUS_OUT_DIV divisor + clamp16 set the final level.
+  static int64_t accum[2];
 
-//extern uint32_t __scratch_x("my_sub_section") (GUS_CallBack)(Bitu max_len, int16_t* play_buffer) {  // did not compile/link multifw with this.. scratch?? check.
+  if ((GUS_reset_reg & 0x01/*!master reset*/) == 0x01 && (GUS_reset_reg & 0x02/*DAC enable*/) == 0x02) {
+         accum[0] = accum[1] = 0;
+         uint32_t cur_rate = myGUS.basefreq;
+         for (Bitu c = 0; c < myGUS.ActiveChannels; ++c) {
+                guschan[c]->generateSample(accum);
+            }
+
+         // Output scaling. One voice at full sample (32767) * full vol16bit
+         // (8192) = 2.68e8, so /8000 already clips a SINGLE loud voice, and
+         // many voices summed clip hard (the reference scaled VolLeft down by
+         // the GUS master volume, which this fork dropped). Bigger divisor =
+         // more mixing headroom (quieter, cleaner). Tune GUS_OUT_DIV by ear.
+#ifndef GUS_OUT_DIV
+#define GUS_OUT_DIV 8000
+#endif
+         play_buffer[0] = clamp16((int32_t)(accum[0]/GUS_OUT_DIV));
+         play_buffer[1] = clamp16((int32_t)(accum[1]/GUS_OUT_DIV));
+        CheckVoiceIrq();
+        return 1;
+    }
+  return 0;
+}
+
 extern uint32_t GUS_CallBack(Bitu max_len, int16_t* play_buffer) {
-    static int32_t accum[2];
+    static int64_t accum[2];   // int64 accum: no overflow on polyphony
 #ifdef SCALE_22K_TO_44K
-    static int32_t prev_accum[2];
+    static int64_t prev_accum[2];
 #endif
     uint32_t s = 0;
 
@@ -1641,17 +1646,18 @@ extern uint32_t GUS_CallBack(Bitu max_len, int16_t* play_buffer) {
             accum[0] = accum[1] = 0;
             uint32_t cur_rate = myGUS.basefreq;
             for (Bitu c = 0; c < myGUS.ActiveChannels; ++c) {
+             //   PM_INFO("c%d",c);
                 guschan[c]->generateSample(accum);
             }
 #ifdef SCALE_22K_TO_44K
             if (!myGUS.fixed_44k_output && myGUS.ActiveChannels == 28) {
-                play_buffer[s << 1] = clamp16((accum[0] + prev_accum[0]) >> 1);
-                play_buffer[(s << 1) + 1] = clamp16((accum[1] + prev_accum[1]) >> 1);
+                play_buffer[s << 1] = clamp16((int32_t)((accum[0] + prev_accum[0]) >> 1));
+                play_buffer[(s << 1) + 1] = clamp16((int32_t)((accum[1] + prev_accum[1]) >> 1));
                 ++s;
             }
 #endif // SCALE_22K_TO_44K
-            play_buffer[s << 1] = clamp16(accum[0]);
-            play_buffer[(s << 1) + 1] = clamp16(accum[1]);
+            play_buffer[s << 1] = clamp16((int32_t)accum[0]);
+            play_buffer[(s << 1) + 1] = clamp16((int32_t)accum[1]);
             ++s;
 #ifdef SCALE_22K_TO_44K
             prev_accum[0] = accum[0];
@@ -1728,22 +1734,6 @@ extern uint32_t GUS_CallBack(Bitu max_len, int16_t* play_buffer) {
     return s;
 }
 
-// Generate one stereo sample for IRQ-driven audio output.
-// Returns packed stereo: low 16 bits = left, high 16 bits = right.
-extern uint32_t GUS_sample_stereo(void) {
-    if ((GUS_reset_reg & 0x03) != 0x03) {
-        return 0;
-    }
-    int32_t accum[2] = {0, 0};
-    for (Bitu c = 0; c < myGUS.ActiveChannels; ++c) {
-        guschan[c]->generateSample(accum);
-    }
-    CheckVoiceIrq();
-    int16_t l = clamp16(accum[0]);
-    int16_t r = clamp16(accum[1]);
-    return ((uint32_t)(uint16_t)l) | ((uint32_t)(uint16_t)r << 16);
-}
-
 // Generate logarithmic to linear volume conversion tables
 static void MakeTables(void) {
     int i;
@@ -1814,13 +1804,13 @@ void GUS_SetAudioBuffer(const uint16_t new_buffer_size) {
 }
 void GUS_SetDMAInterval(const uint16_t newInterval) {
     // PICOGUS special port to set DMA interval
-    printf("setting dma interval to %u\n", newInterval);
+    PM_INFO("setting dma interval to %u\n", newInterval);
     myGUS.dmaIntervalOverride = newInterval;
 }
 void GUS_SetFixed44k(const bool new_force44k) {
+    // PICOGUS special port to set audio buffer size
     myGUS.fixed_44k_output = new_force44k;
-    myGUS.basefreq = new_force44k ? 44100 : sample_rates[myGUS.ActiveChannels - 1];
-    printf("fixed 44k output: %u\n", myGUS.fixed_44k_output);
+    PM_INFO("fixed 44k output: %u\n", myGUS.fixed_44k_output);
 }
 
 
@@ -1834,7 +1824,8 @@ public:
         gus_enable = true;
         memset(&myGUS,0,sizeof(myGUS));
 #ifndef PSRAM
-        memset(GUSRam,0,GUS_RAM_SIZE);
+//        memset(GUSRam,0,GUS_RAM_SIZE);
+        memset((void *)&GUSRam[0],0,GUS_RAM_SIZE);
 #endif
 
         gus_fixed_table = true;
@@ -1852,7 +1843,8 @@ public:
         myGUS.rate=44100;
         myGUS.memsize = GUS_RAM_SIZE;
 
-        LOG_MSG("GUS emulation: %uKB onboard",myGUS.memsize>>10);
+   //     LOG_MSG("GUS emulation: %uKB onboard",myGUS.memsize>>10);
+        PM_INFO("GUS emulation: %uKB onboard\n",myGUS.memsize>>10);
 
         // some demoscene stuff has music that's way too loud if we render at full volume.
         // the GUS mixer emulation won't fix it because it changes the volume at the Mixer
@@ -1864,6 +1856,7 @@ public:
     
         for (uint8_t chan_ct=0; chan_ct<32; chan_ct++) {
             guschan[chan_ct] = new GUSChannels(chan_ct);
+        //    PM_INFO("GUS channel %u : %x ", chan_ct, guschan[chan_ct]);
         }
 
         // FIXME: Could we leave the card in reset state until a fake ULTRINIT runs?
@@ -1871,7 +1864,7 @@ public:
         GUSReset();
 
         // Default to GUS MAX 1MB maximum
-        myGUS.gDramAddrMask = 0xFFFFFu;
+        myGUS.gDramAddrMask = GUS_ADDR_MASK;
 
         // if instructed, configure the card as if ULTRINIT had been run
         if (startup_ultrinit) {
@@ -1881,8 +1874,6 @@ public:
             myGUS.gRegData=0x700;
             GUSReset();
         }
-
-
     }
 
     ~GUS() {
@@ -1896,17 +1887,35 @@ public:
 
         memset(&myGUS,0,sizeof(myGUS));
 #ifndef PSRAM
-        memset(GUSRam,0,1024*1024);
+//        memset(GUSRam,0,1024*1024);
+        memset((void *)&GUSRam[0],0,1024*1024);
 #endif
     }
 };
 
-static GUS* test = NULL;
+static GUS* GUS_Obj = NULL;
+// Tracks whether gus_crit currently holds a live critical section, so that
+// GUS_Shutdown() destroys it only when it was initialized and GUS_OnReset()
+// re-initializes it on the next enable.
+static bool gus_crit_inited = false;
 void GUS_OnReset(void) {
-    LOG_MSG("Allocating GUS emulation");
-    test = new GUS();
+  //  LOG_MSG("Allocating GUS emulation");
+    PM_INFO("Allocating GUS emulation\n");
+//    PM_INFO("IRQ line %u, DMA channel %u\n", myGUS.irq, myGUS.dma);
+    // gus_crit MUST be initialized BEFORE `new GUS()`: the GUS constructor calls
+    // GUSReset() -> WriteWaveCtrl(), which (since the PicoGUS v4.1.1 locking port)
+    // takes gus_crit unconditionally. Locking an uninitialized critical section
+    // hangs -- the boot froze right after "GUS Reset". GUS_Shutdown() destroys it
+    // again and clears the flag, so re-enabling the GUS re-initializes it here.
+    if (!gus_crit_inited) { critical_section_init(&gus_crit); gus_crit_inited = true; }
+    if (GUS_Obj) delete GUS_Obj;
+    GUS_Obj = new GUS();
+}
 
-    critical_section_init(&gus_crit);
+void GUS_SetIRQDMA(uint8_t irq_line, uint8_t dma_channel) {
+    PM_INFO("GUS_SetIRQDMA: IRQ line %u, DMA channel %u\n", irq_line, dma_channel);
+    myGUS.irq = irq_line;
+    myGUS.dma = dma_channel;
 }
 
 void GUS_Setup() {
@@ -1921,11 +1930,116 @@ void GUS_Setup() {
         interp_config_set_signed(&cfg, true);
         interp_set_config(interp0, 1, &cfg);
 #endif
-        clamp_setup(14, 17);
-        // Register callback so prescaled channel volumes update when gus vol changes
-        volctrl_gus_callback = [] {
-            for (int c = 0; c < 32; c++)
-                if (guschan[c]) guschan[c]->UpdateVolumes();
-        };
-        set_volume(CMD_GUSVOL);
+        clamp_setup();
+
+    //    set_volume(CMD_GUSVOL);
 }
+
+void GUS_Shutdown() {
+    PM_INFO("Shutting down GUS emulation\n");
+    if (GUS_Obj) {
+        // Delete first: ~GUS() calls GUSReset() -> WriteWaveCtrl(), which takes
+        // gus_crit, so the critical section must still be live here.
+        delete GUS_Obj;
+        GUS_Obj = NULL;
+    }
+    // Free the critical section, but only if it is currently initialized, and clear
+    // the flag so GUS_OnReset() re-initializes it on the next enable. Without this
+    // a re-enable would lock a destroyed critical section and hang core0 (watchdog
+    // reset, stage 6).
+    if (gus_crit_inited) {
+        critical_section_deinit(&gus_crit);
+        gus_crit_inited = false;
+    }
+}
+
+#if 1
+// return an audio buffer by rendering GUS samples
+void gus_updatebuffer(int16_t* buff,uint32_t samples)
+{
+  int32_t  res32u;
+  uint16_t prev_increment;
+  res32u=myGUS.prev_sample32;
+
+ // PM_INFO("gus_updatebuffer\n");
+  for (uint32_t sn=0;sn<samples*2;sn+=2)  // Stereo, so 2x more data than "samples"
+      {
+       // PM_INFO("s%d ",sn);
+       DebugCntr++;
+       if (myGUS.readsample) 
+             if (!PM_GUS_CallBack((int16_t*) &res32u))
+              {
+                 myGUS.prev_sample32=0;  // If the FIFO is empty, return silence
+                return;
+              }
+  /*      if (DebugCntr>1000)
+           {
+             DebugCntr=0;
+             PM_INFO("res32u=%d\n",res32u);
+           } */
+        //PM_INFO(".");
+        prev_increment=myGUS.increment;
+        myGUS.increment+=myGUS.sample_step;    // Adjust the DMA buffer to the Output frequency 
+        myGUS.readsample = (myGUS.increment<=prev_increment) ? true : false;
+
+        buff[sn]   += (int16_t) res32u;
+        buff[sn+1] += (int16_t) (res32u>>16);
+      }
+
+      myGUS.prev_sample32=res32u;  // Save the last Sample for the next time
+ // PM_INFO("gus_updatebuffer End\n");
+}
+#else
+
+#define GUS_MIX_SIZE 64
+
+int16_t gus_mix_buffer[GUS_MIX_SIZE*2]; // 64 samples stereo mix buffer
+int16_t gus_buffer_pos=0;
+
+_force_inline gus_get_sample(int16_t* sample_l, int16_t* sample_r)
+{
+    if (gus_buffer_pos==GUS_MIX_SIZE)
+    {
+      PM_GUS_GetBuffer(GUS_MIX_SIZE,(int16_t*) &gus_mix_buffer);
+      gus_buffer_pos=0;
+    }
+    *sample_l=gus_mix_buffer[gus_buffer_pos*2];
+    *sample_r=gus_mix_buffer[gus_buffer_pos*2+1];
+    gus_buffer_pos++;
+}
+
+// return an audio buffer by rendering GUS samples
+void gus_updatebuffer(int16_t* buff,uint32_t samples)
+{
+  int16_t  res16l,res16r;
+  uint16_t prev_increment;
+  res32u=myGUS.prev_sample32;
+
+  if (!((GUS_reset_reg & 0x01/*!master reset*/) == 0x01 && (GUS_reset_reg & 0x02/*DAC enable*/) == 0x02))
+     return;
+
+ // PM_INFO("gus_updatebuffer\n");
+  for (uint32_t sn=0;sn<samples*2;sn+=2)  // Stereo, so 2x more data than "samples"
+      {
+       // PM_INFO("s%d ",sn);
+       DebugCntr++;
+       if (myGUS.readsample) 
+             if (!PM_GUS_CallBack((int16_t*) &res32u))
+              {
+                 myGUS.prev_sample32=0;  // If the FIFO is empty, return silence
+                return;
+              }
+        prev_increment=myGUS.increment;
+        myGUS.increment+=myGUS.sample_step;    // Adjust the DMA buffer to the Output frequency 
+        myGUS.readsample = (myGUS.increment<=prev_increment) ? true : false;
+
+        buff[sn]   += (int16_t) res32u;
+        buff[sn+1] += (int16_t) (res32u>>16);
+      }
+
+      myGUS.prev_sample32=res32u;  // Save the last Sample for the next time
+ // PM_INFO("gus_updatebuffer End\n");
+}
+
+
+#endif

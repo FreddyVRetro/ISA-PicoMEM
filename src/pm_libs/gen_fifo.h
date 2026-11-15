@@ -1,5 +1,5 @@
 /**
- * audio_fifo.h - Shared header for audio producer and consumer
+ * gen _fifo.h
  *
  * Implements a thread-safe FIFO for audio data between cores on RP2040
  */

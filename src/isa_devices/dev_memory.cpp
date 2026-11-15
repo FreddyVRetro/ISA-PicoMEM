@@ -28,16 +28,9 @@ If not, see <https://www.gnu.org/licenses/>.
 #include "dev_picomem_io.h"
 #include "pm_board.h"       // PicoMEM Board Definitions (GPIO, PSRAM...)
 
-#if USE_RP2350_PSRAM  // Use the RP2350 internal PSRAM
-uint32_t EMS_PCBaseAddress;   // 0xD0000 or 0XE0000 (For QSPI PSRAM EMS)
-#endif
-
-
 volatile uint16_t PM_BIOSADDRESS=0;
 
-// Lotech like EMS Regs
-uint8_t  EMS_Bank[4]={0,1,2,3};
-uint32_t EMS_Base[4]={0,1*16*1024,2*16*1024,3*16*1024};
+uint8_t rom_nb=0;  // Number of ROM loaded
 
 // Debug
 void display_memmap()
@@ -86,15 +79,15 @@ switch(MEM_Type)
                 if (BV_TdyRAM==0)   // IF Tandy RAM <>0 PMRAM is already used
                  for (int i=0;i<64;i++)  
                    { 
-                    if ((BV_Tandy!=0)&&(i<0x0A*4)) continue;  
+                    if ((BV_PC_Model!=0)&&(i<0x0A*4)) continue;  
                     uint32_t MEM_Addr=i<<14;  // Shift 14 for 16Kb Block         
                     if (PM_Config->MEM_Map[i]==MEM_RAM)
                        {
                         if (RAM_InitialAddress==0) 
                            {
-                            RAM_InitialAddress=i<<14;  // Skip conv memory add if Tandy (Done by BIOS)
+                            RAM_InitialAddress=i<<14;
                             RAM_Offset_Table[mem_index]=&PM_Memory[-RAM_InitialAddress];
-                            PM_INFO("RAM_Offset_Table[mem_index] %x",RAM_Offset_Table[mem_index]);                             
+                            PM_INFO("RAM_Offset_Table[mem_index] %x\n",RAM_Offset_Table[mem_index]);                             
                             InitialIndex=i;
                            }
                         if ((i-InitialIndex)<MAX_PMRAM)
@@ -115,14 +108,16 @@ switch(MEM_Type)
 #endif
                for (int i=0;i<64;i++)
                         { 
-                        if ((BV_Tandy!=0)&&(i<0x0A*4)) continue;  // Skip conv memory add if Tandy (Done by BIOS)
+                        if ((BV_PC_Model!=0)&&(i<0x0A*4)) continue;  // Skip conv memory add if Tandy (Done by BIOS)
                         uint32_t MEM_Addr=i<<14;  // Shift 14 for 16Kb Block         
                         if ((PM_Config->MEM_Map[i]==MEM_PSRAM)) 
                          {
                           SetMEMType(MEM_Addr,MEM_PSRAM,MEM_S_16k);   // Define a 16Kb RAM Block Type
-                          SetMEMIndex(MEM_Addr,MEM_PSRAM,MEM_S_16k);  // Define a 16Kb RAM Block Index   
+                          SetMEMIndex(MEM_Addr,MEM_PSRAM,MEM_S_16k);  // Define a 16Kb RAM Block Index
+#if !USE_RP2350_PSRAM   // Define also the memory Address for this Index                          
                           BV_SPIPSRAM=1;                              // Tell that SPI PSRAM is used
                           BV_Int13hCLI=1;                             // Block interrupt during Int13h
+#endif                          
                          }
                         }
                break;
@@ -138,31 +133,10 @@ void dev_memory_install_all()
 {
 
   PM_INFO("PC RAM: %dKb\n",PC_MEM+256*PC_MEM_H);
-/*
-    PM_INFO("Mem Type: ");
-    for (int i=0;i<MEM_T_Size;i++)
-        { if (i==10*8) PM_INFO("- "); 
-          PM_INFO("%d ",GetMEMType(i*8*1024));
-        }
-
-    PM_INFO("Mem Index: ");
-    for (int i=0;i<MEM_T_Size;i++)
-        { if (i==10*8) PM_INFO("- "); 
-          PM_INFO("%d ",GetMEMIndex(i*8*1024));
-        }
-*/
-    // 1- Remove all emulated RAM
-
+  // 1- Remove all emulated RAM
   dev_memory_remove_ram();
-/* 
-    PM_INFO("\nAfter Clean: ");
-    for (int i=0;i<MEM_T_Size;i++)
-        { if (i==10*8) PM_INFO("- "); 
-          PM_INFO("%d ",GetMEMType(i*8*1024));
-        }
-    PM_INFO("\n");
-*/
-    // 2- Initialize the EMS Port and RAM
+
+  // 2- Initialize the EMS Port and RAM
 
   DelPortType(DEV_LTEMS);
   dev_ems_install(EMS_Port_List[PM_Config->EMS_Port]<<3,EMS_Addr_List[PM_Config->EMS_Addr]<<14);
@@ -170,66 +144,41 @@ void dev_memory_install_all()
     // 3- Configure the RAM and PSRAM
   dev_memory_install(MEM_RAM,0);
   dev_memory_install(MEM_DISK,0);
-//#if USE_SPI_PSRAM
   dev_memory_install(MEM_PSRAM,0);
-//#endif
 
+#if PM_PRINTF
   PM_INFO("Mem Type: ");
   for (int i=0;i<MEM_T_Size;i++)
         { if (i==10*8) PM_INFO("- "); 
           PM_INFO("%d ",MEM_Type_T[i]);
         }  
+#endif
 
-  PM_INFO ("\n!! BV_SPIPSRAM=%d\n",BV_SPIPSRAM);
+  PM_INFO ("\n   !! BV_SPIPSRAM=%d\n",BV_SPIPSRAM);
 }
 
-bool dev_ems_install(uint16_t port, uint32_t base_addr)
+bool dev_rom_add(uint32_t address, uint8_t size_kb, uint8_t *data)
 {
-#if USE_RP2350_PSRAM
-  if (port!=0)
-      {
-        PM_INFO("dev_ems_install (RP2350 PSRAM): EMS Port:%d",PM_Config->EMS_Port,port);
+  uint32_t final_address=address<<4;
+  if (rom_nb>=MAX_ROM) return false;  // Max number of ROM loaded
+  if (GetMEMType(final_address)!=MEM_NULL) return false;        // Address already in use
+  if (address<0xC000) return false;  // ROM Address must be >= 0xC000
+  if (size_kb>32) return false;      // ROM Size must be <= 32Kb
+  if (size_kb==0) return false;      // ROM Size must be > 0Kb
+  if (size_kb<4) size_kb=4;          // Minimum size is 4Kb
+  rom_nb++;
 
-        SetPortType(port,DEV_LTEMS,1); // Set the EMS device IO Port
-        EMS_PCBaseAddress=base_addr;
+  PM_INFO("dev_rom_add: %dKb @%x\n",size_kb,address);
 
-        // Set the EMS @ decoding
-        SetMEMType (base_addr          ,MEM_EMS,MEM_S_16k*4);    //64Kb (16Kx4) Memory Type
+//  return true;
 
-        SetMEMIndex(base_addr          ,MEM_I_EMS0,MEM_S_16k);   //16Kb Index (for the Offset table)
-        SetMEMIndex(base_addr+16*1024  ,MEM_I_EMS1,MEM_S_16k);   //16Kb
-        SetMEMIndex(base_addr+2*16*1024,MEM_I_EMS2,MEM_S_16k);   //16Kb
-        SetMEMIndex(base_addr+3*16*1024,MEM_I_EMS3,MEM_S_16k);   //16Kb
+  RAM_Offset_Table[MEM_ROM+rom_nb-1]=(uint8_t *) (data-final_address);  // Define the ROM Offset Table
+  SetMEMType(final_address,MEM_ROM+rom_nb-1,size_kb/4);        // Define a ROM Block Type
+  SetMEMIndex(final_address,MEM_ROM+rom_nb-1,size_kb/4);       // Define a ROM Block Index
 
-        RAM_Offset_Table[MEM_I_EMS0]=(uint8_t *) (PSRAM_EMS_START-base_addr);
-        RAM_Offset_Table[MEM_I_EMS1]=(uint8_t *) (PSRAM_EMS_START-base_addr);
-        RAM_Offset_Table[MEM_I_EMS2]=(uint8_t *) (PSRAM_EMS_START-base_addr);
-        RAM_Offset_Table[MEM_I_EMS3]=(uint8_t *) (PSRAM_EMS_START-base_addr);
+  display_memindex();
 
-        EMS_Bank[0]=EMS_Bank[1]=EMS_Bank[2]=EMS_Bank[3]=0;
-        PM_INFO(" @:%x RAM_Offset %x\n",base_addr,RAM_Offset_Table[MEM_I_EMS0]);
-      } else return false;
-#else 
-#if USE_SPI_PSRAM
-  if (port!=0)
-      { 
-        PM_INFO("dev_ems_install (SPI PSRAM): EMS Port:%d",PM_Config->EMS_Port,port);
-         
-        SetPortType(port,DEV_LTEMS,1); // Set the EMS device IO Port
-        // Set the EMS @ decoding
-        SetMEMType(base_addr,MEM_EMS,MEM_S_16k*4);     //64Kb (126Kx4)
-        SetMEMIndex(base_addr,MEM_EMS,MEM_S_16k*4);    //64Kb (126Kx4)         
-
-        PM_INFO(" @:%x\n",base_addr);
-
-        PM_INFO("Set BV_SPIPSRAM \n");
-        BV_SPIPSRAM=1;                // Tell that SPI PSRAM is used
-        BV_Int13hCLI=1;               // Block interrupt during Int13h
-      } else return false;
-#endif
-
-#endif
-return true;
+  return true;
 }
 
 // Remove all the Emulated RAM (PSRAM, RAM, EMS)
@@ -241,7 +190,7 @@ void dev_memory_remove_ram()
   do
  {
 //  PM_INFO("@%x, ",Addr);
-  if ((BV_Tandy!=0)&&(Addr<640*1024)) 
+  if ((BV_PC_Model!=0)&&(Addr<640*1024)) 
     { 
 //      PM_INFO("Sk ");
       Addr+=4096;
@@ -264,7 +213,7 @@ void dev_memorytype_remove(uint8_t type)  // Used only for BIOS and disk for the
 {
  for (int i=0;i<MEM_T_Size;i++)
      { 
-//       if ((BV_Tandy!=0)&&(i<10*8)) continue;  // Skiv Conv memory emulation removal if Tandy (8k block)
+//       if ((BV_PC_Model!=0)&&(i<10*8)) continue;  // Skiv Conv memory emulation removal if Tandy (8k block)
        if (MEM_Type_T[i]==type)
            {
              MEM_Index_T[i]=MEM_I_NULL;
@@ -273,26 +222,3 @@ void dev_memorytype_remove(uint8_t type)  // Used only for BIOS and disk for the
       }
 }
 
-bool dev_ems_ior(uint32_t CTRL_AL8,uint8_t *Data )
-{
-
-*Data=EMS_Bank[(uint8_t) CTRL_AL8 & 0x03];  // Read the Bank Register
-
-return true;
-}
-
-void dev_ems_iow(uint32_t CTRL_AL8,uint8_t Data)
-{
- if ((CTRL_AL8 & 0x07)<4)
-  {
-#if USE_RP2350_PSRAM
-   uint8_t bank=CTRL_AL8 & 0x03;
-   EMS_Bank[(uint8_t) CTRL_AL8 & 0x03]=Data;   // Write the Bank Register
-   RAM_Offset_Table[MEM_I_EMS0+bank]=(uint8_t *) (PSRAM_EMS_START-EMS_PCBaseAddress+(Data-bank)*16*1024);  // Address is EMS Start + Parameter*16KB
-//   printf("B %d Addr %x\n",bank,RAM_Offset_Table[MEM_I_EMS0+bank]);
-#else
-   EMS_Bank[(uint8_t) CTRL_AL8 & 0x03]=Data;   // Write the Bank Register
-   EMS_Base[(uint8_t) CTRL_AL8 & 0x03]=((uint32_t) Data*16*1024)+1024*1024; // EMS Bank base Address : 1Mb + Bank number *16Kb (in SPI RAM)
-#endif
-  }
-}

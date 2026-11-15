@@ -100,7 +100,6 @@ __force_inline extern void isa_dma_stop_write() {
     pio_sm_exec(DMA_PIO, DMA_SM, pio_encode_jmp(isa_dma_w_offset));
 }
 
-
 // Get one byte from the DMA buffer
 __force_inline int8_t isa_dma_buffer_get()
 {

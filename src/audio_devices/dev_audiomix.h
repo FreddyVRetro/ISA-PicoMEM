@@ -16,6 +16,7 @@ extern "C" {
 #define AD_MPU   64
 #define AD_GUS   128
 #define AD_PS1   256
+#define AD_CD    512
 
 typedef struct dev_audiomix {
    volatile bool enabled;
@@ -53,10 +54,16 @@ __force_inline void dev_audiomix_resume()
 
 }
 
-void pm_audio_domix();
+void pm_audio_domix(bool UseSD);  // Insert Audio Mix during the wait time
 void dev_audiomix_start();
 void dev_audiomix_stop();
 bool dev_audiomix_isactive();
+void dev_audiomix_diag();    /* periodic [AUDIODIAG] print — call from main loop only */
+
+/* Master output volume applied to the final mixed buffer. Q8 gain: 256 = unity,
+ * 0 = mute. Set live from the screenpad rotary (0..100%) via the setter. */
+extern volatile uint16_t dev_audiomix_master_gain;
+void dev_audiomix_set_master_vol(uint8_t percent);   /* 0..100 -> gain, applied live */
 
 #ifdef __cplusplus
 }

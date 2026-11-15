@@ -24,6 +24,7 @@
 #include <cmath>
 
 #include "dosbox-x-compat.h"
+#include "gus_dma_dbg.h"  // gus_dma_dbg (DMA-chain instrumentation)
 
 #include "hardware/gpio.h"
 #ifdef PSRAM
@@ -38,12 +39,56 @@ extern psram_spi_inst_t psram_spi;
 #include "pico/critical_section.h"
 critical_section_t gus_crit;
 
+// ---------------------------------------------------------------------------
+// Step 1 -- BUS-STALL FIX (WonderMCA Core 0 / Core 1 split).
+//
+// On WM10 the GUS register reads/writes are dispatched INLINE on Core 1, the
+// tight MCA bus handler (wm_mca_rp2350_v10.h, DEV_SBDSP case -> dev_gus_iow/ior
+// -> write_gus/read_gus). The PicoGUS v4.1.1 concurrency port added
+// critical_section_enter_blocking(&gus_crit) to those paths. Whenever Core 0's
+// renderer held gus_crit (WaveUpdate/RampUpdate/CheckVoiceIrq), Core 1 BLOCKED
+// mid-MCA-cycle waiting for the lock -> the guest's register write missed the
+// bus timing window and was lost/corrupted. Under PLAYMIDI's dense register
+// traffic this collided constantly -> pure noise ("completely not working").
+// A streamed 8-bit MOD barely touches registers, so it stayed clean -- which is
+// exactly how we localized this.
+//
+// Core 1 must NEVER block. All GUS_LOCK()/GUS_UNLOCK() below expand to nothing
+// (revert to the original non-blocking behavior). The DMA byte capture already
+// proved the sample-upload path is byte-perfect, so the noise was the bus stall,
+// not the data. Any residual IRQ-flag race (WaveIRQ/RampIRQ/IRQStatus are
+// bitmasks touched by both cores) is handled lock-free with __atomic bit-ops in
+// step 2 IF it manifests as stuck/dropped notes -- a different symptom from
+// noise. Keeping named no-op macros (rather than deleting call sites, or
+// #undef-ing the SDK function TU-wide) makes step 2 a one-line macro swap and
+// avoids clobbering any other critical section used via included inlines.
+#define GUS_LOCK()   ((void)0)
+#define GUS_UNLOCK() ((void)0)
+// ---------------------------------------------------------------------------
+
 #include "../../pm_gvars.h"
 #include "dev_memory.h"  // For PSRAM_GUS_START
 #include "pm_audio.h"    // For PM_AUDIO_FREQUENCY
 #include "pico_pic.h"
+#if BOARD_WM10
+// On WonderMCA the DMA controller lives in the PS/2 chassis, reached over
+// the MCA bus via the CPLD + slave-mode handler. wm_dma.h exports the same
+// signatures as isa_dma.h: wm_dma_start_write() asserts PIN_R_DMA_REQ, the
+// CPLD arbitrates the transfer, the bus handler captures the byte, and the
+// registered completion ISR is fired. Remap the GUS ISA-DMA calls onto it,
+// mirroring the SBDSP path (see sbdsp.cpp). Both share the single wm_dma
+// engine; they are mutually exclusive so there is no contention.
+#include "wm_dma.h"
+#define isa_dma_install        wm_dma_install
+#define isa_dma_set_isr        wm_dma_set_isr
+#define isa_dma_start_write    wm_dma_start_write
+#define isa_dma_stop_write     wm_dma_stop_write
+#define isa_dma_complete_write wm_dma_complete_write
+#else
 #include "isa_dma.h"
+#endif
 #include "bus_irq.h"
+#include "isa_irq.h"
 
 //#include "system/pico_pic.h"
 //#include "isa/isa_dma.h"
@@ -166,6 +211,7 @@ static uint16_t dma_block_size = 0;  // Added for PicoMEM 1.5 (No TC)
 
 class GUSChannels;
 static void CheckVoiceIrq(void);
+static void CheckVoiceIrq_unlocked(void);   // PicoGUS v4.1.1: caller holds gus_crit
 
 struct GFGus {
     uint8_t gRegSelectData;     // what is read back from 3X3. not necessarily the index selected, but
@@ -377,14 +423,20 @@ class GUSChannels {
             }
         }
         __force_inline void WriteWaveCtrl(uint8_t val) {
+            // PicoGUS v4.1.1: hold gus_crit across the WHOLE register update +
+            // voice-IRQ check so it is atomic vs the Core-0 render. Without this
+            // the WaveCtrl/WaveIRQ update raced the renderer -> corrupted voice
+            // state during playmidi's rapid note on/off (the long-lived GUS bug).
+            GUS_LOCK();
             uint32_t oldirq=myGUS.WaveIRQ;
             WaveCtrl = val & 0x7f;
 
             if ((val & 0xa0)==0xa0) myGUS.WaveIRQ|=irqmask;
             else myGUS.WaveIRQ&=~irqmask;
 
-            if (oldirq != myGUS.WaveIRQ) 
-                CheckVoiceIrq();
+            if (oldirq != myGUS.WaveIRQ)
+                CheckVoiceIrq_unlocked();
+            GUS_UNLOCK();
         }
         INLINE uint8_t ReadWaveCtrl(void) {
             uint8_t ret=WaveCtrl;
@@ -405,6 +457,7 @@ class GUSChannels {
             return PanPot;
         }
         __force_inline void WriteRampCtrl(uint8_t val) {
+            GUS_LOCK();   // PicoGUS v4.1.1 (see WriteWaveCtrl)
             uint32_t old=myGUS.RampIRQ;
             RampCtrl = val & 0x7f;
             //Manually set the irq
@@ -413,7 +466,8 @@ class GUSChannels {
             else
                 myGUS.RampIRQ &= ~irqmask;
             if (old != myGUS.RampIRQ)
-                CheckVoiceIrq();
+                CheckVoiceIrq_unlocked();
+            GUS_UNLOCK();
         }
         INLINE uint8_t ReadRampCtrl(void) {
             uint8_t ret=RampCtrl;
@@ -467,9 +521,9 @@ class GUSChannels {
 
                 if (endcondition) {
                     if (WaveCtrl & WCTRL_IRQENABLED) /* generate an IRQ if requested */ {
-                        critical_section_enter_blocking(&gus_crit);
+                        GUS_LOCK();
                         myGUS.WaveIRQ |= irqmask;
-                        critical_section_exit(&gus_crit);
+                        GUS_UNLOCK();
                     }
 
                     if ((RampCtrl & WCTRL_16BIT/*roll over*/) && !(WaveCtrl & WCTRL_LOOP)) {
@@ -508,9 +562,9 @@ class GUSChannels {
                     endcondition = (WaveAddr >= WaveEnd)?true:false;
 
                 if (endcondition) {
-                    critical_section_enter_blocking(&gus_crit);
+                    GUS_LOCK();
                     myGUS.WaveIRQ |= irqmask;
-                    critical_section_exit(&gus_crit);
+                    GUS_UNLOCK();
                 }
             }
         }
@@ -542,9 +596,9 @@ class GUSChannels {
             }
             /* Generate an IRQ if needed */
             if (RampCtrl & 0x20) {
-                critical_section_enter_blocking(&gus_crit);
+                GUS_LOCK();
                 myGUS.RampIRQ|=irqmask;
-                critical_section_exit(&gus_crit);
+                GUS_UNLOCK();
             }
             /* Check for looping */
             if (RampCtrl & 0x08) {
@@ -560,7 +614,7 @@ class GUSChannels {
             UpdateVolumes();
         }
 
-        __force_inline void generateSample(int32_t* stream) {
+        __force_inline void generateSample(int64_t* stream) {   // int64 accum: no overflow on polyphony
             int32_t tmpsamp;
 
             /* NTS: The GUS is *always* rendering the audio sample at the current position,
@@ -882,7 +936,15 @@ static INLINE void GUS_CheckIRQ(void) {
              * don't service all events, then you don't get another interrupt. */
                 //PIC_ActivateIRQ();
             //    PM_INFO("GIR ");
+#if BOARD_WM10
+                // Force=true: match the proven SB MCA IRQ path -- briefly drop
+                // the line for a clean edge so the 8259 can't miss the assert if
+                // the previous IRQ wasn't fully lowered. GUS used false, which
+                // could silently drop the DMA-TC IRQ (PLAYMIDI stuck at 0%).
+                bus_irq_raise(IRQ_R_AUDIO,myGUS.irq,true);
+#else
                 bus_irq_raise(IRQ_R_AUDIO,myGUS.irq,false);
+#endif
 
         } else if (gus_prev_effective_irqstat != 0) {
             //PIC_DeActivateIRQ();
@@ -894,12 +956,11 @@ static INLINE void GUS_CheckIRQ(void) {
     }
 }
 
-__force_inline static void CheckVoiceIrq(void) {
-    critical_section_enter_blocking(&gus_crit);
+// PicoGUS v4.1.1: inner version -- caller MUST already hold gus_crit.
+__force_inline static void CheckVoiceIrq_unlocked(void) {
     Bitu totalmask=(myGUS.RampIRQ|myGUS.WaveIRQ) & myGUS.ActiveMask;
     if (!totalmask) {
         GUS_CheckIRQ();
-        critical_section_exit(&gus_crit);
         return;
     }
 
@@ -916,7 +977,12 @@ __force_inline static void CheckVoiceIrq(void) {
         myGUS.IRQChan++;
         if (myGUS.IRQChan>=myGUS.ActiveChannels) myGUS.IRQChan=0;
     }
-    critical_section_exit(&gus_crit);
+}
+
+__force_inline static void CheckVoiceIrq(void) {
+    GUS_LOCK();
+    CheckVoiceIrq_unlocked();
+    GUS_UNLOCK();
 }
 
 uint32_t CheckVoiceIrq_async(Bitu val) {
@@ -932,13 +998,14 @@ __force_inline static uint16_t ExecuteReadRegister(void) {
         // NTS: The GUS SDK documents the active channel count as bits 5-0, which is wrong. it's bits 4-0. bits 7-5 are always 1 on real hardware.
         return ((uint16_t)(0xE0 | (myGUS.ActiveChannels - 1))) << 8;
     case 0x41: // Dma control register - read acknowledges DMA IRQ
-        critical_section_enter_blocking(&gus_crit);
+        gus_dma_dbg.reg41_rd++;   // driver acking the DMA-TC IRQ via reg 0x41
+        GUS_LOCK();
         tmpreg = myGUS.DMAControl & 0xbf;
         tmpreg |= (myGUS.DMAControl & 0x100) >> 2; /* Bit 6 on read is the DMA terminal count IRQ status */
         myGUS.DMAControl&=0xff; /* clear TC IRQ status */
         myGUS.IRQStatus&=0x7f;
         GUS_CheckIRQ();
-        critical_section_exit(&gus_crit);
+        GUS_UNLOCK();
         return (uint16_t)(tmpreg << 8);
     case 0x42:  // Dma address register
         return myGUS.dmaAddr >> 0x4u;
@@ -993,6 +1060,7 @@ __force_inline static uint16_t ExecuteReadRegister(void) {
         if (curchan) return curchan->ReadRampCtrl() << 8;
         else return 0x0300;
     case 0x8f: // General channel IRQ status register
+        GUS_LOCK();   // PicoGUS v4.1.1: atomic clear + recheck
         tmpreg=myGUS.IRQChan|0x20;
         uint32_t mask;
         mask=1u << myGUS.IRQChan;
@@ -1003,7 +1071,8 @@ __force_inline static uint16_t ExecuteReadRegister(void) {
         myGUS.IRQStatus&=0x9f;
         // mega hack
         // PIC_DeActivateIRQ();
-        CheckVoiceIrq();
+        CheckVoiceIrq_unlocked();
+        GUS_UNLOCK();
         // PIC_AddEvent(CheckVoiceIrq_async, 2, 3);
         return (uint16_t)(tmpreg << 8);
     default:
@@ -1016,18 +1085,18 @@ __force_inline static uint16_t ExecuteReadRegister(void) {
 
 static uint32_t __not_in_flash_func(GUS_TimerEventHandler)(Bitu val) {
     // putchar('-');
-    critical_section_enter_blocking(&gus_crit);
+    GUS_LOCK();
     if (!myGUS.timers[val].masked) myGUS.timers[val].reached=true;
     if (myGUS.timers[val].raiseirq) {
         myGUS.IRQStatus|=0x4 << val;
         GUS_CheckIRQ();
     }
     if (myGUS.timers[val].running) {
-        critical_section_exit(&gus_crit);
+        GUS_UNLOCK();
         // putchar('.');
         return myGUS.timers[val].delay;  // Keep timer running
     }
-    critical_section_exit(&gus_crit);
+    GUS_UNLOCK();
     // putchar('.');
     return 0;  // Stop timer
 }
@@ -1184,12 +1253,12 @@ __force_inline static void ExecuteGlobRegister(void) {
         break;
     case 0x41:  // Dma control register
        // PM_INFO("GUS DMA Control register write %x", myGUS.gRegData);
-        critical_section_enter_blocking(&gus_crit);
+        GUS_LOCK();
         myGUS.DMAControl &= ~0xFFu; // FIXME: Does writing DMA Control clear the DMA TC IRQ?
         myGUS.DMAControl |= (uint8_t)(myGUS.gRegData>>8);
         if (myGUS.DMAControl & 1) GUS_StartDMA();
         else GUS_StopDMA();
-        critical_section_exit(&gus_crit);
+        GUS_UNLOCK();
         break;
     case 0x42:  // Gravis DRAM DMA address register
         myGUS.dmaAddr = myGUS.gRegData << 0x4u;
@@ -1201,7 +1270,7 @@ __force_inline static void ExecuteGlobRegister(void) {
         myGUS.gDramAddr = (0xffff & myGUS.gDramAddr) | ((uint32_t)myGUS.gRegData>>8) << 16;
         break;
     case 0x45:  // Timer control register.  Identical in operation to Adlib's timer (Enable Timer 1/2 IRQ)
-        critical_section_enter_blocking(&gus_crit);
+        GUS_LOCK();
         myGUS.TimerControl = (uint8_t)(myGUS.gRegData>>8);
         myGUS.timers[0].raiseirq=(myGUS.TimerControl & 0x04)>0;
         if (!myGUS.timers[0].raiseirq) myGUS.IRQStatus&=~0x04;
@@ -1210,7 +1279,7 @@ __force_inline static void ExecuteGlobRegister(void) {
         // Always re-evaluate IRQ line: flipping either TimerControl bit changes
         // the effective status even when raiseirq is still set on the other timer
         GUS_CheckIRQ();
-        critical_section_exit(&gus_crit);
+        GUS_UNLOCK();
         break;
     case 0x46:  // Timer 1 control
         myGUS.timers[0].value = (uint8_t)(myGUS.gRegData>>8);
@@ -1287,7 +1356,11 @@ uint8_t __not_in_flash_func(read_gus)(Bitu port) {
 
         /* NTS: Contrary to some false impressions, GUS hardware does not report "one at a time", it really is a bitmask.
          *      I had the funny idea you read this register "one at a time" just like reading the IRQ reason bits of the RS-232 port --J.C. */
-        return GUS_EffectiveIRQStatus();
+        gus_dma_dbg.irqstat_rd++;   // guest read of 2X6 IRQ status (proves the ISR / poll ran)
+        { uint8_t eff = GUS_EffectiveIRQStatus();
+          gus_dma_dbg.eff_irq     = eff;             // which bits the poll sees stuck
+          gus_dma_dbg.raw_irqstat = myGUS.IRQStatus;
+          return eff; }
     case 0x8:
         uint8_t tmptime;
         tmptime = 0;
@@ -1357,12 +1430,12 @@ void __not_in_flash_func(write_gus)(Bitu port, Bitu val) {
         break;
     case 0x9:
 //TODO adlib_commandreg should be 4 for this to work else it should just latch the value
-        critical_section_enter_blocking(&gus_crit);
+        GUS_LOCK();
         if (val & 0x80) {
             myGUS.timers[0].reached=false;
             myGUS.timers[1].reached=false;
             GUS_CheckIRQ();
-            critical_section_exit(&gus_crit);
+            GUS_UNLOCK();
             // return;
             break;
         }
@@ -1380,7 +1453,7 @@ void __not_in_flash_func(write_gus)(Bitu port, Bitu val) {
                 myGUS.timers[1].running=true;
             }
         } else myGUS.timers[1].running=false;
-        critical_section_exit(&gus_crit);
+        GUS_UNLOCK();
         break;
     case 0x102:
         myGUS.gCurChannel = val & 31;
@@ -1456,7 +1529,8 @@ uint32_t __not_in_flash_func(GUS_DMA_EventHandler)(Bitu val) {
         }
     }
     myGUS.invertMsb = invert_msb;
-    
+
+    gus_dma_dbg.events++;
     isa_dma_start_write();
 //    DMA_Start_Write(&dma_config);
     return 0;
@@ -1467,6 +1541,7 @@ static PIC_TimerEvent GUS_DMA_Event = {
 
 void __not_in_flash_func(GUS_DMA_isr()) {
     myGUS.dmaWaiting = false;
+    gus_dma_dbg.isr_calls++;
     // Pull data from PIO even if we have to throw it away, because otherwise it will be stalled
 //    const uint32_t dma_data = DMA_Complete_Write(&dma_config);
     const uint32_t dma_data = isa_dma_complete_write();
@@ -1497,6 +1572,18 @@ void __not_in_flash_func(GUS_DMA_isr()) {
 #else
     GUSRam[myGUS.dmaAddr] = myGUS.invertMsb ? dma_data8 ^ 0x80 : dma_data8;
 #endif
+    gus_dma_dbg.bytes++;
+    gus_dma_dbg.last_addr = myGUS.dmaAddr;
+
+    // Capture the first GUS_DMA_CAP_N bytes for the Core-0 hex dump (raw from
+    // CDMA + as stored after MSB-invert) to inspect 16-bit sample integrity.
+    { uint32_t ci = gus_dma_dbg.cap_n;
+      if (ci < GUS_DMA_CAP_N) {
+          if (ci == 0) { gus_dma_dbg.cap_addr0 = myGUS.dmaAddr; gus_dma_dbg.cap_ctrl = (uint8_t)myGUS.DMAControl; }
+          gus_dma_dbg.cap_raw[ci] = dma_data8;
+          gus_dma_dbg.cap[ci]     = myGUS.invertMsb ? dma_data8 ^ 0x80 : dma_data8;
+          gus_dma_dbg.cap_n       = ci + 1;
+      } }
 
     // uart_print_hex_u32(dma_data);
     if (dma_data & 0x100u) { // if TC
@@ -1507,13 +1594,16 @@ void __not_in_flash_func(GUS_DMA_isr()) {
             psram_write32_async(&psram_spi, myGUS.dmaAddr - dmaOffset, dma_data_union.data32);
         }
 #endif
-        critical_section_enter_blocking(&gus_crit);
+        gus_dma_dbg.tc++;
+        gus_dma_dbg.irq++;
+        gus_dma_dbg.irq_num = myGUS.irq;
+        GUS_LOCK();
         /* Raise the TC irq, and stop DMA */
         myGUS.DMAControl |= 0x100u; /* NTS: DOSBox SVN approach: Use bit 8 for DMA TC IRQ */
         myGUS.IRQStatus |= 0x80;
         GUS_StopDMA();
         GUS_CheckIRQ();
-        critical_section_exit(&gus_crit);
+        GUS_UNLOCK();
     } else {
         ++myGUS.dmaAddr;
         /* keep going */
@@ -1557,12 +1647,23 @@ void __force_inline process_dma(void) {
 #endif
 
 
+gus_dma_dbg_t gus_dma_dbg = {0};
+
 __force_inline void GUS_StartDMA() {
     if (GUS_DMA_Active) {
         // DMA already started
         return;
     }
     GUS_DMA_Active = true;
+#if BOARD_WM10
+    // Re-arm the wm_dma engine: clear the /TC latch left by the PREVIOUS
+    // transfer, else wm_dma_start_write() no-ops and this transfer never
+    // asserts REQ (SBDSP clears it in sbdsp_dma_enable; GUS must do it here).
+    wm_dma_arm();
+#endif
+    gus_dma_dbg.starts++;
+    gus_dma_dbg.last_ctrl  = (uint8_t)myGUS.DMAControl;
+    gus_dma_dbg.start_addr = myGUS.dmaAddr;
 //    DEBUG_LOG_MSG("GUS: Starting DMA transfer interval");
 
     // uart_print_hex_u32((myGUS.DMAControl >> 3u) & 3u);
@@ -1602,7 +1703,11 @@ __force_inline void GUS_StartDMA() {
 }
 
 extern uint32_t __not_in_flash_func(PM_GUS_CallBack)(int16_t* play_buffer) {
-  static int32_t accum[2];
+  // 64-bit accumulator: each voice contributes up to +-2.68e8 (32767 sample x
+  // 8192 vol), so a polyphonic MIDI chord of >=8 loud voices overflows a 32-bit
+  // sum -> wraparound -> heavy distortion. int64 removes that entirely; the
+  // /GUS_OUT_DIV divisor + clamp16 set the final level.
+  static int64_t accum[2];
 
   if ((GUS_reset_reg & 0x01/*!master reset*/) == 0x01 && (GUS_reset_reg & 0x02/*DAC enable*/) == 0x02) {
          accum[0] = accum[1] = 0;
@@ -1611,8 +1716,16 @@ extern uint32_t __not_in_flash_func(PM_GUS_CallBack)(int16_t* play_buffer) {
                 guschan[c]->generateSample(accum);
             }
 
-         play_buffer[0] = clamp16(accum[0]/8000);
-         play_buffer[1] = clamp16(accum[1]/8000);
+         // Output scaling. One voice at full sample (32767) * full vol16bit
+         // (8192) = 2.68e8, so /8000 already clips a SINGLE loud voice, and
+         // many voices summed clip hard (the reference scaled VolLeft down by
+         // the GUS master volume, which this fork dropped). Bigger divisor =
+         // more mixing headroom (quieter, cleaner). Tune GUS_OUT_DIV by ear.
+#ifndef GUS_OUT_DIV
+#define GUS_OUT_DIV 8000
+#endif
+         play_buffer[0] = clamp16((int32_t)(accum[0]/GUS_OUT_DIV));
+         play_buffer[1] = clamp16((int32_t)(accum[1]/GUS_OUT_DIV));
         CheckVoiceIrq();
         return 1;
     }
@@ -1621,9 +1734,9 @@ extern uint32_t __not_in_flash_func(PM_GUS_CallBack)(int16_t* play_buffer) {
 
 //extern uint32_t __scratch_x("my_sub_section") (GUS_CallBack)(Bitu max_len, int16_t* play_buffer) {  // did not compile/link multifw with this.. scratch?? check.
 extern uint32_t GUS_CallBack(Bitu max_len, int16_t* play_buffer) {
-    static int32_t accum[2];
+    static int64_t accum[2];   // int64 accum: no overflow on polyphony
 #ifdef SCALE_22K_TO_44K
-    static int32_t prev_accum[2];
+    static int64_t prev_accum[2];
 #endif
     uint32_t s = 0;
 
@@ -1637,13 +1750,13 @@ extern uint32_t GUS_CallBack(Bitu max_len, int16_t* play_buffer) {
             }
 #ifdef SCALE_22K_TO_44K
             if (!myGUS.fixed_44k_output && myGUS.ActiveChannels == 28) {
-                play_buffer[s << 1] = clamp16((accum[0] + prev_accum[0]) >> 1);
-                play_buffer[(s << 1) + 1] = clamp16((accum[1] + prev_accum[1]) >> 1);
+                play_buffer[s << 1] = clamp16((int32_t)((accum[0] + prev_accum[0]) >> 1));
+                play_buffer[(s << 1) + 1] = clamp16((int32_t)((accum[1] + prev_accum[1]) >> 1));
                 ++s;
             }
 #endif // SCALE_22K_TO_44K
-            play_buffer[s << 1] = clamp16(accum[0]);
-            play_buffer[(s << 1) + 1] = clamp16(accum[1]);
+            play_buffer[s << 1] = clamp16((int32_t)accum[0]);
+            play_buffer[(s << 1) + 1] = clamp16((int32_t)accum[1]);
             ++s;
 #ifdef SCALE_22K_TO_44K
             prev_accum[0] = accum[0];
@@ -1880,13 +1993,22 @@ public:
 };
 
 static GUS* GUS_Obj = NULL;
+// Tracks whether gus_crit currently holds a live critical section, so that
+// GUS_Shutdown() destroys it only when it was initialized and GUS_OnReset()
+// re-initializes it on the next enable.
+static bool gus_crit_inited = false;
 void GUS_OnReset(void) {
   //  LOG_MSG("Allocating GUS emulation");
     PM_INFO("Allocating GUS emulation\n");
 //    PM_INFO("IRQ line %u, DMA channel %u\n", myGUS.irq, myGUS.dma);
+    // gus_crit MUST be initialized BEFORE `new GUS()`: the GUS constructor calls
+    // GUSReset() -> WriteWaveCtrl(), which (since the PicoGUS v4.1.1 locking port)
+    // takes gus_crit unconditionally. Locking an uninitialized critical section
+    // hangs -- the boot froze right after "GUS Reset". GUS_Shutdown() destroys it
+    // again and clears the flag, so re-enabling the GUS re-initializes it here.
+    if (!gus_crit_inited) { critical_section_init(&gus_crit); gus_crit_inited = true; }
     if (GUS_Obj) delete GUS_Obj;
     GUS_Obj = new GUS();
-    critical_section_init(&gus_crit);
 }
 
 void GUS_SetIRQDMA(uint8_t irq_line, uint8_t dma_channel) {
@@ -1915,9 +2037,18 @@ void GUS_Setup() {
 void GUS_Shutdown() {
     PM_INFO("Shutting down GUS emulation\n");
     if (GUS_Obj) {
+        // Delete first: ~GUS() calls GUSReset() -> WriteWaveCtrl(), which takes
+        // gus_crit, so the critical section must still be live here.
         delete GUS_Obj;
         GUS_Obj = NULL;
+    }
+    // Free the critical section, but only if it is currently initialized, and clear
+    // the flag so GUS_OnReset() re-initializes it on the next enable. Without this
+    // a re-enable would lock a destroyed critical section and hang core0 (watchdog
+    // reset, stage 6).
+    if (gus_crit_inited) {
         critical_section_deinit(&gus_crit);
+        gus_crit_inited = false;
     }
 }
 

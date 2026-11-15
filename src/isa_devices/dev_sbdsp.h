@@ -9,6 +9,8 @@ typedef struct dev_sbdsp_t {
 } dev_sbdsp_t;
 
 //extern dev_sbdsp_t dev_sbdsp;
+extern bool     dev_sbdsp_active;         // True if configured/installed
+extern uint16_t dev_sbdsp_baseport;       // Base I/O port
 
 extern volatile bool dev_sbdsp_playing;   // True if playing
 extern volatile uint8_t dev_sbdsp_delay;  // counter for the Nb of second since last I/O

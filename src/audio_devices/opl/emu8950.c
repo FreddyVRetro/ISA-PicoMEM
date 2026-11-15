@@ -185,7 +185,7 @@ static uint32_t ml_table[16] = {1, 1 * 2, 2 * 2, 3 * 2, 4 * 2, 5 * 2, 6 * 2, 7 *
 
 #if !EMU8950_NO_TLL
 #if !EMU8950_NO_FLOAT
-#define dB2(x) ((x) * 2)
+#define dB2(x) ((x)*2)
 static double kl_table[16] = {dB2(0.000),  dB2(9.000),  dB2(12.000), dB2(13.875), dB2(15.000), dB2(16.125),
                               dB2(16.875), dB2(17.625), dB2(18.000), dB2(18.750), dB2(19.125), dB2(19.500),
                               dB2(19.875), dB2(20.250), dB2(20.625), dB2(21.000)};
@@ -200,7 +200,11 @@ static int16_t kl_tablex16[16] = {dB2x16(0.000), dB2x16(9.000), dB2x16(12.000), 
 #endif
 
 #if !EMU8950_NO_TLL
+#ifdef EMU8950_TLL_FLASH
+extern const uint32_t tll_table[8 * 16][1 << TL_BITS][4];
+#else
 static uint32_t tll_table[8 * 16][1 << TL_BITS][4];
+#endif
 #endif
 static int32_t rks_table[2][32][2];
 
@@ -368,7 +372,7 @@ static void makeSinTable(void) {
 }
 
 static void makeTllTable(void) {
-#if !EMU8950_NO_TLL
+#if !EMU8950_NO_TLL && !defined(EMU8950_TLL_FLASH)
     int32_t tmp;
     int32_t fnum, block, TL, KL, kx;
 
@@ -441,7 +445,7 @@ static void initializeTables() {
 #define CAR(o, x) (&(o)->slot[((x) << 1) | 1])
 #define BIT(s, b) (((s) >> (b)) & 1)
 
-#if OPL_DEBUG
+#if PGDEBUG_OPL
 static void _debug_print_patch(OPL_SLOT *slot) {
   OPL_PATCH *p = slot->patch;
   printf("[slot#%d am:%d pm:%d eg:%d kr:%d ml:%d kl:%d tl:%d ws:%d fb:%d A:%d D:%d S:%d R:%d]\n", slot->number, //
@@ -460,6 +464,8 @@ static char *_debug_eg_state_name(OPL_SLOT *slot) {
     return "sustain";
   case RELEASE:
     return "release";
+  case DAMP:
+    return "damp";
   default:
     return "unknown";
   }
@@ -560,7 +566,7 @@ static void commit_slot_update(OPL_SLOT *slot, uint8_t notesel) {
         }
     }
 
-#if OPL_DEBUG
+#if PGDEBUG_OPL
     if (slot->last_eg_state != slot->eg_state) {
       _debug_print_slot_info(slot);
       slot->last_eg_state = slot->eg_state;
@@ -630,7 +636,7 @@ static void reset_slot(OPL_SLOT *slot, int number) {
 #endif
 static INLINE void slotOn(OPL *opl, int i) {
     OPL_SLOT *slot = &opl->slot[i];
-    slot->rks = rks_table[opl->notesel][slot->blk_fnum >> 8][slot->patch->KR]; //Fix
+    slot->rks = rks_table[opl->notesel][slot->blk_fnum >> 8][slot->patch->KR];
     if (min(15, slot->patch->AR + (slot->rks >> 2)) == 15) {
         slot->eg_state = DECAY;
         slot->eg_out = 0;
@@ -1056,7 +1062,7 @@ static INLINE int16_t calc_slot_hat(OPL *opl) {
 }
 #endif
 
-#define _MO(x) (-(x) >> 1)
+#define _MO(x) (-(x))
 #define _RO(x) (x)
 
 static INLINE int16_t calc_fm(OPL *opl, int ch) {
@@ -1202,7 +1208,7 @@ INLINE static void mix_output(OPL *opl) {
 #endif
 }
 
-INLINE static int16_t mix_output_raw(OPL *opl) {
+INLINE static int32_t mix_output_raw(OPL *opl) {
     int32_t out = 0;
 
 #if !EMU8950_NO_PERCUSSION_MODE
@@ -1301,7 +1307,7 @@ void OPL_reset(OPL *opl) {
     memset(opl, 0, sizeof(*opl));
 #else
     // some fields are not reset
- //   opl->adr = 0;
+    opl->adr = 0;
     opl->notesel = 0;
 
     opl->status = 0;
@@ -1312,7 +1318,7 @@ void OPL_reset(OPL *opl) {
     opl->timer2_counter = 0;
 
     opl->pm_phase = 0;
-//    opl->am_phase = 0;
+    opl->am_phase = 0;
 
     opl->mask = 0;
 
@@ -1372,7 +1378,7 @@ int16_t OPL_calc(OPL *opl) {
     return opl->mix_out[0];
 }
 
-void out_step(OPL *opl, int16_t *buffer, uint32_t nsamples) {
+void OPL_calc_buffer(OPL *opl, int32_t *buffer, uint32_t nsamples) {
     assert(opl->out_step == opl->inp_step);
     for (unsigned i = 0; i < nsamples; i++) {
         update_output(opl);
@@ -1645,9 +1651,9 @@ uint32_t __not_in_flash_func(slot_car_linear_alg0)(OPL *opl, OPL_SLOT *slot, uin
         nsamples = nsamples_bak;
         // todo if note ends we can stop early
         for (; s < nsamples; s++) {
-        /*    if (hack_ch == 0 && s == 12) {
+            if (hack_ch == 0 && s == 12) {
                 breako();
-            } */
+            }
             eg_counter++;
             pm_phase = (pm_phase + opl->pm_dphase) & (PM_DP_WIDTH - 1);
             uint16_t mask = (1 << slot->eg_shift) - 1;
@@ -1687,9 +1693,9 @@ uint32_t __not_in_flash_func(slot_car_linear_alg0)(OPL *opl, OPL_SLOT *slot, uin
     if (slot->eg_state == SUSTAIN || slot->eg_state == RELEASE) {
         nsamples = nsamples_bak;
         for (; s < nsamples; s++) {
-      /*      if (hack_ch == 0 && s == 12) {
+            if (hack_ch == 0 && s == 12) {
                 breako();
-            } */
+            }
             eg_counter++;
             pm_phase = (pm_phase + opl->pm_dphase) & (PM_DP_WIDTH - 1);
             uint16_t mask = (1 << slot->eg_shift) - 1;

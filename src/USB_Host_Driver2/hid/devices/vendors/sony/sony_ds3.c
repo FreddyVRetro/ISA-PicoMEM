@@ -113,7 +113,7 @@ bool diff_report_ds3(sony_ds3_report_t const* rpt1, sony_ds3_report_t const* rpt
 void input_sony_ds3(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len) {
   uint32_t buttons;
   // previous report used to compare for changes
-  static sony_ds3_report_t prev_report[5] = { 0 };
+  static sony_ds3_report_t prev_report[MAX_DEVICES] = { 0 };
 
   // Mark that we've received input (DS3 is active and ready)
   ds3_devices[dev_addr].instances[instance].input_received = true;
@@ -146,6 +146,7 @@ void input_sony_ds3(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
     // After report++ strips report ID, motion is at indices 40-47
     int16_t accel_x = 0, accel_y = 0, accel_z = 0, gyro_z = 0;
     bool has_motion = false;
+    /*
     if (len >= 48) {
       // DS3 accelerometer: big-endian 16-bit values centered at ~512
       // DS3 gyro: 10-bit centered at ~512, range ±100 dps
@@ -169,7 +170,7 @@ void input_sony_ds3(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
       accel_z = (int16_t)(((int32_t)(raw_accel_z - 512) * 32767) / 1024);
 
       has_motion = true;
-    }
+    }*/
 
     // Always submit events when motion is available, or when buttons/sticks changed
     if (has_motion || buttons_changed)
@@ -183,9 +184,8 @@ void input_sony_ds3(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
       // DS3 has digital L2/R2 buttons, but pressure-sensitive sensors
       uint8_t analog_l = ds3_report.pressure[8];  // L2 pressure
       uint8_t analog_r = ds3_report.pressure[9];  // R2 pressure
-
-      /*
-      if (buttons_changed) {
+/*
+       if (buttons_changed) {
         TU_LOG1("(lx, ly, rx, ry, l, r) = (%u, %u, %u, %u, %u, %u)\r\n", analog_1x, analog_1y, analog_2x, analog_2y, analog_l, analog_r);
         TU_LOG1("DPad = ");
 
@@ -212,8 +212,8 @@ void input_sony_ds3(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
         if (ds3_report.ps       ) TU_LOG1("PS ");
 
         TU_LOG1("\r\n");
-      } */
-
+      }
+*/
       // All shoulder buttons passed as digital (platform-agnostic)
       // Consoles handle analog trigger thresholds in their router_submit_input()
       buttons = (((ds3_report.up)       ? JP_BUTTON_DU : 0) |
@@ -237,6 +237,21 @@ void input_sony_ds3(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
       // keep analog within range [1-255]
       ensureAllNonZero(&analog_1x, &analog_1y, &analog_2x, &analog_2y);
 
+      // Battery: report[29] (after report ID stripped)
+      // Per Linux kernel hid-sony.c: 0-5 = discharge lookup, 0xEE = charging, 0xEF = full
+      uint8_t bat_level = 0;
+      bool bat_charging = false;
+      if (len > 29) {
+        static const uint8_t ds3_battery[] = { 0, 1, 25, 50, 75, 100 };
+        uint8_t charge = report[29];
+        if (charge >= 0xEE) {
+            bat_level = 100;
+            bat_charging = (charge & 0x01) == 0;  // 0xEE=charging, 0xEF=full
+        } else if (charge <= 5) {
+            bat_level = ds3_battery[charge];
+        }
+      }
+
       // add to accumulator and post to the state machine
       // if a scan from the host machine is ongoing, wait
       input_event_t event = {
@@ -244,18 +259,24 @@ void input_sony_ds3(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
         .instance = instance,
         .type = INPUT_TYPE_GAMEPAD,
         .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
         .buttons = buttons,
         .button_count = 10,  // PS3: Cross, Circle, Square, Triangle, L1, R1, L2, R2, L3, R3
         .analog = {analog_1x, analog_1y, analog_2x, analog_2y, analog_l, analog_r},
         .keys = 0,
+
         .has_motion = has_motion,
-        .accel = {accel_x, accel_y, accel_z},
+        // DS3 device frame -> canonical SDL frame: accel X=+A, Y=-C, Z=-B
+        // (A/B/C = raw report X/Y/Z). Gyro is single-axis; kept in the Z slot.
+        // PS3 output (ps3_mode.c) applies the inverse for a byte-identical round-trip.
+        .accel = {accel_x, imu_negate_s16(accel_z), imu_negate_s16(accel_y)},
         .gyro = {0, 0, gyro_z},  // DS3 only has Z-axis gyro
-        .gyro_range = 100,   // DS3 gyro is ±100 dps
-        .accel_range = 2000, // DS3 accel is ±2g (2000 milli-g)
+        // Values are pre-scaled into the canonical ±2000 dps / ±4g container
+        // (±32767 = ±range), so declare 2000/4000 to match — else range-scaling
+        // outputs (DS5/PS4) read the motion ~20x too small.
+        .gyro_range = 2000,
+        .accel_range = 4000,
+        .battery_level = bat_level,
+        .battery_charging = bat_charging,
         .has_pressure = true,
         // DS3 pressure mapping: struct indices are shifted due to report ID stripping
         // D-pad: up, right, down, left at pressure[4-7]
@@ -353,19 +374,12 @@ void output_sony_ds3(uint8_t dev_addr, uint8_t instance, device_output_config_t*
     output_report.data.rumble.right_duration = 128;
   }
 
-
-  PM_INFO("DS3 Output Config: Dev %d|%d, Rumble %d, Player %d, LEDs 0x%02X\r\n",
-           dev_addr, instance, config->rumble, config->player_index+1, output_report.data.leds_bitmap);
-
   if (ds3_devices[dev_addr].instances[instance].rumble != config->rumble ||
       ds3_devices[dev_addr].instances[instance].player != output_report.data.leds_bitmap ||
       config->test)
   {
     ds3_devices[dev_addr].instances[instance].rumble = config->rumble;
     ds3_devices[dev_addr].instances[instance].player = output_report.data.leds_bitmap;
-    
-    PM_INFO("DS3 Output: Dev %d|%d, Rumble %d, LEDs 0x%02X\r\n",
-             dev_addr, instance, config->rumble, output_report.data.leds_bitmap);
 
     // Send report without the report ID, start at index 1 instead of 0
     tuh_hid_send_report(dev_addr, instance, output_report.data.report_id, &(output_report.buf[1]), sizeof(output_report) - 1);
@@ -390,7 +404,7 @@ static void ds3_ctrl_xfer_cb(tuh_xfer_t* xfer) {
 // Raw USB control transfer for DS3 SET_REPORT (bypasses TinyUSB HID layer)
 // USB Host Shield uses: ctrlReq(addr, ep0, 0x21, 0x09, 0xF5, 0x03, 0x00, 8, 8, buf)
 static bool ds3_set_report_raw(uint8_t dev_addr, uint8_t instance, uint8_t report_id, uint8_t* data, uint16_t len) {
-  PM_INFO("[DS3] ds3_set_report_raw called: dev=%d inst=%d report=0x%02X len=%d\n",
+  printf("[DS3] ds3_set_report_raw called: dev=%d inst=%d report=0x%02X len=%d\n",
          dev_addr, instance, report_id, len);
 
   // Get interface number from TinyUSB HID layer
@@ -443,10 +457,10 @@ static bool ds3_set_report_raw(uint8_t dev_addr, uint8_t instance, uint8_t repor
   }
 
   // Wait for completion with timeout
-  uint32_t start = to_ms_since_boot(get_absolute_time());
+  uint32_t start = time_us_32();
   while (!ds3_xfer_complete) {
     tuh_task();  // Process USB events
-    if (to_ms_since_boot(get_absolute_time()) - start > 1000) {
+    if (time_us_32() - start > 1000 * 1000) {
       PM_INFO("[DS3] Control transfer timeout!\n");
       return false;
     }
@@ -480,7 +494,7 @@ static bool ds3_send_bt_host_address(uint8_t dev_addr, uint8_t instance) {
   ds3_bt_addr_buf[6] = bt_addr[1];
   ds3_bt_addr_buf[7] = bt_addr[0];
 
-  PM_INFO("[DS3] Programming BT host: %02X:%02X:%02X:%02X:%02X:%02X\n",
+  printf("[DS3] Programming BT host: %02X:%02X:%02X:%02X:%02X:%02X\n",
          bt_addr[5], bt_addr[4], bt_addr[3],
          bt_addr[2], bt_addr[1], bt_addr[0]);
 
@@ -500,7 +514,7 @@ static inline bool init_sony_ds3(uint8_t dev_addr, uint8_t instance) {
   * packet, so we have to discard buf[0] when sending the actual
   * control message, even for numbered reports, humpf!
   */
-  PM_INFO("[DS3] Init..\n");
+  printf("[DS3] Init..\n");
 
   // Initialize state
   ds3_devices[dev_addr].instances[instance].init_state = DS3_STATE_ACTIVATING;
@@ -525,7 +539,7 @@ void task_sony_ds3(uint8_t dev_addr, uint8_t instance, device_output_config_t* c
       if (inst->input_received) {
         // Only prompt if BT dongle address is available
         if (btd_is_available()) {
-          PM_INFO("[DS3] Press any button to pair with BT dongle...\n");
+          printf("[DS3] Press any button to pair with BT dongle...\n");
           inst->init_state = DS3_STATE_WAIT_ACTIVE;
         } else {
           // No BT dongle, skip pairing
@@ -579,7 +593,7 @@ void task_sony_ds3(uint8_t dev_addr, uint8_t instance, device_output_config_t* c
   const uint32_t interval_ms = 20;
   static uint32_t start_ms = 0;
 
-  uint32_t current_time_ms = to_ms_since_boot(get_absolute_time());
+  uint32_t current_time_ms = time_us_32();
   if (current_time_ms - start_ms >= interval_ms) {
     start_ms = current_time_ms;
     output_sony_ds3(dev_addr, instance, config);
@@ -598,7 +612,7 @@ void unmount_sony_ds3(uint8_t dev_addr, uint8_t instance)
 }
 
 DeviceInterface sony_ds3_interface = {
-  .name = "DualShock 3",
+  .name = "Sony DualShock 3",
   .init = init_sony_ds3,
   .is_device = is_sony_ds3,
   .process = input_sony_ds3,

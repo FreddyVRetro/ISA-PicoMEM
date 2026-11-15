@@ -32,16 +32,11 @@ __force_inline void pm_do_memr(uint32_t ISA_Data)
  ISA_Data = pio_sm_get_blocking(isa_pio, isa_bus_sm); // Wait that the data is sent to wait for the next ALE 
 }
 
-
 //***********************************************************************************************//
 //*         CORE 1 Main : Wait for the ISA Bus events, emulate RAM and ROM                      *//
 //***********************************************************************************************//
-// rp2040 optimisations : 
-// Memory read Address read from PIO SM is done with a fixed delay (NOP) to gain time.
-// RP2040 Can't really be overclocked more than 300MHz so pio_sm_get_blocking is not needed.
 // The code is placed in the Scratch_x (4k Bank used for the Core 1 Stack) to avoid RAM Access conflict.
 
-//void __time_critical_func(main_core1)(void)
 void __scratch_x("core1_ISA_code") (main_core1)(void)
 {
 
@@ -98,7 +93,6 @@ for (;;) {
 //    "lsrs  %[ADDR] ,%[MEMI], #3         \n\t"  // pio_sm_put(isa_pio, isa_bus_sm, MEM_Index>>3);
 //    "str   %[ADDR] ,[%[PIOB],%[PIOT]]   \n\t"   // Index <<3 Sent to the PIO to move or not IOCHRDY
 
-
 // Define Outputs
      :[CTRL_I]"+l" (IO_CTRL_MDIndex),      // IO_CTRL_MDIndex is for MEM, use it as ISA_CTRL for I/O and used as Temp register
       [ADDR]"+l" (ISA_Addr),
@@ -113,10 +107,7 @@ for (;;) {
       [PIOR]"i" (PIO_RXF0_OFFSET)
      :"cc"                              // Tell the compiler that regs are changed
      : ISA_Do_IO
-//       ISA_Do_MEMW
       );
-
-//#define MEM_Index ISA_Addr  // The Memory index is returned in the ISA_Addr variable/register
 
 ISA_Do_MEM:
 
@@ -187,173 +178,18 @@ ISA_Do_IO:  // Goto, from the assembly code
   asm volatile ("nop");
   ISA_IO_Addr=ISA_IO_Addr ^ 0x300;
 
-  switch(IO_CTRL_MDIndex)
-      {
-// ********** PicoMEM IOW **********        
-       case CTRL_IOW : // ISA_Cycle=IOW  (1000b)
-       uint32_t ISAIOW_Data;
-       #if PM_SYS_CLK>340
-         asm volatile ("nop");
-       #endif       
-       ISAIOW_Data=((uint32_t)gpio_get_all()>>PIN_AD0)&0xFF;
-//       if (IO_Device) PM_INFO("%d",IO_Device);
-       switch(IO_Device)
-        {
-        case DEV_PM :
-           dev_pmio_iow(ISA_IO_Addr,ISAIOW_Data);
-          break;
-        case DEV_LTEMS :  // LTEMS : Write to the Bank Registers
-           dev_ems_iow(ISA_IO_Addr,ISAIOW_Data);
-	       break;  //DEV_LTEMS
-#if PM_WIFI
-#if USE_NE2000
-        case DEV_NE2000:
-           dev_ne2000_iow((ISA_IO_Addr-PM_Config->ne2000Port) & 0x1F,ISAIOW_Data);
-          break;
+  // Before change to IO Table :  SCRATCH_X: 3764 B 91.89%
+  if (IO_CTRL_MDIndex == CTRL_IOW) {
+    uint32_t ISAIOW_Data;
+#if PM_SYS_CLK>340
+    asm volatile ("nop");
 #endif
-#endif
-#if DEV_POST_Enable
-	      case DEV_POST :
-           dev_post_iow(ISA_IO_Addr,ISAIOW_Data);
-          break;
-#endif
-#if DEV_IRQ
-         case DEV_IRQ :
-           dev_irq_iow(ISA_IO_Addr,ISAIOW_Data);
-         break;
-#endif
-#if USE_USBHOST
-        case DEV_JOY :
-           dev_joystick_iow(ISA_IO_Addr,ISAIOW_Data);
-          break;
-#endif          
-#if USE_AUDIO
-        case DEV_ADLIB :
-           dev_adlib_iow(ISA_IO_Addr,ISAIOW_Data);
-          break;
-        case DEV_CMS :
-           dev_cms_iow(ISA_IO_Addr,ISAIOW_Data);
-          break;
-        case DEV_TANDY :
-           dev_tdy_iow(ISA_IO_Addr,ISAIOW_Data);
-          break;    
-        case DEV_MMB :
-          dev_mmb_iow(ISA_IO_Addr,ISAIOW_Data);
-         break;  
-        case DEV_CVX :
-          dev_cvx_iow(ISA_IO_Addr,ISAIOW_Data);
-         break;
-#if USE_SBDSP                           
-        case DEV_SBDSP :
-           dev_sbdsp_iow(ISA_IO_Addr,ISAIOW_Data);
-          break;     
-        case DEV_DMA :
-           dev_dma_iow(ISA_IO_Addr,ISAIOW_Data);
-          break;
-#endif
-#if USE_GUS
-        case DEV_GUS :
-           dev_gus_iow(ISA_IO_Addr,ISAIOW_Data);
-          break;
-#endif
-#if USE_MPU
-        case DEV_MPU :
-           dev_mpu_iow(ISA_IO_Addr,ISAIOW_Data);
-          break;
-#endif 
-#endif
-
-#if USE_RTC
-        case DEV_RTC :
-           dev_rtc_iow(ISA_IO_Addr,ISAIOW_Data);
-           break;   
-#endif
-#if USE_CDROM
-        case DEV_CDR : // MKE CD
-           dev_cdr_iow(ISA_IO_Addr,ISAIOW_Data);
-           break; 
-#endif
-
-// *** Add Other device IOW here ***         
-
-        }          // switch(IO_Device) (Write)
-        break;     // End ISA_Cycle=IOW
-
-// ********** PicoMEM IOR ********** 
-       case CTRL_IOR : // ISA_Cycle=IOR (0100b) 
-//       if (IO_Device) PM_INFO("%d",IO_Device);
-       switch(IO_Device)
-        {
-        case DEV_PM :
-           dev_pmio_ior(ISA_IO_Addr,&ISA_Data);
-           pm_do_ior();
-          break; //DEV_PM    
-        case DEV_LTEMS :
-           dev_ems_ior(ISA_IO_Addr,&ISA_Data);
-           pm_do_ior();
-          break;  //DEV_LTEMS  
-#if PM_WIFI
-#if USE_NE2000
-        case DEV_NE2000:        
-           dev_ne2000_ior(ISA_IO_Addr,&ISA_Data);
-           pm_do_ior();
-          break;          
-#endif          
-#endif
-#if USE_USBHOST
-        case DEV_JOY:
-           dev_joystick_ior(ISA_IO_Addr,&ISA_Data);
-           pm_do_ior();           
-          break;
-#endif
-#if USE_AUDIO
-        case DEV_ADLIB:
-           if (dev_adlib_ior(ISA_IO_Addr,&ISA_Data)) pm_do_ior();          
-          break;
-        case DEV_CMS:
-           if (dev_cms_ior(ISA_IO_Addr,&ISA_Data)) pm_do_ior();
-          break;
-        case DEV_MMB:
-          if (dev_mmb_ior(ISA_IO_Addr,&ISA_Data)) pm_do_ior();         
-          break;
-        case DEV_CVX:
-           if (dev_cvx_ior(ISA_IO_Addr,&ISA_Data)) pm_do_ior();        
-          break; 
-#if USE_SBDSP                 
-        case DEV_SBDSP:
-           if (dev_sbdsp_ior(ISA_IO_Addr,&ISA_Data)) pm_do_ior();        
-          break;
-#endif
-#if USE_GUS
-        case DEV_GUS:
-           if (dev_gus_ior(ISA_IO_Addr,&ISA_Data)) pm_do_ior();        
-          break; 
-#endif
-#if USE_MPU                    
-        case DEV_MPU:
-           if (dev_mpu_ior(ISA_IO_Addr,&ISA_Data)) pm_do_ior();           
-          break;           
-#endif 
-#endif          
-#if USE_RTC
-        case DEV_RTC:
-           dev_rtc_ior(ISA_IO_Addr,&ISA_Data);
-           pm_do_ior();           
-          break; 
-#endif
-#if USE_CDROM
-        case DEV_CDR : // MKE CD
-           dev_cdr_ior(ISA_IO_Addr,&ISA_Data);
-           pm_do_ior();            
-           break; 
-#endif
-
-   // *** Add Other device IOR here ***
-        }         // switch(IO_Device) (Read)
-        break;    // End ISA_Cycle=IOR
-// *** Place no more than 4 Case  ***
-       default: break;
-     } // End switch(ISA_Cycle) ** In the IO Block
+    ISAIOW_Data=((uint32_t)gpio_get_all()>>PIN_AD0)&0xFF;
+    dev_iow[IO_Device](ISA_IO_Addr, (uint8_t)ISAIOW_Data);
+  } else {
+    if (dev_ior[IO_Device](ISA_IO_Addr, &ISA_Data))
+      pm_do_ior();
+  }
 
   //***    End of I/O Cycle     ***
 

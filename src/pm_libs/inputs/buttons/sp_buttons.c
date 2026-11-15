@@ -3,6 +3,7 @@
 // Buttons layout: 
 //  1  2
 //  3  4
+//  1: Up 3: Down 2: Select 4: Back
 
 #include <stdio.h>
 #include "pm_debug.h"
@@ -41,8 +42,15 @@ void sp_task()
 {
 #if FP_HEADER  
   static uint32_t prev_buttons = 0;
-  uint32_t buttons=!gpio_get(FPH_IO1) | (!gpio_get(FPH_IO2)<<1) | (!gpio_get(FPH_IO3)<<2) | (!gpio_get(FPH_IO4)<<3) | (!gpio_get(FPH_IO5)<<4);
-  
+ // uint32_t buttons=!gpio_get(FPH_IO1) | (!gpio_get(FPH_IO2)<<1) | (!gpio_get(FPH_IO3)<<2) | (!gpio_get(FPH_IO4)<<3) | (!gpio_get(FPH_IO5)<<4);
+  uint32_t buttons=!gpio_get(FPH_IO1)<<1 | (!gpio_get(FPH_IO2)<<2) | (!gpio_get(FPH_IO3)<<3) | (!gpio_get(FPH_IO4)) | (!gpio_get(FPH_IO5)<<4);
+/*
+  #define JP_BUTTON_B1 (1 << 0)   // A         B         Cross      2 (Down)
+#define JP_BUTTON_B2 (1 << 1)   // B         A         Circle     3 (Right)
+#define JP_BUTTON_B3 (1 << 2)   // X         Y         Square     1 (Left)
+#define JP_BUTTON_B4 (1 << 3)   // Y         X         Triangle   4 (Up)
+ */ 
+
   if (buttons != prev_buttons) {
     prev_buttons = buttons;
     PM_INFO("Panel Buttons: %05b\n", buttons);

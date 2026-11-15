@@ -1,8 +1,14 @@
 #pragma once
 
-#include "audio_fifo.h"
+#if BOARD_WM10
+#include "wmm_sbdsp.h"
+#else
+//#include "audio_fifo.h"
+#include "audio_fifo8.h"
 
 //#define USE_HWDMA 1
+
+#define SB_DSP_WRITE_BUSY_TOGGLE 1   // 0x22C bit 7 busy on 8 of every 16 reads (DOSBox shape). REQUIRED: PoP waits for busy before ready (8570 end-of-level loop, fixed 2026-09-12)
 
 enum SB_TYPES {SBT_NONE=0,SBT_2=1,SBT_PRO2=2,SBT_16=3};
 
@@ -34,8 +40,8 @@ typedef struct sbdsp_t {
     // dma commands variables
     uint16_t dma_interval;           // Interval (in uS) between 2 samples read by the DMA
     uint16_t dma_block_size;         // Block size as sent to the command by the PC
-    uint16_t dma_sample_count;       // Number of (encoded) bytes to transfer sent by the PC
-    uint32_t dma_sample_count_rx;    // Count of DMA ticks elapsed (one per decoded output sample; may exceed dma_sample_count for ADPCM)
+    uint16_t dma_sample_count;       // Number of samples to transfer sent by the PC
+    uint16_t dma_sample_count_rx;    // Count of samples to transfer (When = dma_sample_count, send an interrupt and clear)
     uint16_t dma_xfer_count;         // Number of transfers to do (for 16bit/stereo DMA)
     uint16_t dma_xfer_count_left;    // Number of transfers left to do (for 16bit/stereo DMA)
 
@@ -82,7 +88,7 @@ typedef struct sbdsp_t {
 
     uint8_t mixer_command;  // To remove later
 
-    uint8_t ident_e2[2];    // Buffer for the E2 command, to be able to return 2 bytes of data
+    uint8_t ident_e2[2];    // Buffer for the E2 command, to be able to return 2 bytes of data    
     //    volatile int16_t cur_sample;  // PicoGUS bufferless mode
 } sbdsp_t;
 
@@ -100,3 +106,4 @@ extern void sbdsp_dma_worker();
  Wold3D : Ok
  Mod Master XT : Crack at multiple frequencies
 */
+#endif // BOARD_WM10

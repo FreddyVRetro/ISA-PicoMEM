@@ -452,6 +452,18 @@ void process_hid_keyboard(uint8_t dev_addr, uint8_t instance, uint8_t const* hid
   };
   router_submit_input(&event);
 
+  // ---- WonderMCA USB keyboard emulation -------------------------------
+  // The router event carries only 3 of 6 keycodes and no modifier byte,
+  // so we bypass it for the chassis-keyboard path. pm_keyboard_submit_report
+  // gets the full HID report, diffs against the previous one, translates
+  // make/break to PS/2 set-1 scan codes, and writes them to DPRAM. PMBIOS
+  // INT 1Ch hook picks them up. Whole pipeline is gated on
+  // PM_Config->EnableUSBKbd.
+  {
+    extern void pm_keyboard_submit_report(uint8_t modifier, const uint8_t keycodes[6]);
+    pm_keyboard_submit_report(report->modifier, report->keycode);
+  }
+
   prev_report = *report;
 }
 

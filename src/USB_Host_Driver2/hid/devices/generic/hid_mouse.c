@@ -119,6 +119,14 @@ void process_hid_mouse(uint8_t dev_addr, uint8_t instance, uint8_t const* mouse_
   };
   router_submit_input(&event);
 
+#if USE_SERMOUSE
+  // Feed the serial-mouse UART (COM2) with the raw HID report so it works in
+  // Windows 3.x + DOS (Windows reads a serial mouse directly; the 8042 aux
+  // inject is virtualized away in 386 Enhanced mode).
+  extern void dev_sermouse_feed(const void *hid_report);
+  dev_sermouse_feed(report);
+#endif
+
   //------------- cursor movement -------------//
   //cursor_movement(report->x, report->y, report->wheel, 0);
 }

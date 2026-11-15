@@ -139,7 +139,7 @@ __force_inline void  DBG_OFF_MIX()
 #if PM_PRINTF
 #define pmprintf printf
 #else 
-static void fakeprintf(const char *format, ...) {}  // Static means not public
+static void fakeprintf(const char *format, ...) {}
 #define pmprintf fakeprintf
 #endif
 

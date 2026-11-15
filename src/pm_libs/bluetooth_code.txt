@@ -1,0 +1,147 @@
+PicoMEM Bluetooth Discovery
+===========================
+
+Purpose
+-------
+The BIOS Bluetooth menu lists nearby BLE devices detected by the Pico W
+CYW43 radio. It shows the advertised name, Bluetooth address, and RSSI.
+
+Files
+-----
+- pm_apps.cpp: pm_app_bluetooth() draws the device list in the BIOS menu.
+- pm_bluetooth.h: Shared device-cache API and record definition.
+- pm_bluetooth_scan.c: BLE advertisement scanner adapted from the Raspberry Pi
+  Pico SDK BTstack gap_le_advertisements example.
+- pm_bluetooth_scan.h: Scanner initialization declaration.
+- btstack_config.h: Minimal BTstack configuration used by this firmware.
+
+Discovery Flow
+--------------
+1. PM_ConnectWifi() initializes the CYW43 radio and enables STA mode.
+2. pm_bluetooth_scan_init() initializes BTstack using the existing CYW43 async
+   context and registers an HCI event handler. It does not start scanning.
+3. Opening pm_app_bluetooth() requests discovery for 10 seconds. The scanner
+   stops automatically, then remains idle until the app is opened again or a
+   device is explicitly selected for pairing.
+4. Each GAP_EVENT_ADVERTISING_REPORT is parsed for a shortened or complete
+   local name. Devices without one are called "Unknown".
+5. pm_bluetooth_record_device() stores up to eight unique addresses, updating
+   the name and RSSI when a device advertises again.
+6. pm_app_bluetooth() displays the cache through the legacy BIOS text API.
+
+Debug Output
+------------
+PM_INFO messages use the [BT] prefix:
+- Scanner startup and repeated-initialization state.
+- BTstack initialization failures.
+- Each discovered advertisement: address, name, and RSSI in dBm.
+
+Build Requirements
+------------------
+For PICOMEM_20 and PICOMEM_JR, picomem links:
+- pico_btstack_cyw43
+- pico_btstack_ble
+
+The project already enables PICO_CYW43_SUPPORTED for these boards. Bluetooth
+starts when Wi-Fi initialization is requested, because both use the same
+CYW43 radio and async context.
+
+Bluetooth Mouse Support
+-----------------------
+PicoMEM supports BLE HID-over-GATT (HOGP) mice that provide standard boot
+mouse input reports. The implementation is adapted from the Pico SDK
+BTstack hog_host_demo example.
+
+Advertisement Classification
+----------------------------
+Each cached advertisement also stores its BLE address type and a device type:
+- Mouse: Bluetooth Appearance HID category, mouse subtype (0x03C2).
+- Keyboard: Bluetooth Appearance HID category, keyboard subtype (0x03C1).
+- Joypad: Bluetooth Appearance HID category, joystick or gamepad subtype.
+- Headphones: Bluetooth Appearance wearable-audio category (earbud, headset,
+  headphones, or neck-band subtype).
+- Speaker: Bluetooth Appearance audio-sink category.
+- HID: advertises the Human Interface Device service UUID (0x1812), but has
+  no recognized mouse or keyboard Appearance.
+- Unknown: no HID service or recognized Appearance.
+
+The HID service classification is used as a fallback when Appearance is not
+available. Classification is merged across advertisements, so a later packet
+that omits optional Appearance data cannot downgrade a previously recognized
+device. This classification is advisory, so explicit device selection remains
+necessary.
+
+Mouse Pairing Flow
+------------------
+1. pm_bluetooth_connect_device(index) selects a cached Mouse or generic HID
+   entry. Keyboard and Unknown entries are rejected for the mouse path.
+2. The scanner waits for the selected address to advertise again, stops the
+   scan, and connects only to that address and address type.
+3. The Security Manager performs bonded Just Works pairing. Numeric comparison
+   is also confirmed automatically because there is no local input/display UI.
+4. hids_client_connect() discovers the remote HID service and enables boot
+   protocol reports.
+5. Standard boot mouse reports are converted to INPUT_TYPE_MOUSE events and
+   submitted through router_submit_input().
+
+The expected boot mouse report layout is:
+- Byte 0: left, right, and middle button bits.
+- Byte 1: signed X delta.
+- Byte 2: signed Y delta.
+- Byte 3: optional signed wheel delta.
+
+Left, right, and middle buttons map to JP_BUTTON_B1, JP_BUTTON_B2, and
+JP_BUTTON_S2 respectively.
+
+BIOS Selection Commands
+-----------------------
+The legacy BIOS command bridge reserves these submenu values:
+- 5: display the discovered Bluetooth device list.
+- 6 through 13: select cached device indexes 0 through 7 for pairing.
+
+The current BIOS menu source must issue those values to present a selectable
+device list. pm_app_bluetooth() itself displays the names and classifications.
+
+BTstack Configuration
+---------------------
+btstack_config.h enables the central HOGP client with:
+- ENABLE_LE_CENTRAL and ENABLE_HIDS_CLIENT.
+- ENABLE_LE_SECURE_CONNECTIONS and ENABLE_GATT_CLIENT_PAIRING.
+- ENABLE_LE_PERIPHERAL. This is required by the Pico SDK BTstack privacy and
+  bonding state implementation, but PicoMEM does not advertise.
+- MAX_NR_GATT_CLIENTS=1, MAX_NR_HIDS_CLIENTS=1, and four L2CAP channels.
+
+ENABLE_LE_ADVERTISING must remain disabled. It enables an incompatible
+advertising state path in this Pico SDK BTstack revision.
+
+Current Limitations
+-------------------
+- Only BLE HOGP boot-protocol mice are supported.
+- BLE keyboards are classified but are not yet processed as input.
+- Classic Bluetooth HID mice, keyboards, and gamepads are not enabled.
+- Some devices use report protocol only or omit Appearance; they may require
+  descriptor-based HID parsing before they can be supported.
+
+Joypad OS Comparison
+--------------------
+Joypad OS implements Bluetooth input as a central-mode BTstack host:
+- src/bt/btstack/btstack_host.c manages discovery, pairing, connections,
+  Classic Bluetooth HID, and BLE HID-over-GATT (HOGP).
+- src/bt/bthid/bthid.c dispatches connected HID reports to device drivers.
+- src/bt/bthid/devices/generic/bthid_gamepad.c parses generic gamepad HID
+  descriptors and submits normalized gamepad input events.
+
+Joypad OS supports generic Bluetooth gamepads. It classifies keyboard and
+mouse devices by Bluetooth Class of Device, but does not include dedicated
+Bluetooth keyboard or mouse report drivers. PicoMEM must add these drivers
+to forward standard boot/report-protocol keyboard and mouse data to its
+existing input-event path.
+
+Required Work For Bluetooth Input
+---------------------------------
+1. Add a BLE keyboard HOGP report parser that creates INPUT_TYPE_KEYBOARD
+   events for router_submit_input().
+2. Add descriptor-based report parsing for non-boot BLE mice and gamepads.
+3. Link pico_btstack_classic and adapt Joypad OS's central host/BTHID layer
+   for Classic Bluetooth HID devices.
+4. Add BIOS-menu actions for disconnecting devices and removing saved bonds.

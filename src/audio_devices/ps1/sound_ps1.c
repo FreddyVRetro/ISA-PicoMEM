@@ -8,7 +8,7 @@
 
 #include "pm_audio.h"
 #include "pico_pic.h"
-#include "audio_fifo.h"
+#include "audio_fifo8.h"
 #include "covox_dac.h"
 #include "../dev_audiomix.h"
 
@@ -28,8 +28,8 @@ typedef struct ps1_audio_t {
         bool     readsample;
         uint8_t  prev_sample8;
 
-        audio_fifo_8_t *afifo;    // Output/Audio FIFO
-        uint8_t fifo[2048];       // PS1 Audio FIFO
+        audio_fifo_8_t *afifo;   // Output/Audio FIFO
+        uint8_t fifo[2048];      // PS1 Audio FIFO
         uint16_t fifo_read_idx, fifo_write_idx;
         uint16_t fifo_threshold;
 
@@ -50,25 +50,24 @@ static void ps1_update_irq_status() {
 void ps1_update_timer()
 {
 
-   if (ps1->dac_interval == 0)
+   if (ps1->timer_interval == 0)
    {
      PM_INFO("> Stop PS1 timer\n");
-     dac_timer_active=false;
+     ps1->timer_active=false;
      return;
    }
    PM_INFO("> Start/Update PS1 timer\n");
-   dac_timer_active=true;
-   //Set the covox output rate to 43478 Hz
-   ps1->dac_interval = 23;    //Simulate a DAC at 43478 Hz max
-   ps1->sample_step  = ((43478 * 65536ul) / PM_AUDIO_FREQUENCY)-5; // Step for the Audio rate convertion
+   ps1->timer_active=true;
+   //Set the ps1 output rate to 43478 Hz
+   ps1->sample_step  = (uint16_t) (uint64_t(1000000/ ps1->timer_interval * 65536ul) / PM_AUDIO_FREQUENCY); // Step for the Audio rate convertion
    ps1->increment    = 0;
    ps1->readsample   = true;
    ps1->prev_sample8 = 0x80;
-   ps1->ctrlcount    = 0;
+   // ps1->ctrlcount    = 0; // Not used in the current implementation
 
    if (!ps1->timer_active)
       {
-        PIC_AddEvent(&CVX_DAC_Timer_Event, cvx.dac_interval, 0);
+        PIC_AddEvent(&CVX_DAC_Timer_Event, ps1->timer_interval, 0);
         break;
       }
 }
@@ -150,7 +149,7 @@ static uint32_t PS1_Timer_EventHandler(Bitu val) {
       }
         ps1->status |= 0x10; /*ADC data ready*/
         ps1_update_irq_status(ps1);
-        afifo_add_sample8(ps1->fifo, ps1->sample);
+        afifo_add_sample8(ps1->afifo, ps1->sample);
   }
  return ps1->dac_interval;
 }
@@ -159,23 +158,24 @@ uint8_t ps1_audio_init() {
   if (ps1 != NULL) return 0; // Already initialized
 
   ps1 = (ps1_audio_t *)malloc(sizeof(ps1_audio_t));
-  if (ps1 == NULL) return CMDERR_MEM_ERR;  
+  if (ps1 == NULL) return CMDERR_MEM_ERR; // Not enaugh memory
   memset(ps1, 0, sizeof(ps1_audio_t));
 
-  cvx.fifo=(audio_fifo_8_t*) malloc(sizeof(audio_fifo_8_t));
-  if (cvx.fifo == NULL) 
+  ps1->afifo=(audio_fifo_8_t*) malloc(sizeof(audio_fifo_8_t));
+  if (ps1->afifo == NULL) 
         {
-         return_code=CMDERR_MEM_ERR;
          free(ps1);
          return CMDERR_MEM_ERR;  // Not enaugh memory
         }
-  afifo_init8(cvx.fifo);
+  afifo_init8(ps1->afifo);
   return 0; // Success
 }
 
 void ps1_audio_close() {
   if (ps1 != NULL) {
-      free(ps1);
+      free(ps1->afifo);   // free the audio FIFO
+      ps1->afifo = NULL;
+      free(ps1);          // free the PS1 audio structure
       ps1 = NULL;
     }
 }

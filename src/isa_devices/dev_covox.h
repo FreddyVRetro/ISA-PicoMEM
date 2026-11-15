@@ -1,5 +1,6 @@
 #pragma once
 
+#include "covox/covox_dac.h"
 #include "../dev_audiomix.h"
 
 typedef struct dev_cvx_t {            
@@ -15,6 +16,7 @@ __force_inline void dev_cvx_enable_mix() {
 }
 
 __force_inline void dev_cvx_disable_mix() {
+  cvx_stop_dac();         // STOP the Covox DAC
   dev_audiomix.dev_active = dev_audiomix.dev_active & ~AD_CVX;
 }
 

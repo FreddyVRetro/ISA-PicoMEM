@@ -1,3 +1,20 @@
+/*
+ *  Copyright (C) 2025  Ian Scott
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ */
 /**
  * audio_fifo.h - Shared header for audio producer and consumer
  *
@@ -8,68 +25,92 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-// #include "pico/mutex.h"
-// #include "pico/sem.h"
 
-// Configuration
-#define AUDIO_FIFO_SIZE 1024  // Must be power of 2
+// Packed stereo pair: left in low 16 bits, right in high 16 bits.
+typedef union {
+    uint32_t data32;
+    int16_t  data16[2];
+} sample_pair;
+
+// Each FIFO entry is a packed stereo pair.
+typedef sample_pair audio_sample_t;
+
+// CD audio FIFO size in stereo pairs — must be > SAMPLES_PER_SECTOR/2 (588
+// stereo frames per CD sector) to absorb slow USB/FAT reads.
+// Sized to ~93 ms of buffered audio (4096/44100*2) so it can absorb long
+// SD-card stalls (e.g. concurrent HDD sector transfers) without an audible
+// cut. Must remain a power of 2 -- AUDIO_FIFO_BITS is used as an index mask.
+#define AUDIO_FIFO_SIZE 4*1024
 #define AUDIO_FIFO_BITS (AUDIO_FIFO_SIZE - 1)
-#define AUDIO_FIFO_START_THRESHOLD (AUDIO_FIFO_SIZE >> 1)  // Start playback when half full
-//#define AUDIO_FIFO_START_THRESHOLD 5
+#define AUDIO_FIFO_START_THRESHOLD 512
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Audio sample type - adjust as needed for your audio format
-typedef int8_t audio_sample_t;
-
 // FIFO state
 typedef enum {
     FIFO_STATE_STOPPED,
     FIFO_STATE_RUNNING,
-} afifo_state_t;
+} fifo_state_t;
 
-// 8Bit Mono FIFO structure
+// FIFO structure
+// Lock-free SPSC: write_idx is only modified by the producer, read_idx only
+// by the consumer.  Both are unmasked uint32_t counters — mask with
+// AUDIO_FIFO_BITS when indexing into buffer[].  Level = write_idx - read_idx
+// (unsigned subtraction handles wrap correctly).
 typedef struct {
-    int8_t buffer[AUDIO_FIFO_SIZE];
+    audio_sample_t buffer[AUDIO_FIFO_SIZE];
     volatile uint32_t write_idx;
     volatile uint32_t read_idx;
-    volatile afifo_state_t state;
-    // mutex_t mutex;
-    // semaphore_t data_available;
-    volatile uint32_t samples_in_fifo;
-    volatile uint32_t samples_received;
-    volatile uint32_t samples_sent;    
-} audio_fifo_8_t;
-
-// 8Bit Stereo FIFO structure
-typedef struct {
-    int8_t buffer[AUDIO_FIFO_SIZE*2];
-    volatile uint32_t write_idx;
-    volatile uint32_t read_idx;
-    volatile afifo_state_t state;
-    // mutex_t mutex;
-    // semaphore_t data_available;
-    volatile uint32_t samples_in_fifo;
-    volatile uint32_t samples_received;
-    volatile uint32_t samples_sent;    
-} audio_fifo_8s_t;
+    volatile fifo_state_t state;
+} audio_fifo_t;
 
 // FIFO management functions (implemented in audio_fifo.c)
 // No more get_audio_fifo() - caller owns the fifo instance(s)
-void afifo_init8(audio_fifo_8_t *fifo);
-uint32_t afifo_level8(audio_fifo_8_t *fifo);
-void afifo_reset8(audio_fifo_8_t *fifo);
-bool afifo_add_sample8(audio_fifo_8_t *fifo, int8_t sample);
-bool afifo_add_samples8(audio_fifo_8_t *fifo, const int8_t *samples_buffer, uint32_t num_samples_to_add);
-uint32_t afifo_take_samples8(audio_fifo_8_t *fifo, uint32_t num_samples);
-bool  afifo_take_sample8(audio_fifo_8_t *fifo, int8_t *sample);
+void fifo_init(audio_fifo_t *fifo);
+void fifo_reset(audio_fifo_t *fifo);
+bool fifo_add_samples(audio_fifo_t *fifo, const audio_sample_t *samples_buffer, uint32_t num_samples_to_add);
 
-void afifo_init8s(audio_fifo_8s_t *fifo);
-void afifo_reset8s(audio_fifo_8s_t *fifo);
-bool afifo_add_sample8s(audio_fifo_8s_t *fifo, int8_t sample_r,int8_t sample_l);
-bool afifo_take_sample8s(audio_fifo_8s_t *fifo,  int8_t *sample_r,int8_t *sample_l);
+// Inline functions for performance
+static inline uint32_t fifo_level(audio_fifo_t *fifo) {
+    return fifo->write_idx - fifo->read_idx;
+}
+
+static inline bool fifo_add_sample(audio_fifo_t *fifo, audio_sample_t sample) {
+    uint32_t level = fifo->write_idx - fifo->read_idx;
+    if (level == AUDIO_FIFO_SIZE) {
+        return false;
+    }
+    fifo->buffer[fifo->write_idx & AUDIO_FIFO_BITS] = sample;
+    fifo->write_idx++;
+    if (level + 1 >= AUDIO_FIFO_START_THRESHOLD) {
+        fifo->state = FIFO_STATE_RUNNING;
+    }
+    return true;
+}
+
+uint32_t fifo_take_samples(audio_fifo_t *fifo, uint32_t num_samples);
+
+static inline uint32_t fifo_free_space(audio_fifo_t *fifo) {
+   return AUDIO_FIFO_SIZE - (fifo->write_idx - fifo->read_idx);
+}
+
+// Inline version of fifo_take_samples for performance-critical code
+static inline uint32_t fifo_take_samples_inline(audio_fifo_t *fifo, uint32_t num_samples) {
+    if (fifo->state == FIFO_STATE_STOPPED) {
+        return 0;
+    }
+    uint32_t level = fifo->write_idx - fifo->read_idx;
+    uint32_t samples_returned = level < num_samples ? level : num_samples;
+    fifo->read_idx += samples_returned;
+    if (fifo->write_idx == fifo->read_idx) {
+        fifo->state = FIFO_STATE_STOPPED;
+    }
+    return samples_returned;
+}
+
+// Helper for consumer to get one sample, this is a more fundamental FIFO op
 
 #ifdef __cplusplus
 }  // extern "C"
