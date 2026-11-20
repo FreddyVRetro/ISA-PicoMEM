@@ -31,7 +31,7 @@ Connect the Board with the MicroUSB to a PC/Laptop and press the BOOTSEL Button 
 
 ## Firmwares Revision History :
 
-### PM_x_11_05_26_x : OPL3, ROM, Bug Fix...  (Nov 5, 2026)
+### PM_x_11_xx_26_x : OPL3, ROM, Bug Fix...  (Nov xx, 2026)
 
 - + Long file name and up to 5000 image per folder
 - + HDD and Floppy images sorted alphabetically
